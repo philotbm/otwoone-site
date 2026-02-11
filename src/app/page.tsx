@@ -1,3 +1,5 @@
+// deploy trigger
+
 import Image from "next/image";
 
 const PRICING_ANCHOR = {
