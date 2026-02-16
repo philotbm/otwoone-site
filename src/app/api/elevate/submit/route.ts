@@ -86,11 +86,39 @@ export async function POST(req: Request) {
           `Submission ID: ${inserted.id}`,
         ];
 
+        const subject = `Elevate Submission • ${contact_name || "New lead"} • ${inserted.id}`;
+
         const res = await resend.emails.send({
           from: "OTwoOne Elevate Intake <info@otwoone.ie>",
           to: notifyEmail,
-          subject: `Elevate Submission ${inserted.id} – ${contact_name || "New lead"}`,
-          text: textLines.join("\n"),
+          subject,
+          text: textLines.join("\n"), // keep plain-text fallback
+          html: `
+    <div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; line-height: 1.5; color: #111;">
+      <h2 style="margin: 0 0 12px;">New Elevate Intake Submission</h2>
+
+      <div style="margin: 0 0 16px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px;">
+        <div><strong>Name:</strong> ${contact_name || ""}</div>
+        <div><strong>Email:</strong> ${contact_email || ""}</div>
+        <div><strong>Phone:</strong> ${contact_phone || ""}</div>
+        <div><strong>Company:</strong> ${company_name || ""}</div>
+        <div><strong>Website:</strong> ${company_website || ""}</div>
+      </div>
+
+      <h3 style="margin: 0 0 8px;">Answers</h3>
+      <pre style="margin: 0 0 16px; padding: 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; overflow:auto;">${JSON.stringify(
+            answers,
+            null,
+            2
+          )}</pre>
+
+      <div style="font-size: 13px; color: #374151;">
+        <strong>Submission ID:</strong> ${inserted.id}<br/>
+        <strong>Status:</strong> submitted<br/>
+        <strong>Source:</strong> elevate
+      </div>
+    </div>
+  `,
         });
 
         // Always log a compact structured result
