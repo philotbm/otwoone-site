@@ -52,6 +52,8 @@ export async function POST(req: Request) {
       );
     }
 
+    console.log("SUPABASE INSERT OK:", inserted);
+
     // 2) Attempt email notification (non-blocking)
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
     const notifyEmail = process.env.ELEVATE_NOTIFY_EMAIL;
