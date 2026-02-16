@@ -8,6 +8,15 @@ if (!RESEND_API_KEY) {
   throw new Error("Missing RESEND_API_KEY");
 }
 
+function escapeHtml(input: unknown) {
+  return String(input ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -88,6 +97,36 @@ export async function POST(req: Request) {
 
         const subject = `Elevate Submission • ${contact_name || "New lead"} • ${inserted.id}`;
 
+        // --- Email formatting helpers ---
+        const websiteRaw = (company_website || "").trim();
+        const websiteHref =
+          websiteRaw && !/^https?:\/\//i.test(websiteRaw)
+            ? `https://${websiteRaw}`
+            : websiteRaw;
+
+        const websiteHtml = websiteHref
+          ? `<a href="${escapeHtml(websiteHref)}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(websiteRaw)}</a>`
+          : "—";
+
+        const answersObj = (answers ?? {}) as Record<string, unknown>;
+        const answerEntries = Object.entries(answersObj);
+
+        const answersTableRows =
+          answerEntries.length > 0
+            ? answerEntries
+              .map(([k, v]) => {
+                const key = escapeHtml(k).replace(/_/g, " ");
+                const val = escapeHtml(v) || "—";
+                return `<tr>
+            <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb; font-weight:600; width:180px;">${key}</td>
+            <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb;">${val}</td>
+          </tr>`;
+              })
+              .join("")
+            : `<tr>
+        <td style="padding:8px 10px;" colspan="2">—</td>
+      </tr>`;
+
         const res = await resend.emails.send({
           from: "OTwoOne Elevate Intake <info@otwoone.ie>",
           to: notifyEmail,
@@ -102,15 +141,16 @@ export async function POST(req: Request) {
         <div><strong>Email:</strong> ${contact_email || ""}</div>
         <div><strong>Phone:</strong> ${contact_phone || ""}</div>
         <div><strong>Company:</strong> ${company_name || ""}</div>
-        <div><strong>Website:</strong> ${company_website || ""}</div>
+        <div><strong>Website:</strong> ${websiteHtml}</div>
       </div>
 
-      <h3 style="margin: 0 0 8px;">Answers</h3>
-      <pre style="margin: 0 0 16px; padding: 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; overflow:auto;">${JSON.stringify(
-            answers,
-            null,
-            2
-          )}</pre>
+<h3 style="margin: 24px 0 12px;">Answers</h3>
+
+<table style="width:100%; border-collapse:collapse; font-size:14px; background:#ffffff; border:1px solid #e5e7eb; border-radius:6px; overflow:hidden;">
+  <tbody>
+    ${answersTableRows}
+  </tbody>
+</table>
 
       <div style="font-size: 13px; color: #374151;">
         <strong>Submission ID:</strong> ${inserted.id}<br/>
