@@ -91,6 +91,13 @@ export async function POST(req: Request) {
           text: textLines.join("\n"),
         });
 
+        // Always log a compact structured result
+        if ((res as any)?.error) {
+          console.error("RESEND ERROR:", (res as any).error);
+        } else {
+          console.log("RESEND SENT:", (res as any)?.data);
+        }
+
         console.log("RESEND RESPONSE:", res);
 
         // Resend typically returns { data, error }
