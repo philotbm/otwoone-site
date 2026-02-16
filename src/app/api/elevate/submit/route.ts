@@ -85,7 +85,7 @@ export async function POST(req: Request) {
         ];
 
         const res = await resend.emails.send({
-          from: "OTwoOne Elevate <info@otwoone.ie>",
+          from: "OTwoOne Elevate Intake <info@otwoone.ie>",
           to: notifyEmail,
           subject: `New Elevate intake — ${contact_name || "New lead"}`,
           text: textLines.join("\n"),
