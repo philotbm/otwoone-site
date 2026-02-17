@@ -94,7 +94,9 @@ export async function POST(req: Request) {
           `Submission ID: ${inserted.id}`,
         ];
 
-        const subject = `Elevate Submission • ${contact_name || "New lead"} • ${inserted.id}`;
+        const subject = `Elevate Submission • ${
+          contact_name || "New lead"
+        } • ${inserted.id}`;
 
         // --- Email formatting helpers ---
         const websiteRaw = (company_website || "").trim();
@@ -105,16 +107,22 @@ export async function POST(req: Request) {
 
         const websiteHtml = websiteHref
           ? `<a href="${escapeHtml(
-            websiteHref
-          )}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
-            websiteRaw
-          )}</a>`
+              websiteHref
+            )}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
+              websiteRaw
+            )}</a>`
           : "Not provided.";
 
         const safeName = contact_name ? escapeHtml(contact_name) : "Not provided.";
-        const safeEmail = contact_email ? escapeHtml(contact_email) : "Not provided.";
-        const safePhone = contact_phone ? escapeHtml(contact_phone) : "Not provided.";
-        const safeCompany = company_name ? escapeHtml(company_name) : "Not provided.";
+        const safeEmail = contact_email
+          ? escapeHtml(contact_email)
+          : "Not provided.";
+        const safePhone = contact_phone
+          ? escapeHtml(contact_phone)
+          : "Not provided.";
+        const safeCompany = company_name
+          ? escapeHtml(company_name)
+          : "Not provided.";
 
         const answersObj = (answers ?? {}) as Record<string, unknown>;
         const answerEntries = Object.entries(answersObj);
@@ -122,21 +130,35 @@ export async function POST(req: Request) {
         const answersTableRows =
           answerEntries.length > 0
             ? answerEntries
-              .map(([k, v]) => {
-                const key = escapeHtml(k).replace(/_/g, " ");
-                const val =
-                  v === null || v === undefined || String(v).trim() === ""
-                    ? "Not provided."
-                    : escapeHtml(typeof v === "string" ? v : JSON.stringify(v));
-                return `<tr>
-            <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb; font-weight:600; width:180px;">${key}</td>
-            <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb;">${val}</td>
-          </tr>`;
-              })
-              .join("")
-            : `<tr>
-        <td style="padding:8px 10px;" colspan="2">Not provided.</td>
-      </tr>`;
+                .map(([k, v]) => {
+                  const key = escapeHtml(k).replace(/_/g, " ");
+
+                  const val =
+                    v === null || v === undefined || String(v).trim() === ""
+                      ? "Not provided."
+                      : escapeHtml(
+                          typeof v === "string" ? v : JSON.stringify(v)
+                        );
+
+                  return `
+<tr>
+  <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb; font-weight:600; width:180px; vertical-align:top;">
+    ${key}
+  </td>
+  <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb; vertical-align:top;">
+    <div style="white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere; line-height:1.5;">
+      ${val}
+    </div>
+  </td>
+</tr>
+`;
+                })
+                .join("")
+            : `
+<tr>
+  <td style="padding:8px 10px;" colspan="2">Not provided.</td>
+</tr>
+`;
 
         const res = await resend.emails.send({
           from: "OTwoOne Elevate Intake <info@otwoone.ie>",
@@ -188,8 +210,8 @@ export async function POST(req: Request) {
               <!-- Footer Meta -->
               <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">
                 <p style="margin:0 0 4px;"><strong>Submission ID:</strong> ${escapeHtml(
-            inserted.id
-          )}</p>
+                  inserted.id
+                )}</p>
                 <p style="margin:0 0 4px;"><strong>Status:</strong> submitted</p>
                 <p style="margin:0;"><strong>Source:</strong> elevate</p>
               </div>
@@ -221,7 +243,7 @@ export async function POST(req: Request) {
               "What happens next:",
               "• We will review your requirements.",
               "• You will receive a reply within 2 business days.",
-              "• If needed, we can arrange a call to discuss your project in more detail.",
+              "• If needed, we can arrange a call to discuss your requirements in more detail.",
               "",
               "If anything is urgent, you can reply to this email.",
               "",
@@ -263,7 +285,7 @@ export async function POST(req: Request) {
         <ul style="margin:0; padding-left:18px; line-height:1.6;">
           <li>We will review your requirements.</li>
           <li>You will receive a reply within 2 business days.</li>
-          <li>If needed, we can arrange a call to discuss your project in more detail.</li>
+          <li>If needed, we can arrange a call to discuss your requirements in more detail.</li>
         </ul>
       </div>
 
