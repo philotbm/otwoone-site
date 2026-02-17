@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabaseServer"; 
+import { supabaseServer } from "@/lib/supabaseServer";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
@@ -133,32 +133,55 @@ export async function POST(req: Request) {
           subject,
           text: textLines.join("\n"), // keep plain-text fallback
           html: `
-    <div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; line-height: 1.5; color: #111;">
-      <h2 style="margin: 0 0 12px;">New Elevate Intake Submission</h2>
+        <div style="background:#f5f7fb; padding:32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
 
-      <div style="margin: 0 0 16px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px;">
-        <div><strong>Name:</strong> ${contact_name || ""}</div>
-        <div><strong>Email:</strong> ${contact_email || ""}</div>
-        <div><strong>Phone:</strong> ${contact_phone || ""}</div>
-        <div><strong>Company:</strong> ${company_name || ""}</div>
-        <div><strong>Website:</strong> ${websiteHtml}</div>
-      </div>
+          <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.06);">
 
-<h3 style="margin: 24px 0 12px;">Answers</h3>
+            <!-- Header -->
+            <div style="background:#0f172a; padding:24px;">
+              <h1 style="margin:0; font-size:20px; color:#ffffff;">OTwoOne</h1>
+              <p style="margin:4px 0 0; font-size:13px; color:#cbd5e1;">
+                New Elevate Intake Submission
+              </p>
+            </div>
 
-<table style="width:100%; border-collapse:collapse; font-size:14px; background:#ffffff; border:1px solid #e5e7eb; border-radius:6px; overflow:hidden;">
-  <tbody>
-    ${answersTableRows}
-  </tbody>
-</table>
+            <!-- Body -->
+            <div style="padding:24px;">
 
-      <div style="font-size: 13px; color: #374151;">
-        <strong>Submission ID:</strong> ${inserted.id}<br/>
-        <strong>Status:</strong> submitted<br/>
-        <strong>Source:</strong> elevate
-      </div>
-    </div>
-  `,
+              <!-- Contact Card -->
+              <div style="margin-bottom:24px; padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+                <p style="margin:0 0 8px;"><strong>Name:</strong> ${contact_name || "-"}</p>
+                <p style="margin:0 0 8px;"><strong>Email:</strong> ${contact_email || "-"}</p>
+                <p style="margin:0 0 8px;"><strong>Phone:</strong> ${contact_phone || "-"}</p>
+                <p style="margin:0 0 8px;"><strong>Company:</strong> ${company_name || "-"}</p>
+                <p style="margin:0;"><strong>Website:</strong> ${websiteHtml}</p>
+              </div>
+
+              <!-- Answers -->
+              <h2 style="margin:0 0 12px; font-size:16px; color:#0f172a;">Project Details</h2>
+
+              <table style="width:100%; border-collapse:collapse; font-size:14px;">
+                <tbody>
+                  ${answersTableRows}
+                </tbody>
+              </table>
+
+              <!-- Footer Meta -->
+              <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">
+                <p style="margin:0 0 4px;"><strong>Submission ID:</strong> ${inserted.id}</p>
+                <p style="margin:0 0 4px;"><strong>Status:</strong> submitted</p>
+                <p style="margin:0;"><strong>Source:</strong> elevate</p>
+              </div>
+
+            </div>
+          </div>
+
+          <p style="text-align:center; font-size:11px; color:#94a3b8; margin-top:16px;">
+            OTwoOne · Cork, Ireland · www.otwoone.ie
+          </p>
+
+        </div>
+        `
         });
 
         // Always log a compact structured result
