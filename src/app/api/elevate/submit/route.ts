@@ -4,9 +4,15 @@ import { supabaseServer } from "@/lib/supabaseServer";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
-if (!RESEND_API_KEY) {
-  throw new Error("Missing RESEND_API_KEY");
-}
+type EmailResult =
+  | { attempted: false; reason?: string }
+  | { attempted: true; sent: true; data?: unknown }
+  | { attempted: true; sent: false; error: string };
+
+type ResendSendResponse = {
+  data?: unknown;
+  error?: unknown;
+};
 
 function escapeHtml(input: unknown) {
   return String(input ?? "")
@@ -15,6 +21,15 @@ function escapeHtml(input: unknown) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function toErrorMessage(err: unknown) {
+  if (err instanceof Error) return err.message;
+  try {
+    return typeof err === "string" ? err : JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
 }
 
 export async function POST(req: Request) {
@@ -56,14 +71,14 @@ export async function POST(req: Request) {
     if (error) {
       console.error("Supabase insert error:", error);
       return NextResponse.json(
-        { error: "Database insert failed", details: error.message ?? error },
+        { error: "Database insert failed", details: error.message ?? String(error) },
         { status: 500 }
       );
     }
 
     console.log("SUPABASE INSERT OK:", inserted);
 
-    // 2) Attempt email notification (non-blocking)
+    // 2) Attempt email notification
     const notifyEmail = process.env.ELEVATE_NOTIFY_EMAIL;
 
     console.log("ENV CHECK:", {
@@ -71,187 +86,191 @@ export async function POST(req: Request) {
       notifyEmail: notifyEmail ?? null,
     });
 
-    let emailResult: any = { attempted: false };
+    let emailResult: EmailResult = { attempted: false };
 
-    if (RESEND_API_KEY && notifyEmail) {
-      emailResult.attempted = true;
+    if (!RESEND_API_KEY) {
+      emailResult = { attempted: false, reason: "Missing RESEND_API_KEY" };
+      return NextResponse.json({ success: true, id: inserted.id, email: emailResult });
+    }
 
-      try {
-        const resend = new Resend(RESEND_API_KEY);
+    if (!notifyEmail) {
+      emailResult = { attempted: false, reason: "Missing ELEVATE_NOTIFY_EMAIL" };
+      return NextResponse.json({ success: true, id: inserted.id, email: emailResult });
+    }
 
-        const textLines = [
-          "New Elevate Intake Submission",
-          "",
-          `Name: ${contact_name || ""}`,
-          `Email: ${contact_email || ""}`,
-          `Phone: ${contact_phone || ""}`,
-          `Company: ${company_name || ""}`,
-          `Website: ${company_website || ""}`,
-          "",
-          "Answers:",
-          JSON.stringify(answers, null, 2),
-          "",
-          `Submission ID: ${inserted.id}`,
-        ];
+    try {
+      const resend = new Resend(RESEND_API_KEY);
 
-        const subject = `Elevate Submission • ${
-          contact_name || "New lead"
-        } • ${inserted.id}`;
+      const textLines = [
+        "New Elevate Intake Submission",
+        "",
+        `Name: ${contact_name || ""}`,
+        `Email: ${contact_email || ""}`,
+        `Phone: ${contact_phone || ""}`,
+        `Company: ${company_name || ""}`,
+        `Website: ${company_website || ""}`,
+        "",
+        "Answers:",
+        JSON.stringify(answers, null, 2),
+        "",
+        `Submission ID: ${inserted.id}`,
+      ];
 
-        // --- Email formatting helpers ---
-        const websiteRaw = (company_website || "").trim();
-        const websiteHref =
-          websiteRaw && !/^https?:\/\//i.test(websiteRaw)
-            ? `https://${websiteRaw}`
-            : websiteRaw;
+      const subject = `Elevate Submission • ${contact_name || "New lead"} • ${
+        inserted.id
+      }`;
 
-        const websiteHtml = websiteHref
-          ? `<a href="${escapeHtml(
-              websiteHref
-            )}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
-              websiteRaw
-            )}</a>`
-          : "Not provided.";
+      // --- Email formatting helpers ---
+      const websiteRaw = (company_website || "").trim();
+      const websiteHref =
+        websiteRaw && !/^https?:\/\//i.test(websiteRaw)
+          ? `https://${websiteRaw}`
+          : websiteRaw;
 
-        const safeName = contact_name ? escapeHtml(contact_name) : "Not provided.";
-        const safeEmail = contact_email
-          ? escapeHtml(contact_email)
-          : "Not provided.";
-        const safePhone = contact_phone
-          ? escapeHtml(contact_phone)
-          : "Not provided.";
-        const safeCompany = company_name
-          ? escapeHtml(company_name)
-          : "Not provided.";
+      const websiteHtml = websiteHref
+        ? `<a href="${escapeHtml(
+            websiteHref
+          )}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
+            websiteRaw
+          )}</a>`
+        : "Not provided.";
 
-        const answersObj = (answers ?? {}) as Record<string, unknown>;
-        const answerEntries = Object.entries(answersObj);
+      const safeName = contact_name ? escapeHtml(contact_name) : "Not provided.";
+      const safeEmail = contact_email ? escapeHtml(contact_email) : "Not provided.";
+      const safePhone = contact_phone ? escapeHtml(contact_phone) : "Not provided.";
+      const safeCompany = company_name ? escapeHtml(company_name) : "Not provided.";
 
-        const answersTableRows =
-          answerEntries.length > 0
-            ? answerEntries
-                .map(([k, v]) => {
-                  const key = escapeHtml(k).replace(/_/g, " ");
+      const answersObj = (answers ?? {}) as Record<string, unknown>;
+      const answerEntries = Object.entries(answersObj);
 
-                  const val =
-                    v === null || v === undefined || String(v).trim() === ""
-                      ? "Not provided."
-                      : escapeHtml(
-                          typeof v === "string" ? v : JSON.stringify(v)
-                        );
+      const answersTableRows =
+        answerEntries.length > 0
+          ? answerEntries
+              .map(([k, v]) => {
+                const key = escapeHtml(k).replace(/_/g, " ");
 
-                  return `
-<tr>
-  <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb; font-weight:600; width:180px; vertical-align:top;">
+                const val =
+                  v === null || v === undefined || String(v).trim() === ""
+                    ? "Not provided."
+                    : escapeHtml(
+                        typeof v === "string" ? v : JSON.stringify(v, null, 2)
+                      );
+
+                // IMPORTANT: this is a <div> layout (not a <table>) so long text flows cleanly
+                return `
+<div style="margin:0 0 16px;">
+  <div style="font-size:13px; font-weight:600; color:#0f172a; margin:0 0 6px;">
     ${key}
-  </td>
-  <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb; vertical-align:top;">
-    <div style="white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere; line-height:1.5;">
-      ${val}
+  </div>
+  <div style="font-size:14px; line-height:1.6; color:#334155; white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;">
+    ${val}
+  </div>
+</div>
+`;
+              })
+              .join("")
+          : `<div style="font-size:14px; color:#334155;">Not provided.</div>`;
+
+      const res = (await resend.emails.send({
+        from: "OTwoOne Elevate Intake <info@otwoone.ie>",
+        to: notifyEmail,
+        subject,
+        text: textLines.join("\n"),
+        html: `
+<div style="background:#eef2f7; padding:32px 16px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.06);">
+
+    <!-- Header -->
+    <div style="background:#0f172a; padding:24px;">
+      <div style="text-align:center;">
+        <img
+          src="https://www.otwoone.ie/branding/otwoone-logo-black.png"
+          width="180"
+          height="60"
+          alt="OTwoOne"
+          style="max-width:180px; width:100%; height:auto; display:block; margin:0 auto 12px;"
+        />
+        <p style="margin:12px 0 0; font-size:13px; color:#e2e8f0; font-weight:600;">
+          New Elevate Intake Submission
+        </p>
+      </div>
     </div>
-  </td>
-</tr>
-`;
-                })
-                .join("")
-            : `
-<tr>
-  <td style="padding:8px 10px;" colspan="2">Not provided.</td>
-</tr>
-`;
 
-        const res = await resend.emails.send({
-          from: "OTwoOne Elevate Intake <info@otwoone.ie>",
-          to: notifyEmail,
-          subject,
-          text: textLines.join("\n"), // keep plain-text fallback
-          html: `
-        <div style="background:#eef2f7; padding:32px 16px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+    <!-- Body -->
+    <div style="padding:24px;">
 
-          <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.06);">
+      <!-- Contact Card -->
+      <div style="margin-bottom:24px; padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+        <p style="margin:0 0 8px;"><strong>Name:</strong> ${safeName}</p>
+        <p style="margin:0 0 8px;"><strong>Email:</strong> ${safeEmail}</p>
+        <p style="margin:0 0 8px;"><strong>Phone:</strong> ${safePhone}</p>
+        <p style="margin:0 0 8px;"><strong>Company:</strong> ${safeCompany}</p>
+        <p style="margin:0;"><strong>Website:</strong> ${websiteHtml}</p>
+      </div>
 
-            <!-- Header -->
-            <div style="background:#0f172a; padding:24px;">
-              <div style="text-align:center;">
-                <img
-                  src="https://www.otwoone.ie/branding/otwoone-logo-black.png"
-                  width="180"
-                  height="60"
-                  alt="OTwoOne"
-                  style="max-width:180px; width:100%; height:auto; display:block; margin:0 auto 12px;"
-                />
-                <p style="margin:12px 0 0; font-size:13px; color:#e2e8f0; font-weight:600;">
-                  New Elevate Intake Submission
-                </p>
-              </div>
-            </div>
+      <!-- Answers -->
+      <h2 style="margin:0 0 12px; font-size:16px; color:#1e293b;">Project Details</h2>
 
-            <!-- Body -->
-            <div style="padding:24px;">
+      <div style="border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+        ${answersTableRows}
+      </div>
 
-              <!-- Contact Card -->
-              <div style="margin-bottom:24px; padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
-                <p style="margin:0 0 8px;"><strong>Name:</strong> ${safeName}</p>
-                <p style="margin:0 0 8px;"><strong>Email:</strong> ${safeEmail}</p>
-                <p style="margin:0 0 8px;"><strong>Phone:</strong> ${safePhone}</p>
-                <p style="margin:0 0 8px;"><strong>Company:</strong> ${safeCompany}</p>
-                <p style="margin:0;"><strong>Website:</strong> ${websiteHtml}</p>
-              </div>
+      <!-- Footer Meta -->
+      <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">
+        <p style="margin:0 0 4px;"><strong>Submission ID:</strong> ${escapeHtml(
+          inserted.id
+        )}</p>
+        <p style="margin:0 0 4px;"><strong>Status:</strong> submitted</p>
+        <p style="margin:0;"><strong>Source:</strong> elevate</p>
+      </div>
 
-              <!-- Answers -->
-              <h2 style="margin:0 0 12px; font-size:16px; color:#1e293b;">Project Details</h2>
+    </div>
+  </div>
 
-              <table style="width:100%; border-bottom:1px solid #e2e8f0; font-size:14px;">
-                <tbody>
-                  ${answersTableRows}
-                </tbody>
-              </table>
-
-              <!-- Footer Meta -->
-              <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">
-                <p style="margin:0 0 4px;"><strong>Submission ID:</strong> ${escapeHtml(
-                  inserted.id
-                )}</p>
-                <p style="margin:0 0 4px;"><strong>Status:</strong> submitted</p>
-                <p style="margin:0;"><strong>Source:</strong> elevate</p>
-              </div>
-
-            </div>
-          </div>
-
-          <p style="text-align:center; font-size:11px; color:#94a3b8; margin-top:16px;">
-            OTwoOne, Cork, Ireland. www.otwoone.ie
-          </p>
-
-        </div>
+  <p style="text-align:center; font-size:11px; color:#94a3b8; margin-top:16px;">
+    OTwoOne, Cork, Ireland. www.otwoone.ie
+  </p>
+</div>
         `,
-        });
+      })) as ResendSendResponse;
 
-        // --- Auto-reply to the person who submitted (contact_email) ---
-        if (contact_email) {
-          await resend.emails.send({
-            from: "OTwoOne <info@otwoone.ie>",
-            to: contact_email,
-            replyTo: "info@otwoone.ie",
-            subject: "We've received your OTwoOne Elevate details",
-            text: [
-              `Hi ${contact_name || "there"},`,
-              "",
-              "Thank you for reaching out to OTwoOne.",
-              "We have received your details and will review them shortly.",
-              "",
-              "What happens next:",
-              "• We will review your requirements.",
-              "• You will receive a reply within 2 business days.",
-              "• If needed, we can arrange a call to discuss your requirements in more detail.",
-              "",
-              "If anything is urgent, you can reply to this email.",
-              "",
-              "OTwoOne",
-              "Cork, Ireland",
-              "www.otwoone.ie",
-            ].join("\n"),
-            html: `
+      if (res?.error) {
+        console.error("RESEND ERROR:", res.error);
+        emailResult = {
+          attempted: true,
+          sent: false,
+          error: toErrorMessage(res.error),
+        };
+      } else {
+        console.log("RESEND SENT:", res?.data);
+        emailResult = { attempted: true, sent: true, data: res?.data };
+      }
+
+      // --- Auto-reply to the person who submitted (contact_email) ---
+      if (contact_email) {
+        await resend.emails.send({
+          from: "OTwoOne <info@otwoone.ie>",
+          to: contact_email,
+          replyTo: "info@otwoone.ie",
+          subject: "We've received your OTwoOne Elevate details",
+          text: [
+            `Hi ${contact_name || "there"},`,
+            "",
+            "Thank you for reaching out to OTwoOne.",
+            "We have received your details and will review them shortly.",
+            "",
+            "What happens next:",
+            "• We will review your requirements.",
+            "• You will receive a reply within 2 business days.",
+            "• If needed, we can arrange a call to discuss your requirements in more detail.",
+            "",
+            "If anything is urgent, you can reply to this email.",
+            "",
+            "OTwoOne",
+            "Cork, Ireland",
+            "www.otwoone.ie",
+          ].join("\n"),
+          html: `
 <div style="background:#eef2f7; padding:32px 16px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
   <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden;">
 
@@ -306,47 +325,15 @@ export async function POST(req: Request) {
 
   </div>
 </div>
-            `,
-          });
-        }
-
-        // Always log a compact structured result
-        if ((res as any)?.error) {
-          console.error("RESEND ERROR:", (res as any).error);
-        } else {
-          console.log("RESEND SENT:", (res as any)?.data);
-        }
-
-        console.log("RESEND RESPONSE:", res);
-
-        // Resend typically returns { data, error }
-        if ((res as any)?.error) {
-          emailResult = {
-            attempted: true,
-            sent: false,
-            error: (res as any).error,
-          };
-        } else {
-          emailResult = {
-            attempted: true,
-            sent: true,
-            data: (res as any)?.data ?? res,
-          };
-        }
-      } catch (err: any) {
-        console.error("Resend send error:", err);
-        emailResult = {
-          attempted: true,
-          sent: false,
-          error: err?.message ?? String(err),
-        };
+          `,
+        });
       }
-    } else {
+    } catch (err: unknown) {
+      console.error("Resend send error:", err);
       emailResult = {
-        attempted: false,
-        reason: !RESEND_API_KEY
-          ? "Missing RESEND_API_KEY"
-          : "Missing ELEVATE_NOTIFY_EMAIL",
+        attempted: true,
+        sent: false,
+        error: toErrorMessage(err),
       };
     }
 
@@ -355,10 +342,10 @@ export async function POST(req: Request) {
       id: inserted.id,
       email: emailResult,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("Submit route error:", e);
     return NextResponse.json(
-      { error: "Invalid request", details: e?.message ?? String(e) },
+      { error: "Invalid request", details: toErrorMessage(e) },
       { status: 400 }
     );
   }
