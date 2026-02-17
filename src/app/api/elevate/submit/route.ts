@@ -133,7 +133,7 @@ export async function POST(req: Request) {
           subject,
           text: textLines.join("\n"), // keep plain-text fallback
           html: `
-        <div style="background:#f5f7fb; padding:32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <div style="background:#eef2f7; padding:32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
 
           <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.06);">
 
@@ -158,9 +158,9 @@ export async function POST(req: Request) {
               </div>
 
               <!-- Answers -->
-              <h2 style="margin:0 0 12px; font-size:16px; color:#0f172a;">Project Details</h2>
+              <h2 style="margin:0 0 12px; font-size:16px; color:#1e293b;">Project Details</h2>
 
-              <table style="width:100%; border-collapse:collapse; font-size:14px;">
+              <table style="width:100%; border-bottom:1px solid #e2e8f0; font-size:14px;">
                 <tbody>
                   ${answersTableRows}
                 </tbody>
