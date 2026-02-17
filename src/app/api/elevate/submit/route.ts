@@ -147,11 +147,9 @@ export async function POST(req: Request) {
                   alt="OTwoOne"
                   style="max-width:180px; width:100%; height:auto; display:block; margin:0 auto 12px;"
                 />
-                <h1 style="margin:0; font-size:20px; color:#ffffff;">OTwoOne</h1>
-                <p style="margin:6px 0 0; font-size:13px; color:#cbd5e1;">
-                  New Elevate Intake Submission
-                </p>
-              </div>
+                  <p style="margin:12px 0 0; font-size:13px; color:#e2e8f0; font-weight:600;">
+                    New Elevate Intake Submission
+                  </p>
             </div>
           </div>
 
