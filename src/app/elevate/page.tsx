@@ -1,27 +1,188 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import Image from "next/image";
+import { FormEvent, useMemo, useState } from "react";
 
 type Status = "idle" | "sending" | "done" | "error";
+type Stage = 1 | 2;
+
+type NeedHelp =
+  | "website"
+  | "automation"
+  | "branding"
+  | "strategy"
+  | "ops"
+  | "combo"
+  | "other";
 
 export default function ElevatePage() {
   const [status, setStatus] = useState<Status>("idle");
+  const [stage, setStage] = useState<Stage>(1);
+
+  // Stage 1 state (kept separate so we can validate before revealing Stage 2)
+  const [needHelp, setNeedHelp] = useState<NeedHelp | "">("");
+  const [needHelpOther, setNeedHelpOther] = useState("");
+  const [priority, setPriority] = useState<"" | "speed" | "quality" | "cost" | "clarity">("");
+  const [timeline, setTimeline] = useState<
+    "" | "asap" | "1-3" | "3-6" | "exploring"
+  >("");
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+
+  // Stage 2 state (conditional)
+  const [companyName, setCompanyName] = useState("");
+  const [companyWebsite, setCompanyWebsite] = useState("");
+  const [goal, setGoal] = useState("");
+
+  const [budget, setBudget] = useState<
+    "" | "under3" | "3-7" | "7-15" | "15-30" | "30plus"
+  >("");
+
+  const [toolsCore, setToolsCore] = useState<
+    "" | "m365" | "google" | "mixed" | "unknown"
+  >("");
+  const [toolsMicrosoftDepth, setToolsMicrosoftDepth] = useState<
+    "" | "basic" | "teams_sp" | "some_auto" | "underused"
+  >("");
+  const [aiUsage, setAiUsage] = useState<
+    "" | "no" | "experimenting" | "weekly" | "copilot" | "structured"
+  >("");
+  const [aiTools, setAiTools] = useState<string[]>([]);
+
+  const [breakdown, setBreakdown] = useState<
+    "" |
+    "leads" |
+    "quoting" |
+    "delivery" |
+    "finance" |
+    "comms" |
+    "reporting" |
+    "no_process"
+  >("");
+
+  const [websiteType, setWebsiteType] = useState<
+    "" | "landing" | "multi" | "ecommerce" | "redesign" | "notsure"
+  >("");
+  const [hasBranding, setHasBranding] = useState<"" | "yes" | "no" | "partial">("");
+
+  const [brandingNeed, setBrandingNeed] = useState<
+    "" | "logo" | "identity" | "rebrand" | "strategy_messaging" | "notsure"
+  >("");
+
+  const [consultancyFocus, setConsultancyFocus] = useState<
+    "" | "strategic" | "operational" | "training" | "growth" | "all"
+  >("");
+
+  const [extra, setExtra] = useState("");
+
+  const showToolsSection = useMemo(() => {
+    return needHelp === "automation" || needHelp === "strategy" || needHelp === "ops" || needHelp === "combo";
+  }, [needHelp]);
+
+  const showWebsiteSection = useMemo(() => {
+    return needHelp === "website" || needHelp === "combo";
+  }, [needHelp]);
+
+  const showBrandingSection = useMemo(() => {
+    return needHelp === "branding" || needHelp === "combo";
+  }, [needHelp]);
+
+  const showConsultancySection = useMemo(() => {
+    return needHelp === "strategy" || needHelp === "ops" || needHelp === "combo";
+  }, [needHelp]);
+
+  function toggleArrayValue(arr: string[], val: string) {
+    return arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val];
+  }
+
+  function stage1IsValid() {
+    if (!needHelp) return false;
+    if (needHelp === "other" && needHelpOther.trim().length < 2) return false;
+    if (!priority) return false;
+    if (!timeline) return false;
+    if (!contactName.trim()) return false;
+    if (!contactEmail.trim()) return false;
+    return true;
+  }
+
+  function humanBudget(v: typeof budget) {
+    switch (v) {
+      case "under3": return "Under €3k";
+      case "3-7": return "€3k–€7k";
+      case "7-15": return "€7k–€15k";
+      case "15-30": return "€15k–€30k";
+      case "30plus": return "€30k+";
+      default: return "";
+    }
+  }
+
+  function humanTimeline(v: typeof timeline) {
+    switch (v) {
+      case "asap": return "ASAP (2–4 weeks)";
+      case "1-3": return "1–3 months";
+      case "3-6": return "3–6 months";
+      case "exploring": return "Just exploring";
+      default: return "";
+    }
+  }
+
+  function humanPriority(v: typeof priority) {
+    switch (v) {
+      case "speed": return "Speed";
+      case "quality": return "Quality";
+      case "cost": return "Cost";
+      case "clarity": return "Clarity / direction";
+      default: return "";
+    }
+  }
+
+  function humanNeedHelp(v: typeof needHelp) {
+    switch (v) {
+      case "website": return "Website";
+      case "automation": return "Automation / backend system";
+      case "branding": return "Branding";
+      case "strategy": return "Strategic consultancy";
+      case "ops": return "Operational systems & training";
+      case "combo": return "Combination of the above";
+      case "other": return `Other: ${needHelpOther || "—"}`;
+      default: return "";
+    }
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus("sending");
 
-    const form = new FormData(e.currentTarget);
-
+    // Keep payload shape compatible with your existing API route:
+    // - contact_name, contact_email, company_name, company_website
+    // - answers object with additional fields
     const payload = {
-      contact_name: String(form.get("contact_name") ?? ""),
-      contact_email: String(form.get("contact_email") ?? ""),
-      company_name: String(form.get("company_name") ?? ""),
-      company_website: String(form.get("company_website") ?? ""),
+      contact_name: contactName,
+      contact_email: contactEmail,
+      company_name: companyName,
+      company_website: companyWebsite,
       answers: {
-        goal: String(form.get("goal") ?? ""),
-        budget: String(form.get("budget") ?? ""),
-        timeline: String(form.get("timeline") ?? ""),
+        need_help: humanNeedHelp(needHelp),
+        priority: humanPriority(priority),
+        timeline: humanTimeline(timeline),
+
+        goal,
+        breakdown,
+
+        // Stage 2 additions (kept as strings so Supabase storage is easy)
+        budget: humanBudget(budget),
+        tools_core: toolsCore,
+        microsoft_depth: toolsMicrosoftDepth,
+        ai_usage: aiUsage,
+        ai_tools: aiTools.join(", "),
+
+        website_type: websiteType,
+        has_branding: hasBranding,
+
+        branding_need: brandingNeed,
+        consultancy_focus: consultancyFocus,
+
+        extra,
       },
     };
 
@@ -32,83 +193,489 @@ export default function ElevatePage() {
         body: JSON.stringify(payload),
       });
 
-      if (res.ok) setStatus("done");
-      else setStatus("error");
+      if (res.ok) {
+        setStatus("done");
+      } else {
+        setStatus("error");
+      }
     } catch {
       setStatus("error");
     }
   }
 
+  const fieldBase =
+    "w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/20";
+  const labelBase = "mb-2 block text-sm text-white/70";
+  const helperBase = "mt-2 text-xs text-white/50";
+
   return (
-    <main className="min-h-screen bg-black text-white p-10">
-      <h1 className="text-3xl font-bold mb-6">OTwoOne Elevate Intake</h1>
+    <main className="min-h-screen bg-black text-white">
+      {/* Premium background glow */}
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.18),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(14,165,233,0.12),transparent_55%)]" />
 
-      <form onSubmit={handleSubmit} className="space-y-4 max-w-xl">
-        <input
-          name="contact_name"
-          placeholder="Your name"
-          required
-          className="w-full p-3 bg-zinc-900 border border-zinc-700"
-        />
-        <input
-          name="contact_email"
-          placeholder="Email"
-          required
-          className="w-full p-3 bg-zinc-900 border border-zinc-700"
-        />
-        <input
-          name="company_name"
-          placeholder="Company"
-          className="w-full p-3 bg-zinc-900 border border-zinc-700"
-        />
-        <input
-          name="company_website"
-          placeholder="Website"
-          className="w-full p-3 bg-zinc-900 border border-zinc-700"
-        />
+      <div className="relative mx-auto w-full max-w-3xl px-6 py-12">
+        {/* Header */}
+        <header className="mb-10 flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <Image
+              src="/branding/otwoone-logo-wordmark-white.png"
+              alt="OTwoOne"
+              width={220}
+              height={64}
+              priority
+            />
+            <div className="hidden sm:block">
+              <p className="mt-1 text-sm text-white/70">
+                Tell us a little bit about what you need.
+              </p>
+            </div>
+          </div>
+        </header>
 
-        <textarea
-          name="goal"
-          placeholder="What are you trying to achieve?"
-          className="w-full p-3 bg-zinc-900 border border-zinc-700"
-        />
+        <form onSubmit={handleSubmit} className="space-y-10">
+          {/* Stage 1 card */}
+          <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur">
+            <div className="mb-8">
+              <div className="flex items-baseline justify-between gap-4">
+                <h2 className="text-lg font-medium tracking-tight text-white">                  
+                  How can we help you?
+                </h2>
+                <span className="text-xs text-white/60 border border-white/15 bg-white/5 px-2 py-1 rounded-full">
+                  Step 1
+                </span>
+              </div>
+            </div>
 
-        <select
-          name="budget"
-          className="w-full p-3 bg-zinc-900 border border-zinc-700"
-          defaultValue="Under €2k"
-        >
-          <option value="Under €2k">Under €2k</option>
-          <option value="€2k–€5k">€2k–€5k</option>
-          <option value="€5k–€10k">€5k–€10k</option>
-          <option value="€10k+">€10k+</option>
-        </select>
+            {/* Need help */}
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {[
+                  { v: "website", t: "Website" },
+                  { v: "automation", t: "Automation / backend system" },
+                  { v: "branding", t: "Branding" },
+                  { v: "strategy", t: "Strategic consultancy" },
+                  { v: "ops", t: "Operational systems & training" },
+                  { v: "combo", t: "Combination of the above" },
+                  { v: "other", t: "Other (briefly describe)" },
+                ].map((opt) => (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => setNeedHelp(opt.v as NeedHelp)}
+                    className={
+                      "rounded-xl border px-4 py-2.5 text-left text-sm transition-all duration-200 " +
+                      (needHelp === opt.v
+                        ? "border-white bg-white/15 -translate-y-[1px]"
+                        : "border-white/10 bg-black/30 hover:bg-white/5 hover:border-white/20")
+                    }
+                  >
+                    <span className={needHelp === opt.v ? "font-medium" : "font-normal"}>
+                      {opt.t}
+                    </span>
+                  </button>
+                ))}
+              </div>
 
-        <select
-          name="timeline"
-          className="w-full p-3 bg-zinc-900 border border-zinc-700"
-          defaultValue="ASAP"
-        >
-          <option value="ASAP">ASAP</option>
-          <option value="1–2 months">1–2 months</option>
-          <option value="3+ months">3+ months</option>
-        </select>
+              {needHelp === "other" && (
+                <input
+                  value={needHelpOther}
+                  onChange={(e) => setNeedHelpOther(e.target.value)}
+                  placeholder="Briefly describe what you’re looking for…"
+                  className={fieldBase}
+                />
+              )}
+            </div>
 
-        <button
-          type="submit"
-          disabled={status === "sending"}
-          className="bg-white text-black px-6 py-3 font-semibold"
-        >
-          {status === "sending" ? "Sending…" : "Submit"}
-        </button>
+            {/* Priority + Timeline */}
+            <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div>
+                <label className={labelBase}>What matters most right now?</label>                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value as any)}
+                  className={fieldBase}
+                >
+                  <option value="">Select…</option>
+                  <option value="speed">Speed</option>
+                  <option value="quality">Quality</option>
+                  <option value="cost">Cost</option>
+                  <option value="clarity">Clarity / direction</option>
+                </select>
+              </div>
 
-        {status === "done" && (
-          <p className="text-green-400">Submitted successfully ✅</p>
-        )}
-        {status === "error" && (
-          <p className="text-red-400">Submission failed ❌</p>
-        )}
-      </form>
+              <div>
+                <label className={labelBase}>Timeline</label>
+                <select
+                  value={timeline}
+                  onChange={(e) => setTimeline(e.target.value as any)}
+                  className={fieldBase}
+                >
+                  <option value="">Select…</option>
+                  <option value="asap">ASAP (2–4 weeks)</option>
+                  <option value="1-3">1–3 months</option>
+                  <option value="3-6">3–6 months</option>
+                  <option value="exploring">Just exploring</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Name + Email */}
+            <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div>
+                <label className={labelBase}>Name</label>
+                <input
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                  name="contact_name"
+                  placeholder="Your name"
+                  className={fieldBase}
+                  required
+                />
+              </div>
+              <div>
+                <label className={labelBase}>Email</label>
+                <input
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  name="contact_email"
+                  placeholder="you@company.com"
+                  className={fieldBase}
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Continue */}
+            <div className="mt-8">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!stage1IsValid()) return;
+                  setStage(2);
+                  // Optional: gently bring Stage 2 into view
+                  setTimeout(() => {
+                    document.getElementById("stage-2")?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  }, 50);
+                }}
+                className="inline-flex w-full items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-semibold tracking-wide text-black shadow-lg transition hover:-translate-y-[1px] hover:bg-white/90 hover:shadow-xl disabled:opacity-50"
+                disabled={status === "sending"}
+              >
+                Continue →
+              </button>
+            </div>
+          </section>
+
+          {/* Stage 2 card */}
+          {stage === 2 && (
+            <section
+              id="stage-2"
+              className="animate-fade-in rounded-2xl border border-white/10 bg-white/5 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur"
+            >
+              <div className="mb-6">
+                <h2 className="text-lg font-semibold tracking-tight">Project details</h2>
+                <p className="mt-1 text-sm text-white/70">
+                  A little more detail so we can guide you properly.
+                </p>
+              </div>
+
+              {/* Always visible */}
+              <div className="space-y-6">
+                <div>
+                  <label className={labelBase}>What are you trying to achieve?</label>
+                  <textarea
+                    value={goal}
+                    onChange={(e) => setGoal(e.target.value)}
+                    name="goal"
+                    placeholder="Briefly describe the outcome you want…"
+                    className={fieldBase}
+                    rows={4}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div>
+                    <label className={labelBase}>Company</label>
+                    <input
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      name="company_name"
+                      placeholder="Company name"
+                      className={fieldBase}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelBase}>Website</label>
+                    <input
+                      value={companyWebsite}
+                      onChange={(e) => setCompanyWebsite(e.target.value)}
+                      name="company_website"
+                      placeholder="company.com"
+                      className={fieldBase}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={labelBase}>Where does work break down most?</label>
+                  <select
+                    value={breakdown}
+                    onChange={(e) => setBreakdown(e.target.value as any)}
+                    className={fieldBase}
+                  >
+                    <option value="">Select…</option>
+                    <option value="leads">Leads & enquiries</option>
+                    <option value="quoting">Quoting / proposals</option>
+                    <option value="delivery">Delivery / project management</option>
+                    <option value="finance">Invoicing / finance</option>
+                    <option value="comms">Internal communication</option>
+                    <option value="reporting">Reporting / visibility</option>
+                    <option value="no_process">We don’t have defined processes</option>
+                  </select>
+                </div>
+
+                {/* Conditional: Tools */}
+                {showToolsSection && (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-5">
+                    <h3 className="text-sm font-semibold text-white/80">
+                      Current tools & platforms
+                    </h3>
+                    <p className="mt-1 text-xs text-white/60">
+                      This helps us design around what you already use (Microsoft-first, but tool-flexible).
+                    </p>
+
+                    <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                      <div>
+                        <label className={labelBase}>Core platform</label>
+                        <select
+                          value={toolsCore}
+                          onChange={(e) => setToolsCore(e.target.value as any)}
+                          className={fieldBase}
+                        >
+                          <option value="">Select…</option>
+                          <option value="m365">Microsoft 365</option>
+                          <option value="google">Google Workspace</option>
+                          <option value="mixed">Mixed tools</option>
+                          <option value="unknown">Not sure</option>
+                        </select>
+
+                        {toolsCore === "m365" && (
+                          <div className="mt-4">
+                            <label className={labelBase}>Microsoft usage level</label>
+                            <select
+                              value={toolsMicrosoftDepth}
+                              onChange={(e) => setToolsMicrosoftDepth(e.target.value as any)}
+                              className={fieldBase}
+                            >
+                              <option value="">Select…</option>
+                              <option value="basic">Basic email + files</option>
+                              <option value="teams_sp">Teams & SharePoint in use</option>
+                              <option value="some_auto">Some automation</option>
+                              <option value="underused">We’re underutilising it</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className={labelBase}>AI usage</label>
+                        <select
+                          value={aiUsage}
+                          onChange={(e) => setAiUsage(e.target.value as any)}
+                          className={fieldBase}
+                        >
+                          <option value="">Select…</option>
+                          <option value="no">Not using AI</option>
+                          <option value="experimenting">Experimenting</option>
+                          <option value="weekly">Using weekly</option>
+                          <option value="copilot">Using Microsoft Copilot</option>
+                          <option value="structured">Want structured AI rollout</option>
+                        </select>
+
+                        {aiUsage && aiUsage !== "no" && (
+                          <div className="mt-4">
+                            <label className={labelBase}>AI tools (select all)</label>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              {[
+                                "ChatGPT",
+                                "Microsoft Copilot",
+                                "Claude",
+                                "Gemini",
+                                "Perplexity",
+                                "Built-in AI (Canva/Notion/etc.)",
+                                "Other",
+                              ].map((t) => (
+                                <label
+                                  key={t}
+                                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={aiTools.includes(t)}
+                                    onChange={() => setAiTools((prev) => toggleArrayValue(prev, t))}
+                                  />
+                                  <span className="text-white/80">{t}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Conditional: Website */}
+                {showWebsiteSection && (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-5">
+                    <h3 className="text-sm font-semibold text-white/80">Website scope</h3>
+
+                    <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                      <div>
+                        <label className={labelBase}>Website type</label>
+                        <select
+                          value={websiteType}
+                          onChange={(e) => setWebsiteType(e.target.value as any)}
+                          className={fieldBase}
+                        >
+                          <option value="">Select…</option>
+                          <option value="landing">Landing page</option>
+                          <option value="multi">Multi-page website</option>
+                          <option value="ecommerce">E-commerce</option>
+                          <option value="redesign">Redesign existing site</option>
+                          <option value="notsure">Not sure</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={labelBase}>Do you have branding?</label>
+                        <select
+                          value={hasBranding}
+                          onChange={(e) => setHasBranding(e.target.value as any)}
+                          className={fieldBase}
+                        >
+                          <option value="">Select…</option>
+                          <option value="yes">Yes</option>
+                          <option value="partial">Partially</option>
+                          <option value="no">No</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Conditional: Branding */}
+                {showBrandingSection && (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-5">
+                    <h3 className="text-sm font-semibold text-white/80">Branding</h3>
+
+                    <div className="mt-4">
+                      <label className={labelBase}>What do you need?</label>
+                      <select
+                        value={brandingNeed}
+                        onChange={(e) => setBrandingNeed(e.target.value as any)}
+                        className={fieldBase}
+                      >
+                        <option value="">Select…</option>
+                        <option value="logo">Logo design</option>
+                        <option value="identity">Full brand identity</option>
+                        <option value="rebrand">Rebrand / refresh</option>
+                        <option value="strategy_messaging">Strategy & messaging</option>
+                        <option value="notsure">Not sure</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Conditional: Consultancy */}
+                {showConsultancySection && (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-5">
+                    <h3 className="text-sm font-semibold text-white/80">Consultancy focus</h3>
+
+                    <div className="mt-4">
+                      <label className={labelBase}>What kind of support do you want?</label>
+                      <select
+                        value={consultancyFocus}
+                        onChange={(e) => setConsultancyFocus(e.target.value as any)}
+                        className={fieldBase}
+                      >
+                        <option value="">Select…</option>
+                        <option value="strategic">Strategic direction</option>
+                        <option value="operational">Operational structure</option>
+                        <option value="training">Training & enablement</option>
+                        <option value="growth">Growth roadmap</option>
+                        <option value="all">A mix of the above</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Budget now in Stage 2 */}
+                <div>
+                  <label className={labelBase}>Estimated budget range</label>
+                  <select
+                    value={budget}
+                    onChange={(e) => setBudget(e.target.value as any)}
+                    className={fieldBase}
+                  >
+                    <option value="">Select…</option>
+                    <option value="under3">Under €3k</option>
+                    <option value="3-7">€3k–€7k</option>
+                    <option value="7-15">€7k–€15k</option>
+                    <option value="15-30">€15k–€30k</option>
+                    <option value="30plus">€30k+</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className={labelBase}>Anything else we should know?</label>
+                  <textarea
+                    value={extra}
+                    onChange={(e) => setExtra(e.target.value)}
+                    className={fieldBase}
+                    rows={3}
+                    placeholder="Links, context, constraints, deadlines…"
+                  />
+                </div>
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={status === "sending"}
+                  className="mt-2 inline-flex w-full items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black hover:bg-white/90 disabled:opacity-50"
+                >
+                  {status === "sending" ? "Sending…" : "Submit"}
+                </button>
+
+                {status === "done" && (
+                  <p className="text-green-400">Submitted successfully ✅</p>
+                )}
+                {status === "error" && (
+                  <p className="text-red-400">Submission failed ❌</p>
+                )}
+              </div>
+            </section>
+          )}
+        </form>
+
+        {/* Fade animation */}
+        <style jsx global>{`
+          @keyframes fadeIn {
+            from {
+              opacity: 0;
+              transform: translateY(8px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          .animate-fade-in {
+            animation: fadeIn 0.4s ease forwards;
+          }
+        `}</style>
+      </div>
     </main>
   );
 }
