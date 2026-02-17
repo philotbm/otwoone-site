@@ -198,20 +198,20 @@ export async function POST(req: Request) {
             from: "OTwoOne <info@otwoone.ie>",
             to: contact_email,
             replyTo: "info@otwoone.ie",
-            subject: "We’ve received your Elevate details",
+            subject: "We’ve received your OTwoOne Elevate details",
             text: [
               `Hi ${contact_name || "there"},`,
               "",
-              "Thank you for reaching out.",
-              "I have received your details and will review them shortly.",
+              "Thank you for reaching out to OTwoOne.",
+              "We have received your details and will review them shortly.",
               "",
               "What happens next:",
-              "• I will personally review your submission.",
-              "• You will receive a reply within 1 business day.",
+              "• We will review your requirements.",
+              "• You will receive a reply within 2 business days.",
+              "• After you receive our reply, we can arrange a call to discuss further if needed.",
               "",
-              "If anything is urgent, simply reply to this email.",
+              "If anything is urgent, you can reply to this email.",
               "",
-              "Philip Holland",
               "OTwoOne",
               "Cork, Ireland",
               "www.otwoone.ie"
@@ -230,7 +230,7 @@ export async function POST(req: Request) {
         style="display:block; margin:0 auto;"
       />
       <p style="margin:16px 0 0; font-size:14px; color:#cbd5e1;">
-        We’ve received your details
+        We've received your details
       </p>
     </div>
 
