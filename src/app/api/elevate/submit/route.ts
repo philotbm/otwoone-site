@@ -138,16 +138,20 @@ export async function POST(req: Request) {
           <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.06);">
 
           <!-- Header -->
-          <div style="background:#0f172a; padding:24px;">
-            <div style="text-align:center;">
-              <img
-                src="https://www.otwoone.ie/branding/otwoone-logo-black.png"
-                alt="OTwoOne"
-                style="max-width:180px; height:auto; display:block; margin:0 auto;"
-              />
-              <p style="margin:12px 0 0; font-size:13px; color:#cbd5e1;">
-                New Elevate Intake Submission
-              </p>
+            <div style="background:#0f172a; padding:24px;">
+              <div style="text-align:center;">
+                <img
+                  src="https://www.otwoone.ie/branding/otwoone-logo-black.png"
+                  width="180"
+                  height="60"
+                  alt="OTwoOne"
+                  style="max-width:180px; width:100%; height:auto; display:block; margin:0 auto 12px;"
+                />
+                <h1 style="margin:0; font-size:20px; color:#ffffff;">OTwoOne</h1>
+                <p style="margin:6px 0 0; font-size:13px; color:#cbd5e1;">
+                  New Elevate Intake Submission
+                </p>
+              </div>
             </div>
           </div>
 
