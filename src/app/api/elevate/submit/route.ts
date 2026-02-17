@@ -192,6 +192,71 @@ export async function POST(req: Request) {
         `
         });
 
+        // --- Auto-reply to the person who submitted (contact_email) ---
+        if (contact_email) {
+          await resend.emails.send({
+            from: "OTwoOne <info@otwoone.ie>",
+            to: contact_email,
+            replyTo: "info@otwoone.ie",
+            subject: "We've received your Elevate submission",
+            text: [
+              "Thanks — we've received your Elevate submission.",
+              "",
+              "What happens next:",
+              "• We'll review your details and reply within 1 business day.",
+              "• If anything is urgent, just reply to this email.",
+              "",
+              "OTwoOne — Cork, Ireland",
+              "www.otwoone.ie",
+            ].join("\n"),
+            html: `
+      <div style="background:#eef2f7; padding:32px 16px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+        <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0;">
+          
+          <!-- Header -->
+          <div style="background:#0f172a; padding:24px;">
+            <div style="text-align:center;">
+              <img
+                src="https://www.otwoone.ie/branding/otwoone-logo-black.png"
+                alt="OTwoOne"
+                style="max-width:180px; width:100%; height:auto; display:block; margin:0 auto;"
+              />
+              <p style="margin:12px 0 0; font-size:13px; color:#cbd5e1;">
+                Thanks — we've received your submission
+              </p>
+            </div>
+          </div>
+
+          <!-- Body -->
+          <div style="padding:24px; color:#0f172a;">
+            <p style="margin:0 0 12px; font-size:15px; line-height:1.5;">
+              Hi${contact_name ? ` ${contact_name}` : ""}, thanks for reaching out.
+            </p>
+
+            <div style="margin:16px 0; padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+              <p style="margin:0 0 10px; font-weight:600;">What happens next</p>
+              <ul style="margin:0; padding-left:18px; line-height:1.6;">
+                <li>We'll review your details and reply within <strong>1 business day</strong>.</li>
+                <li>If anything is urgent, just reply to this email.</li>
+              </ul>
+            </div>
+
+            <p style="margin:16px 0 0; font-size:13px; color:#475569;">
+              Submitted from Elevate on <strong>otwoone.ie</strong>.
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div style="padding:16px 24px; border-top:1px solid #e2e8f0; text-align:center; font-size:11px; color:#94a3b8;">
+            OTwoOne &nbsp;•&nbsp; Cork, Ireland &nbsp;•&nbsp; www.otwoone.ie
+          </div>
+
+        </div>
+      </div>
+    `,
+          });
+        }
+
         // Always log a compact structured result
         if ((res as any)?.error) {
           console.error("RESEND ERROR:", (res as any).error);
