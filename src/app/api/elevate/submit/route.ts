@@ -64,7 +64,6 @@ export async function POST(req: Request) {
     console.log("SUPABASE INSERT OK:", inserted);
 
     // 2) Attempt email notification (non-blocking)
-    const RESEND_API_KEY = process.env.RESEND_API_KEY;
     const notifyEmail = process.env.ELEVATE_NOTIFY_EMAIL;
 
     console.log("ENV CHECK:", {
@@ -105,8 +104,17 @@ export async function POST(req: Request) {
             : websiteRaw;
 
         const websiteHtml = websiteHref
-          ? `<a href="${escapeHtml(websiteHref)}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(websiteRaw)}</a>`
-          : "—";
+          ? `<a href="${escapeHtml(
+            websiteHref
+          )}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
+            websiteRaw
+          )}</a>`
+          : "Not provided.";
+
+        const safeName = contact_name ? escapeHtml(contact_name) : "Not provided.";
+        const safeEmail = contact_email ? escapeHtml(contact_email) : "Not provided.";
+        const safePhone = contact_phone ? escapeHtml(contact_phone) : "Not provided.";
+        const safeCompany = company_name ? escapeHtml(company_name) : "Not provided.";
 
         const answersObj = (answers ?? {}) as Record<string, unknown>;
         const answerEntries = Object.entries(answersObj);
@@ -116,7 +124,10 @@ export async function POST(req: Request) {
             ? answerEntries
               .map(([k, v]) => {
                 const key = escapeHtml(k).replace(/_/g, " ");
-                const val = escapeHtml(v) || "—";
+                const val =
+                  v === null || v === undefined || String(v).trim() === ""
+                    ? "Not provided."
+                    : escapeHtml(typeof v === "string" ? v : JSON.stringify(v));
                 return `<tr>
             <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb; font-weight:600; width:180px;">${key}</td>
             <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb;">${val}</td>
@@ -124,7 +135,7 @@ export async function POST(req: Request) {
               })
               .join("")
             : `<tr>
-        <td style="padding:8px 10px;" colspan="2">—</td>
+        <td style="padding:8px 10px;" colspan="2">Not provided.</td>
       </tr>`;
 
         const res = await resend.emails.send({
@@ -133,11 +144,11 @@ export async function POST(req: Request) {
           subject,
           text: textLines.join("\n"), // keep plain-text fallback
           html: `
-        <div style="background:#eef2f7; padding:32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <div style="background:#eef2f7; padding:32px 16px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
 
           <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.06);">
 
-          <!-- Header -->
+            <!-- Header -->
             <div style="background:#0f172a; padding:24px;">
               <div style="text-align:center;">
                 <img
@@ -147,21 +158,21 @@ export async function POST(req: Request) {
                   alt="OTwoOne"
                   style="max-width:180px; width:100%; height:auto; display:block; margin:0 auto 12px;"
                 />
-                  <p style="margin:12px 0 0; font-size:13px; color:#e2e8f0; font-weight:600;">
-                    New Elevate Intake Submission
-                  </p>
+                <p style="margin:12px 0 0; font-size:13px; color:#e2e8f0; font-weight:600;">
+                  New Elevate Intake Submission
+                </p>
+              </div>
             </div>
-          </div>
 
             <!-- Body -->
             <div style="padding:24px;">
 
               <!-- Contact Card -->
               <div style="margin-bottom:24px; padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
-                <p style="margin:0 0 8px;"><strong>Name:</strong> ${contact_name || "-"}</p>
-                <p style="margin:0 0 8px;"><strong>Email:</strong> ${contact_email || "-"}</p>
-                <p style="margin:0 0 8px;"><strong>Phone:</strong> ${contact_phone || "-"}</p>
-                <p style="margin:0 0 8px;"><strong>Company:</strong> ${company_name || "-"}</p>
+                <p style="margin:0 0 8px;"><strong>Name:</strong> ${safeName}</p>
+                <p style="margin:0 0 8px;"><strong>Email:</strong> ${safeEmail}</p>
+                <p style="margin:0 0 8px;"><strong>Phone:</strong> ${safePhone}</p>
+                <p style="margin:0 0 8px;"><strong>Company:</strong> ${safeCompany}</p>
                 <p style="margin:0;"><strong>Website:</strong> ${websiteHtml}</p>
               </div>
 
@@ -176,7 +187,9 @@ export async function POST(req: Request) {
 
               <!-- Footer Meta -->
               <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">
-                <p style="margin:0 0 4px;"><strong>Submission ID:</strong> ${inserted.id}</p>
+                <p style="margin:0 0 4px;"><strong>Submission ID:</strong> ${escapeHtml(
+            inserted.id
+          )}</p>
                 <p style="margin:0 0 4px;"><strong>Status:</strong> submitted</p>
                 <p style="margin:0;"><strong>Source:</strong> elevate</p>
               </div>
@@ -185,11 +198,11 @@ export async function POST(req: Request) {
           </div>
 
           <p style="text-align:center; font-size:11px; color:#94a3b8; margin-top:16px;">
-            OTwoOne · Cork, Ireland · www.otwoone.ie
+            OTwoOne, Cork, Ireland. www.otwoone.ie
           </p>
 
         </div>
-        `
+        `,
         });
 
         // --- Auto-reply to the person who submitted (contact_email) ---
@@ -198,7 +211,7 @@ export async function POST(req: Request) {
             from: "OTwoOne <info@otwoone.ie>",
             to: contact_email,
             replyTo: "info@otwoone.ie",
-            subject: "We’ve received your OTwoOne Elevate details",
+            subject: "We've received your OTwoOne Elevate details",
             text: [
               `Hi ${contact_name || "there"},`,
               "",
@@ -208,13 +221,13 @@ export async function POST(req: Request) {
               "What happens next:",
               "• We will review your requirements.",
               "• You will receive a reply within 2 business days.",
-              "• After you receive our reply, we can arrange a call to discuss further if needed.",
+              "• If needed, we can arrange a call to discuss your project in more detail.",
               "",
               "If anything is urgent, you can reply to this email.",
               "",
               "OTwoOne",
               "Cork, Ireland",
-              "www.otwoone.ie"
+              "www.otwoone.ie",
             ].join("\n"),
             html: `
 <div style="background:#eef2f7; padding:32px 16px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -238,27 +251,28 @@ export async function POST(req: Request) {
     <div style="padding:28px 24px; color:#0f172a;">
 
       <p style="margin:0 0 12px; font-size:16px; line-height:1.5;">
-        Hi ${contact_name || "there"},
+        Hi ${escapeHtml(contact_name || "there")},
       </p>
 
       <p style="margin:0 0 20px; font-size:15px; line-height:1.6;">
-        Thank you for reaching out. I have received your details and will review them shortly.
+        Thank you for reaching out to OTwoOne. We have received your details and will review them shortly.
       </p>
 
       <div style="margin:0 0 24px; padding:18px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
         <p style="margin:0 0 10px; font-weight:600;">What happens next</p>
         <ul style="margin:0; padding-left:18px; line-height:1.6;">
-          <li>I will personally review your submission.</li>
-          <li>You will receive a reply within 1 business day.</li>
+          <li>We will review your requirements.</li>
+          <li>You will receive a reply within 2 business days.</li>
+          <li>If needed, we can arrange a call to discuss your project in more detail.</li>
         </ul>
       </div>
 
       <p style="margin:0 0 18px; font-size:14px;">
-        If anything is urgent, simply reply to this email.
+        If anything is urgent, you can reply to this email.
       </p>
 
       <p style="margin:0 0 24px; font-size:14px; color:#475569;">
-        Submitted via Elevate on <strong>otwoone.ie</strong>.
+        Submitted via OTwoOne Elevate on <strong>otwoone.ie</strong>.
       </p>
 
     </div>
@@ -270,7 +284,7 @@ export async function POST(req: Request) {
 
   </div>
 </div>
-    `
+            `,
           });
         }
 
