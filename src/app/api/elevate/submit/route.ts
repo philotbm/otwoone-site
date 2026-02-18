@@ -6,6 +6,29 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
 type Confidence = "high" | "medium" | "low";
 
+type ComputedSupport =
+  | null
+  | {
+      recommended: "essential" | "growth" | "partner";
+      monthly: number;
+      annual_value: number;
+    };
+
+type ComputedQuote = {
+  currency: "EUR";
+  low: number;
+  high: number;
+  confidence: Confidence;
+  drivers: string[];
+  assumptions: string[];
+};
+
+type ComputedResult = {
+  quote: ComputedQuote;
+  support: ComputedSupport;
+  followups: string[];
+};
+
 function clampMoney(n: number) {
   return Math.max(0, Math.round(n / 50) * 50);
 }
@@ -39,12 +62,16 @@ function humanizeKey(raw: string) {
 }
 
 /**
- * Compute internal estimate from answers.
- * Supports:
- *  - V1 keys: need_help, website_type, has_branding, budget, timing
- *  - V2 keys: services[], primary_service, website{...}, branding{...}
+ * Internal estimator.
+ * - Supports V1 keys (current form): need_help, website_type, has_branding, branding_need, budget, timing
+ * - Supports V2 keys (future): services[], primary_service, website{...}, branding{...}
+ *
+ * Solo OTwoOne support model:
+ * - Branding-only => no recurring recommendation (support=null)
+ * - Website => essential by default, growth if multi/large
+ * - Automation => partner
  */
-function computeQuote(answers: any) {
+function computeQuote(answers: any): ComputedResult {
   // ---------- Service mapping (V2 first, then fallback to V1) ----------
   const serviceFromV1 = String(answers?.need_help ?? "").toLowerCase();
 
@@ -78,25 +105,26 @@ function computeQuote(answers: any) {
     if (label) drivers.push(label);
   };
 
+  // ---------- V1 signals ----------
+  const websiteTypeV1 = String(answers?.website_type ?? "").toLowerCase(); // e.g. "multi"
+  const hasBrandingV1 = String(answers?.has_branding ?? "").toLowerCase(); // "no" | "partial" | "yes"
+  const brandingNeedV1 = String(answers?.branding_need ?? "").trim().toLowerCase(); // e.g. "logo", "identity"
+  const budgetV1 = String(answers?.budget ?? "").toLowerCase();
+  const timingV1 = String(answers?.timing ?? "").toLowerCase();
+
+  // ---------- V2 objects ----------
+  const w = answers?.website ?? {};
+  const b = answers?.branding ?? {};
+
   // ---------- Bases ----------
   if (services.includes("website")) add(2500, 4000, "Website base");
   if (services.includes("automation")) add(2000, 5000, "Systems base");
   if (services.includes("branding")) add(800, 2500, "Branding base");
   if (services.includes("strategy")) add(600, 1500, "Strategy base");
 
-  // ---------- V1 mappings ----------
-  const websiteTypeV1 = String(answers?.website_type ?? "").toLowerCase(); // e.g. "multi"
-  const hasBrandingV1 = String(answers?.has_branding ?? "").toLowerCase(); // "no" | "partial" | "yes"
-  const budgetV1 = String(answers?.budget ?? "").toLowerCase(); // "Under €3k"
-  const timingV1 = String(answers?.timing ?? "").toLowerCase();
-
-  // ---------- V2 mappings ----------
-  const w = answers?.website ?? {};
-  const b = answers?.branding ?? {};
-
   // ---------- Website modifiers (V2 + V1 fallback) ----------
   if (services.includes("website")) {
-    // V2 pages (if present)
+    // V2 pages
     if (w.pages === "2_5") add(600, 1200, "Pages: 2–5");
     else if (w.pages === "6_10") add(1200, 2400, "Pages: 6–10");
     else if (w.pages === "10_plus") add(2400, 4500, "Pages: 10+");
@@ -114,31 +142,34 @@ function computeQuote(answers: any) {
     // V2 content readiness
     if (w.content_ready === "none") add(600, 1500, "Content support needed");
 
-    // V1 website type fallback (only if it adds signal)
+    // V1 website type fallback
     if (websiteTypeV1) {
       if (websiteTypeV1.includes("multi")) add(800, 1600, "Website: multi-page");
       if (websiteTypeV1.includes("landing")) add(0, 400, "Website: landing page");
       if (websiteTypeV1.includes("ecom")) add(2500, 5000, "Website: ecommerce");
     } else if (!w.pages) {
-      // if we didn't get V2 pages AND no V1 website type
       followups.push("Confirm website size / page count");
     }
   }
 
-  // ---------- Branding modifiers (V2 + V1 fallback) ----------
+  // ---------- Branding modifiers ----------
   if (services.includes("branding")) {
     if (b.scope === "refresh") add(600, 1200, "Brand refresh");
     else if (b.scope === "full_identity") add(1500, 3000, "Full identity");
-    else followups.push("Branding: refresh or full identity?");
+    else if (!brandingNeedV1) followups.push("Branding: refresh or full identity?");
   } else {
-    // If branding wasn’t selected but V1 says branding is missing/partial, we can nudge estimate + support
+    // V1 branding signal (used for quote only; not for support recurring)
     if (hasBrandingV1 === "no") add(600, 1500, "Branding needed");
     if (hasBrandingV1 === "partial") add(300, 900, "Branding partial");
+    if (brandingNeedV1) drivers.push(`Branding need: ${brandingNeedV1}`);
   }
 
-  // ---------- Bundle uplift ----------
-  const needsBrandingHelp = hasBrandingV1 === "no" || hasBrandingV1 === "partial";
-  if (services.includes("website") && (services.includes("branding") || needsBrandingHelp)) {
+  // ---------- Bundle uplift (quote only) ----------
+  // This reflects coordination effort (even if branding is project-based).
+  const hasAnyBrandingSignal =
+    services.includes("branding") || hasBrandingV1 === "no" || hasBrandingV1 === "partial" || Boolean(brandingNeedV1);
+
+  if (services.includes("website") && hasAnyBrandingSignal) {
     add(300, 800, "Website + Branding alignment");
   }
 
@@ -149,15 +180,12 @@ function computeQuote(answers: any) {
     confidence = "low";
   }
 
-  // Missing core scope signals lowers confidence
   if (services.includes("website") && !w.pages && !websiteTypeV1) confidence = "medium";
-  if (services.includes("branding") && !b.scope) confidence = "medium";
+  if (services.includes("branding") && !b.scope && !brandingNeedV1) confidence = "medium";
 
-  // ---------- Budget/timing heuristic (light touch) ----------
-  // If someone selects very low budget, keep range realistic but don't hard-cap (we're internal).
-  if (budgetV1.includes("under") && budgetV1.includes("3k")) {
+  // ---------- Light heuristics ----------
+  if (budgetV1.includes("under") && (budgetV1.includes("3k") || budgetV1.includes("3000"))) {
     assumptions.push("Budget indicated: under €3k (may require phased scope)");
-    // widen slightly but keep low end realistic
     high += 250;
   }
 
@@ -169,21 +197,33 @@ function computeQuote(answers: any) {
   low = clampMoney(low);
   high = clampMoney(Math.max(high, low + 500));
 
-  // ---------- Support recommendation ----------
-  let supportTier = "essential";
-  let monthly = 79;
+  // ---------- SUPPORT RECOMMENDATION (Solo OTwoOne model) ----------
+  let support: ComputedSupport = null;
 
-  // Website + branding alignment => growth
-  if (services.includes("website") && (services.includes("branding") || needsBrandingHelp)) {
-    supportTier = "growth";
-    monthly = 149;
-  }
-
-  // Automation tends to require higher-touch support
+  // Automation => Partner
   if (services.includes("automation")) {
-    supportTier = "partner";
-    monthly = 249;
+    const monthly = 249;
+    support = { recommended: "partner", monthly, annual_value: monthly * 12 };
   }
+  // Website => Essential (default), Growth if multi/large
+  else if (services.includes("website")) {
+    let recommended: "essential" | "growth" = "essential";
+    let monthly = 79;
+
+    const isLargerWebsite =
+      websiteTypeV1.includes("multi") ||
+      w.pages === "2_5" ||
+      w.pages === "6_10" ||
+      w.pages === "10_plus";
+
+    if (isLargerWebsite) {
+      recommended = "growth";
+      monthly = 149;
+    }
+
+    support = { recommended, monthly, annual_value: monthly * 12 };
+  }
+  // Branding-only => support stays null
 
   return {
     quote: {
@@ -194,11 +234,7 @@ function computeQuote(answers: any) {
       drivers,
       assumptions,
     },
-    support: {
-      recommended: supportTier,
-      monthly,
-      annual_value: monthly * 12,
-    },
+    support,
     followups,
   };
 }
@@ -227,10 +263,7 @@ export async function POST(req: Request) {
     } = body ?? {};
 
     if (!contact_email) {
-      return NextResponse.json(
-        { error: "contact_email is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "contact_email is required" }, { status: 400 });
     }
 
     // 0) Internal compute: quote + support recommendation (stored in answers)
@@ -256,23 +289,13 @@ export async function POST(req: Request) {
     if (error) {
       console.error("Supabase insert error:", error);
       return NextResponse.json(
-        {
-          error: "Database insert failed",
-          details: (error as any)?.message ?? String(error),
-        },
+        { error: "Database insert failed", details: (error as any)?.message ?? String(error) },
         { status: 500 }
       );
     }
 
-    console.log("SUPABASE INSERT OK:", inserted);
-
     // 2) Attempt email notification
     const notifyEmail = process.env.ELEVATE_NOTIFY_EMAIL;
-
-    console.log("ENV CHECK:", {
-      hasResendKey: Boolean(RESEND_API_KEY),
-      notifyEmail: notifyEmail ?? null,
-    });
 
     let emailResult: EmailResult = { attempted: false };
 
@@ -289,34 +312,15 @@ export async function POST(req: Request) {
     try {
       const resend = new Resend(RESEND_API_KEY);
 
-      const textLines = [
-        "New Elevate Intake Submission",
-        "",
-        `Name: ${contact_name || ""}`,
-        `Email: ${contact_email || ""}`,
-        `Phone: ${contact_phone || ""}`,
-        `Company: ${company_name || ""}`,
-        `Website: ${company_website || ""}`,
-        "",
-        "Answers:",
-        JSON.stringify(answers, null, 2),
-        "",
-        `Submission ID: ${inserted.id}`,
-      ];
-
       const subject = `Elevate Submission • ${contact_name || "New lead"} • ${inserted.id}`;
 
       // --- Email formatting helpers ---
       const websiteRaw = (company_website || "").trim();
       const websiteHref =
-        websiteRaw && !/^https?:\/\//i.test(websiteRaw)
-          ? `https://${websiteRaw}`
-          : websiteRaw;
+        websiteRaw && !/^https?:\/\//i.test(websiteRaw) ? `https://${websiteRaw}` : websiteRaw;
 
       const websiteHtml = websiteHref
-        ? `<a href="${escapeHtml(
-            websiteHref
-          )}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
+        ? `<a href="${escapeHtml(websiteHref)}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
             websiteRaw
           )}</a>`
         : "Not provided.";
@@ -326,25 +330,24 @@ export async function POST(req: Request) {
       const safePhone = contact_phone ? escapeHtml(contact_phone) : "Not provided.";
       const safeCompany = company_name ? escapeHtml(company_name) : "Not provided.";
 
+      // Build "Project Details" from answers, but hide computed JSON
       const answersObj = (answers ?? {}) as Record<string, unknown>;
       const answerEntries = Object.entries(answersObj);
 
       const answersTableRows =
         answerEntries.length > 0
           ? answerEntries
-            .map(([k, v]) => {
-              if (k === "computed") return "";
-              // Skip empties entirely (removes "Not provided." noise)
-              if (v === null || v === undefined) return "";
-              const raw = typeof v === "string" ? v.trim() : String(v).trim();
-              if (!raw) return "";
+              .map(([k, v]) => {
+                if (k === "computed") return "";
+
+                if (v === null || v === undefined) return "";
+                const raw = typeof v === "string" ? v.trim() : String(v).trim();
+                if (!raw) return "";
 
                 const key = escapeHtml(humanizeKey(k));
 
                 const val =
-                  typeof v === "string"
-                    ? escapeHtml(v)
-                    : escapeHtml(JSON.stringify(v, null, 2));
+                  typeof v === "string" ? escapeHtml(v) : escapeHtml(JSON.stringify(v, null, 2));
 
                 return `
 <div style="margin:0 0 16px;">
@@ -366,11 +369,30 @@ export async function POST(req: Request) {
           ? answersTableRows
           : `<div style="font-size:14px; color:#334155;">No project details provided.</div>`;
 
+      const supportLine = computed.support
+        ? `${computed.support.recommended} (€${computed.support.monthly}/month)`
+        : "Not applicable (project-based)";
+
+      const annualLine = computed.support ? `€${computed.support.annual_value}` : "—";
+
       const res = (await resend.emails.send({
         from: "OTwoOne Elevate Intake <info@otwoone.ie>",
         to: notifyEmail,
         subject,
-        text: textLines.join("\n"),
+        text: [
+          "New Elevate Intake Submission",
+          "",
+          `Name: ${contact_name || ""}`,
+          `Email: ${contact_email || ""}`,
+          `Phone: ${contact_phone || ""}`,
+          `Company: ${company_name || ""}`,
+          `Website: ${company_website || ""}`,
+          "",
+          "Answers:",
+          JSON.stringify(answers, null, 2),
+          "",
+          `Submission ID: ${inserted.id}`,
+        ].join("\n"),
         html: `
 <div style="background:#eef2f7; padding:32px 16px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
   <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.06);">
@@ -412,9 +434,7 @@ export async function POST(req: Request) {
 
       <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
 
-      <h3 style="margin:0 0 12px 0;font-size:16px;color:#1f293b;">
-        Internal Estimate
-      </h3>
+      <h3 style="margin:0 0 12px 0;font-size:16px;color:#1f293b;">Internal Estimate</h3>
 
       <p style="margin:4px 0;">
         <strong>Range:</strong>
@@ -428,20 +448,25 @@ export async function POST(req: Request) {
 
       <p style="margin:4px 0;">
         <strong>Recommended Support:</strong>
-        ${computed.support.recommended}
-        (€${computed.support.monthly}/month)
+        ${supportLine}
       </p>
 
       <p style="margin:4px 0;">
         <strong>Annual Recurring:</strong>
-        €${computed.support.annual_value}
+        ${annualLine}
       </p>
+
+      ${
+        computed.followups?.length
+          ? `<p style="margin:12px 0 0; font-size:13px; color:#475569;"><strong>Follow-ups:</strong> ${escapeHtml(
+              computed.followups.join(" • ")
+            )}</p>`
+          : ""
+      }
 
       <!-- Footer Meta -->
       <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">
-        <p style="margin:0 0 4px;"><strong>Submission ID:</strong> ${escapeHtml(
-          inserted.id
-        )}</p>
+        <p style="margin:0 0 4px;"><strong>Submission ID:</strong> ${escapeHtml(inserted.id)}</p>
         <p style="margin:0 0 4px;"><strong>Status:</strong> submitted</p>
         <p style="margin:0;"><strong>Source:</strong> elevate</p>
       </div>
@@ -457,18 +482,12 @@ export async function POST(req: Request) {
       })) as ResendSendResponse;
 
       if (res?.error) {
-        console.error("RESEND ERROR:", res.error);
-        emailResult = {
-          attempted: true,
-          sent: false,
-          error: toErrorMessage(res.error),
-        };
+        emailResult = { attempted: true, sent: false, error: toErrorMessage(res.error) };
       } else {
-        console.log("RESEND SENT:", res?.data);
         emailResult = { attempted: true, sent: true, data: res?.data };
       }
 
-      // --- Auto-reply to the person who submitted (contact_email) ---
+      // --- Auto-reply to the person who submitted ---
       if (contact_email) {
         await resend.emails.send({
           from: "OTwoOne <info@otwoone.ie>",
@@ -496,7 +515,6 @@ export async function POST(req: Request) {
 <div style="background:#eef2f7; padding:32px 16px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
   <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden;">
 
-    <!-- Header -->
     <div style="background:#0f172a; padding:28px 24px; text-align:center;">
       <img
         src="https://www.otwoone.ie/branding/otwoone-logo-black.png"
@@ -510,7 +528,6 @@ export async function POST(req: Request) {
       </p>
     </div>
 
-    <!-- Body -->
     <div style="padding:28px 24px; color:#0f172a;">
 
       <p style="margin:0 0 12px; font-size:16px; line-height:1.5;">
@@ -540,7 +557,6 @@ export async function POST(req: Request) {
 
     </div>
 
-    <!-- Footer -->
     <div style="padding:18px 24px; border-top:1px solid #e2e8f0; text-align:center; font-size:12px; color:#64748b;">
       OTwoOne, Cork, Ireland. www.otwoone.ie
     </div>
@@ -551,21 +567,11 @@ export async function POST(req: Request) {
         });
       }
     } catch (err: unknown) {
-      console.error("Resend send error:", err);
-      emailResult = {
-        attempted: true,
-        sent: false,
-        error: toErrorMessage(err),
-      };
+      emailResult = { attempted: true, sent: false, error: toErrorMessage(err) };
     }
 
-    return NextResponse.json({
-      success: true,
-      id: inserted.id,
-      email: emailResult,
-    });
+    return NextResponse.json({ success: true, id: inserted.id, email: emailResult });
   } catch (e: unknown) {
-    console.error("Submit route error:", e);
     return NextResponse.json(
       { error: "Invalid request", details: toErrorMessage(e) },
       { status: 400 }
