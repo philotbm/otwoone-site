@@ -344,7 +344,7 @@ export async function POST(req: Request) {
 
         <p style="margin:4px 0;">
           <strong>Range:</strong>
-          €${computed.quote.low} - €${computed.quote.high}
+          €${computed.quote.low}  €${computed.quote.high}
         </p>
 
         <p style="margin:4px 0;">
