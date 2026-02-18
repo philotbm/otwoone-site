@@ -147,16 +147,18 @@ export async function POST(req: Request) {
         answerEntries.length > 0
           ? answerEntries
               .map(([k, v]) => {
+                // Skip empties entirely (removes "Not provided." noise)
+                if (v === null || v === undefined) return "";
+                const raw = typeof v === "string" ? v.trim() : String(v).trim();
+                if (!raw) return "";
+
                 const key = escapeHtml(k).replace(/_/g, " ");
 
                 const val =
-                  v === null || v === undefined || String(v).trim() === ""
-                    ? "Not provided."
-                    : escapeHtml(
-                        typeof v === "string" ? v : JSON.stringify(v, null, 2)
-                      );
+                  typeof v === "string"
+                    ? escapeHtml(v)
+                    : escapeHtml(JSON.stringify(v, null, 2));
 
-                // IMPORTANT: this is a <div> layout (not a <table>) so long text flows cleanly
                 return `
 <div style="margin:0 0 16px;">
   <div style="font-size:13px; font-weight:600; color:#0f172a; margin:0 0 6px;">
@@ -168,8 +170,15 @@ export async function POST(req: Request) {
 </div>
 `;
               })
+              .filter(Boolean)
               .join("")
-          : `<div style="font-size:14px; color:#334155;">Not provided.</div>`;
+          : "";
+
+      // If everything was empty, show a single subtle line
+      const answersHtml =
+        answersTableRows.trim().length > 0
+          ? answersTableRows
+          : `<div style="font-size:14px; color:#334155;">No project details provided.</div>`;
 
       const res = (await resend.emails.send({
         from: "OTwoOne Elevate Intake <info@otwoone.ie>",
@@ -212,7 +221,7 @@ export async function POST(req: Request) {
       <h2 style="margin:0 0 12px; font-size:16px; color:#1e293b;">Project Details</h2>
 
       <div style="border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
-        ${answersTableRows}
+        ${answersHtml}
       </div>
 
       <!-- Footer Meta -->
