@@ -332,11 +332,12 @@ export async function POST(req: Request) {
       const answersTableRows =
         answerEntries.length > 0
           ? answerEntries
-              .map(([k, v]) => {
-                // Skip empties entirely (removes "Not provided." noise)
-                if (v === null || v === undefined) return "";
-                const raw = typeof v === "string" ? v.trim() : String(v).trim();
-                if (!raw) return "";
+            .map(([k, v]) => {
+              if (k === "computed") return "";
+              // Skip empties entirely (removes "Not provided." noise)
+              if (v === null || v === undefined) return "";
+              const raw = typeof v === "string" ? v.trim() : String(v).trim();
+              if (!raw) return "";
 
                 const key = escapeHtml(humanizeKey(k));
 
