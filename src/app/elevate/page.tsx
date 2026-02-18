@@ -112,19 +112,19 @@ export default function ElevatePage() {
       // website details (only include if relevant)
       website: selectedSet.has("website")
         ? {
-            type: websiteType || undefined,
-            pages: websitePages || undefined,
-            ecommerce: ecommerceNeeded || undefined,
-            content_ready: contentReady || undefined,
-          }
+          type: websiteType || undefined,
+          pages: websitePages || undefined,
+          ecommerce: ecommerceNeeded || undefined,
+          content_ready: contentReady || undefined,
+        }
         : undefined,
 
       // branding details
       branding: selectedSet.has("branding")
         ? {
-            has_branding: hasBranding || undefined,
-            need: brandingNeed || undefined,
-          }
+          has_branding: hasBranding || undefined,
+          need: brandingNeed || undefined,
+        }
         : undefined,
 
       // systems/automation details
@@ -212,13 +212,12 @@ export default function ElevatePage() {
           </div>
 
           <div className="flex-1">
-            <h1 className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05]">
-              Tell us what you need —
-              <br />
-              <span className="text-indigo-400 font-semibold">
-                we’ll shape the right plan around you.
-              </span>
+            <h1 className="text-xl md:text-2xl font-semibold tracking-tight leading-snug text-white">
+              Tell us what you need
             </h1>
+            <p className="mt-1 text-sm md:text-base text-white/70">
+              Choose one or more and we'll shape the right plan for you.
+            </p>
           </div>
         </div>
 
@@ -301,7 +300,7 @@ export default function ElevatePage() {
                     className={cx(
                       "flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3 cursor-pointer",
                       primaryService === opt.key &&
-                        "border-indigo-400/40 bg-indigo-500/10"
+                      "border-indigo-400/40 bg-indigo-500/10"
                     )}
                   >
                     <input
