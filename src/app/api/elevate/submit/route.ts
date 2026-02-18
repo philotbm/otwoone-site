@@ -32,6 +32,18 @@ function toErrorMessage(err: unknown) {
   }
 }
 
+function humanizeKey(raw: string) {
+  const spaced = raw.replace(/_/g, " ").trim();
+
+  const titled = spaced.replace(/\w\S*/g, (w) => {
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  });
+
+  return titled
+    .replace(/\bAi\b/g, "AI")
+    .replace(/\bM365\b/g, "M365");
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -152,7 +164,7 @@ export async function POST(req: Request) {
                 const raw = typeof v === "string" ? v.trim() : String(v).trim();
                 if (!raw) return "";
 
-                const key = escapeHtml(k).replace(/_/g, " ");
+                const key = escapeHtml(humanizeKey(k));
 
                 const val =
                   typeof v === "string"
