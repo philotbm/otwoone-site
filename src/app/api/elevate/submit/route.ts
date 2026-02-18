@@ -2,6 +2,103 @@ import { Resend } from "resend";
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+type Confidence = "high" | "medium" | "low";
+
+function clampMoney(n: number) {
+  return Math.max(0, Math.round(n / 50) * 50);
+}
+
+function computeQuote(answers: any) {
+  const services: string[] = answers?.services ?? [];
+  const primary: string = answers?.primary_service ?? services[0] ?? "unknown";
+
+  let low = 0;
+  let high = 0;
+  const drivers: string[] = [];
+  const assumptions: string[] = [];
+  const followups: string[] = [];
+
+  const add = (l: number, h: number, label?: string) => {
+    low += l;
+    high += h;
+    if (label) drivers.push(label);
+  };
+
+  // ===== BASES =====
+  if (services.includes("website")) add(2500, 4000, "Website base");
+  if (services.includes("automation")) add(2000, 5000, "Systems base");
+  if (services.includes("branding")) add(800, 2500, "Branding base");
+  if (services.includes("strategy")) add(600, 1500, "Strategy base");
+
+  // ===== WEBSITE MODIFIERS =====
+  const w = answers?.website ?? {};
+  if (services.includes("website")) {
+    if (w.pages === "2_5") add(600, 1200, "Pages: 2–5");
+    else if (w.pages === "6_10") add(1200, 2400, "Pages: 6–10");
+    else if (w.pages === "10_plus") add(2400, 4500, "Pages: 10+");
+    else followups.push("Confirm approx page count");
+
+    const integrations: string[] = w.integrations ?? [];
+    if (integrations.length)
+      add(250 * integrations.length, 600 * integrations.length, `Integrations: ${integrations.length}`);
+
+    if (w.content_ready === "none")
+      add(600, 1500, "Content support needed");
+  }
+
+  // ===== BRANDING MODIFIERS =====
+  const b = answers?.branding ?? {};
+  if (services.includes("branding")) {
+    if (b.scope === "refresh") add(600, 1200, "Brand refresh");
+    else if (b.scope === "full_identity") add(1500, 3000, "Full identity");
+  }
+
+  // ===== BUNDLE UPLIFT =====
+  if (services.includes("website") && services.includes("branding")) {
+    add(300, 800, "Website + Branding alignment");
+  }
+
+  // ===== CONFIDENCE =====
+  let confidence: Confidence = "high";
+  if (!services.length) confidence = "low";
+  if (services.includes("website") && !w.pages) confidence = "medium";
+  if (services.includes("branding") && !b.scope) confidence = "medium";
+
+  low = clampMoney(low);
+  high = clampMoney(Math.max(high, low + 500));
+
+  // ===== SUPPORT RECOMMENDATION =====
+  let supportTier = "essential";
+  let monthly = 79;
+
+  if (services.includes("website") && services.includes("branding")) {
+    supportTier = "growth";
+    monthly = 149;
+  }
+
+  if (services.includes("automation")) {
+    supportTier = "partner";
+    monthly = 249;
+  }
+
+  return {
+    quote: {
+      currency: "EUR",
+      low,
+      high,
+      confidence,
+      drivers,
+      assumptions,
+    },
+    support: {
+      recommended: supportTier,
+      monthly,
+      annual_value: monthly * 12,
+    },
+    followups,
+  };
+}
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
 type EmailResult =
@@ -63,6 +160,10 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // 0) Internal compute: quote + support recommendation (stored in answers)
+    const computed = computeQuote(answers);
+    (answers as any).computed = computed;
 
     // 1) Save to DB first (source of truth)
     const { data: inserted, error } = await supabaseServer
@@ -128,9 +229,8 @@ export async function POST(req: Request) {
         `Submission ID: ${inserted.id}`,
       ];
 
-      const subject = `Elevate Submission • ${contact_name || "New lead"} • ${
-        inserted.id
-      }`;
+      const subject = `Elevate Submission • ${contact_name || "New lead"} • ${inserted.id
+        }`;
 
       // --- Email formatting helpers ---
       const websiteRaw = (company_website || "").trim();
@@ -141,10 +241,10 @@ export async function POST(req: Request) {
 
       const websiteHtml = websiteHref
         ? `<a href="${escapeHtml(
-            websiteHref
-          )}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
-            websiteRaw
-          )}</a>`
+          websiteHref
+        )}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
+          websiteRaw
+        )}</a>`
         : "Not provided.";
 
       const safeName = contact_name ? escapeHtml(contact_name) : "Not provided.";
@@ -158,20 +258,20 @@ export async function POST(req: Request) {
       const answersTableRows =
         answerEntries.length > 0
           ? answerEntries
-              .map(([k, v]) => {
-                // Skip empties entirely (removes "Not provided." noise)
-                if (v === null || v === undefined) return "";
-                const raw = typeof v === "string" ? v.trim() : String(v).trim();
-                if (!raw) return "";
+            .map(([k, v]) => {
+              // Skip empties entirely (removes "Not provided." noise)
+              if (v === null || v === undefined) return "";
+              const raw = typeof v === "string" ? v.trim() : String(v).trim();
+              if (!raw) return "";
 
-                const key = escapeHtml(humanizeKey(k));
+              const key = escapeHtml(humanizeKey(k));
 
-                const val =
-                  typeof v === "string"
-                    ? escapeHtml(v)
-                    : escapeHtml(JSON.stringify(v, null, 2));
+              const val =
+                typeof v === "string"
+                  ? escapeHtml(v)
+                  : escapeHtml(JSON.stringify(v, null, 2));
 
-                return `
+              return `
 <div style="margin:0 0 16px;">
   <div style="font-size:13px; font-weight:600; color:#0f172a; margin:0 0 6px;">
     ${key}
@@ -181,9 +281,9 @@ export async function POST(req: Request) {
   </div>
 </div>
 `;
-              })
-              .filter(Boolean)
-              .join("")
+            })
+            .filter(Boolean)
+            .join("")
           : "";
 
       // If everything was empty, show a single subtle line
@@ -235,6 +335,33 @@ export async function POST(req: Request) {
       <div style="border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
         ${answersHtml}
       </div>
+
+       <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
+
+        <h3 style="margin:0 0 12px 0;font-size:16px;color:#1f293b;">
+          Internal Estimate
+        </h3>
+
+        <p style="margin:4px 0;">
+          <strong>Range:</strong>
+          €${computed.quote.low} - €${computed.quote.high}
+        </p>
+
+        <p style="margin:4px 0;">
+          <strong>Confidence:</strong>
+          ${computed.quote.confidence}
+        </p>
+
+        <p style="margin:4px 0;">
+          <strong>Recommended Support:</strong>
+          ${computed.support.recommended}
+          (€${computed.support.monthly}/month)
+        </p>
+
+        <p style="margin:4px 0;">
+          <strong>Annual Recurring:</strong>
+          €${computed.support.annual_value}
+        </p>
 
       <!-- Footer Meta -->
       <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">
