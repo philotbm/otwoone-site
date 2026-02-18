@@ -6,30 +6,24 @@ import { FormEvent, useMemo, useState } from "react";
 type Status = "idle" | "sending" | "done" | "error";
 type Stage = 1 | 2;
 
-type NeedHelp =
-  | "website"
-  | "automation"
-  | "branding"
-  | "strategy"
-  | "ops"
-  | "combo"
-  | "other";
+type NeedHelp = "website" | "automation" | "branding" | "consultancy" | "combo";
+type NotSureFocus = "" | "website" | "automation" | "branding" | "consultancy";
+type Timing = "" | "asap" | "1-2" | "this_quarter" | "exploring";
 
 export default function ElevatePage() {
   const [status, setStatus] = useState<Status>("idle");
   const [stage, setStage] = useState<Stage>(1);
 
-  // Stage 1 state (kept separate so we can validate before revealing Stage 2)
+  // Stage 1 (branch + contact)
   const [needHelp, setNeedHelp] = useState<NeedHelp | "">("");
-  const [needHelpOther, setNeedHelpOther] = useState("");
-  const [priority, setPriority] = useState<"" | "speed" | "quality" | "cost" | "clarity">("");
-  const [timeline, setTimeline] = useState<
-    "" | "asap" | "1-3" | "3-6" | "exploring"
-  >("");
+  const [notSureFocus, setNotSureFocus] = useState<NotSureFocus>("");
+
+  const [timing, setTiming] = useState<Timing>("");
+
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
 
-  // Stage 2 state (conditional)
+  // Stage 2 (shared)
   const [companyName, setCompanyName] = useState("");
   const [companyWebsite, setCompanyWebsite] = useState("");
   const [goal, setGoal] = useState("");
@@ -38,6 +32,9 @@ export default function ElevatePage() {
     "" | "under3" | "3-7" | "7-15" | "15-30" | "30plus"
   >("");
 
+  const [extra, setExtra] = useState("");
+
+  // Automation / systems
   const [toolsCore, setToolsCore] = useState<
     "" | "m365" | "google" | "mixed" | "unknown"
   >("");
@@ -60,35 +57,37 @@ export default function ElevatePage() {
     "no_process"
   >("");
 
+  // Website
   const [websiteType, setWebsiteType] = useState<
     "" | "landing" | "multi" | "ecommerce" | "redesign" | "notsure"
   >("");
-  const [hasBranding, setHasBranding] = useState<"" | "yes" | "no" | "partial">("");
+  const [hasBranding, setHasBranding] = useState<"" | "yes" | "no" | "partial">(
+    ""
+  );
 
+  // Branding
   const [brandingNeed, setBrandingNeed] = useState<
     "" | "logo" | "identity" | "rebrand" | "strategy_messaging" | "notsure"
   >("");
 
+  // Consultancy
   const [consultancyFocus, setConsultancyFocus] = useState<
-    "" | "strategic" | "operational" | "training" | "growth" | "all"
+    "" | "strategy" | "operations" | "training" | "growth" | "all"
   >("");
 
-  const [extra, setExtra] = useState("");
+  const showToolsSection = useMemo(() => needHelp === "automation", [needHelp]);
+  const showWebsiteSection = useMemo(() => needHelp === "website", [needHelp]);
+  const showBrandingSection = useMemo(() => needHelp === "branding", [needHelp]);
+  const showConsultancySection = useMemo(
+    () => needHelp === "consultancy",
+    [needHelp]
+  );
 
-  const showToolsSection = useMemo(() => {
-    return needHelp === "automation" || needHelp === "strategy" || needHelp === "ops" || needHelp === "combo";
-  }, [needHelp]);
-
-  const showWebsiteSection = useMemo(() => {
-    return needHelp === "website" || needHelp === "combo";
-  }, [needHelp]);
-
-  const showBrandingSection = useMemo(() => {
-    return needHelp === "branding" || needHelp === "combo";
-  }, [needHelp]);
-
-  const showConsultancySection = useMemo(() => {
-    return needHelp === "strategy" || needHelp === "ops" || needHelp === "combo";
+  const showBreakdown = useMemo(() => {
+    // Keep this only where it adds value:
+    // - automation
+    // - consultancy (if you later decide it’s not needed here, remove the consultancy part)
+    return needHelp === "automation" || needHelp === "consultancy";
   }, [needHelp]);
 
   function toggleArrayValue(arr: string[], val: string) {
@@ -97,55 +96,62 @@ export default function ElevatePage() {
 
   function stage1IsValid() {
     if (!needHelp) return false;
-    if (needHelp === "other" && needHelpOther.trim().length < 2) return false;
-    if (!priority) return false;
-    if (!timeline) return false;
+    // "Not sure yet" must be triaged into a real branch before continuing
+    if (needHelp === "combo") return false;
+
+    if (!timing) return false;
     if (!contactName.trim()) return false;
     if (!contactEmail.trim()) return false;
+
     return true;
   }
 
   function humanBudget(v: typeof budget) {
     switch (v) {
-      case "under3": return "Under €3k";
-      case "3-7": return "€3k–€7k";
-      case "7-15": return "€7k–€15k";
-      case "15-30": return "€15k–€30k";
-      case "30plus": return "€30k+";
-      default: return "";
+      case "under3":
+        return "Under €3k";
+      case "3-7":
+        return "€3k–€7k";
+      case "7-15":
+        return "€7k–€15k";
+      case "15-30":
+        return "€15k–€30k";
+      case "30plus":
+        return "€30k+";
+      default:
+        return "";
     }
   }
 
-  function humanTimeline(v: typeof timeline) {
+  function humanTiming(v: typeof timing) {
     switch (v) {
-      case "asap": return "ASAP (2–4 weeks)";
-      case "1-3": return "1–3 months";
-      case "3-6": return "3–6 months";
-      case "exploring": return "Just exploring";
-      default: return "";
-    }
-  }
-
-  function humanPriority(v: typeof priority) {
-    switch (v) {
-      case "speed": return "Speed";
-      case "quality": return "Quality";
-      case "cost": return "Cost";
-      case "clarity": return "Clarity / direction";
-      default: return "";
+      case "asap":
+        return "ASAP (2–4 weeks)";
+      case "1-2":
+        return "Next month or two";
+      case "this_quarter":
+        return "This quarter";
+      case "exploring":
+        return "Just exploring";
+      default:
+        return "";
     }
   }
 
   function humanNeedHelp(v: typeof needHelp) {
     switch (v) {
-      case "website": return "Website";
-      case "automation": return "Automation / backend system";
-      case "branding": return "Branding";
-      case "strategy": return "Strategic consultancy";
-      case "ops": return "Operational systems & training";
-      case "combo": return "Combination of the above";
-      case "other": return `Other: ${needHelpOther || "—"}`;
-      default: return "";
+      case "website":
+        return "Website";
+      case "automation":
+        return "Automation / backend system";
+      case "branding":
+        return "Branding";
+      case "consultancy":
+        return "Consultancy";
+      case "combo":
+        return "Not sure yet";
+      default:
+        return "";
     }
   }
 
@@ -153,9 +159,6 @@ export default function ElevatePage() {
     e.preventDefault();
     setStatus("sending");
 
-    // Keep payload shape compatible with your existing API route:
-    // - contact_name, contact_email, company_name, company_website
-    // - answers object with additional fields
     const payload = {
       contact_name: contactName,
       contact_email: contactEmail,
@@ -163,23 +166,28 @@ export default function ElevatePage() {
       company_website: companyWebsite,
       answers: {
         need_help: humanNeedHelp(needHelp),
-        priority: humanPriority(priority),
-        timeline: humanTimeline(timeline),
+        timing: humanTiming(timing),
 
         goal,
+
         breakdown,
 
-        // Stage 2 additions (kept as strings so Supabase storage is easy)
         budget: humanBudget(budget),
+
+        // Automation / systems
         tools_core: toolsCore,
         microsoft_depth: toolsMicrosoftDepth,
         ai_usage: aiUsage,
         ai_tools: aiTools.join(", "),
 
+        // Website
         website_type: websiteType,
         has_branding: hasBranding,
 
+        // Branding
         branding_need: brandingNeed,
+
+        // Consultancy
         consultancy_focus: consultancyFocus,
 
         extra,
@@ -193,11 +201,7 @@ export default function ElevatePage() {
         body: JSON.stringify(payload),
       });
 
-      if (res.ok) {
-        setStatus("done");
-      } else {
-        setStatus("error");
-      }
+      setStatus(res.ok ? "done" : "error");
     } catch {
       setStatus("error");
     }
@@ -206,7 +210,6 @@ export default function ElevatePage() {
   const fieldBase =
     "w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/20";
   const labelBase = "mb-2 block text-sm text-white/70";
-  const helperBase = "mt-2 text-xs text-white/50";
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -233,11 +236,11 @@ export default function ElevatePage() {
         </header>
 
         <form onSubmit={handleSubmit} className="space-y-10">
-          {/* Stage 1 card */}
+          {/* Stage 1 */}
           <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur">
             <div className="mb-8">
               <div className="flex items-baseline justify-between gap-4">
-                <h2 className="text-lg font-medium tracking-tight text-white">                  
+                <h2 className="text-lg font-medium tracking-tight text-white">
                   How can we help you?
                 </h2>
                 <span className="text-xs text-white/60 border border-white/15 bg-white/5 px-2 py-1 rounded-full">
@@ -246,22 +249,24 @@ export default function ElevatePage() {
               </div>
             </div>
 
-            {/* Need help */}
+            {/* Need help options */}
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {[
                   { v: "website", t: "Website" },
                   { v: "automation", t: "Automation / backend system" },
                   { v: "branding", t: "Branding" },
-                  { v: "strategy", t: "Strategic consultancy" },
-                  { v: "ops", t: "Operational systems & training" },
-                  { v: "combo", t: "Combination of the above" },
-                  { v: "other", t: "Other (briefly describe)" },
+                  { v: "consultancy", t: "Consultancy" },
+                  { v: "combo", t: "Not sure yet" },
                 ].map((opt) => (
                   <button
                     key={opt.v}
                     type="button"
-                    onClick={() => setNeedHelp(opt.v as NeedHelp)}
+                    onClick={() => {
+                      const v = opt.v as NeedHelp;
+                      setNeedHelp(v);
+                      if (v !== "combo") setNotSureFocus("");
+                    }}
                     className={
                       "rounded-xl border px-4 py-2.5 text-left text-sm transition-all duration-200 " +
                       (needHelp === opt.v
@@ -276,46 +281,64 @@ export default function ElevatePage() {
                 ))}
               </div>
 
-              {needHelp === "other" && (
-                <input
-                  value={needHelpOther}
-                  onChange={(e) => setNeedHelpOther(e.target.value)}
-                  placeholder="Briefly describe what you’re looking for…"
-                  className={fieldBase}
-                />
+              {/* Not sure triage (routes into a real branch) */}
+              {needHelp === "combo" && (
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm text-white/80">
+                    No worries — what feels like the main priority?
+                  </p>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {[
+                      { v: "website", t: "A website" },
+                      { v: "automation", t: "Automation / systems" },
+                      { v: "branding", t: "Branding" },
+                      { v: "consultancy", t: "Direction / consultancy" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.v}
+                        type="button"
+                        onClick={() => {
+                          setNotSureFocus(opt.v as NotSureFocus);
+                          setNeedHelp(opt.v as NeedHelp);
+                        }}
+                        className={
+                          "rounded-xl border px-4 py-2.5 text-left text-sm transition-all duration-200 " +
+                          (notSureFocus === opt.v
+                            ? "border-white bg-white/15 -translate-y-[1px]"
+                            : "border-white/10 bg-black/30 hover:bg-white/5 hover:border-white/20")
+                        }
+                      >
+                        <span
+                          className={notSureFocus === opt.v ? "font-medium" : "font-normal"}
+                        >
+                          {opt.t}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="mt-3 text-xs text-white/55">
+                    Pick one — you can still add more context later.
+                  </p>
+                </div>
               )}
             </div>
 
-            {/* Priority + Timeline */}
-            <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <label className={labelBase}>What matters most right now?</label>                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value as any)}
-                  className={fieldBase}
-                >
-                  <option value="">Select…</option>
-                  <option value="speed">Speed</option>
-                  <option value="quality">Quality</option>
-                  <option value="cost">Cost</option>
-                  <option value="clarity">Clarity / direction</option>
-                </select>
-              </div>
-
-              <div>
-                <label className={labelBase}>Timeline</label>
-                <select
-                  value={timeline}
-                  onChange={(e) => setTimeline(e.target.value as any)}
-                  className={fieldBase}
-                >
-                  <option value="">Select…</option>
-                  <option value="asap">ASAP (2–4 weeks)</option>
-                  <option value="1-3">1–3 months</option>
-                  <option value="3-6">3–6 months</option>
-                  <option value="exploring">Just exploring</option>
-                </select>
-              </div>
+            {/* Single timing question (replacing priority + timeline) */}
+            <div className="mt-8">
+              <label className={labelBase}>When are you hoping to get this moving?</label>
+              <select
+                value={timing}
+                onChange={(e) => setTiming(e.target.value as any)}
+                className={fieldBase}
+              >
+                <option value="">Select…</option>
+                <option value="asap">ASAP (2–4 weeks)</option>
+                <option value="1-2">Next month or two</option>
+                <option value="this_quarter">This quarter</option>
+                <option value="exploring">Just exploring</option>
+              </select>
             </div>
 
             {/* Name + Email */}
@@ -351,7 +374,6 @@ export default function ElevatePage() {
                 onClick={() => {
                   if (!stage1IsValid()) return;
                   setStage(2);
-                  // Optional: gently bring Stage 2 into view
                   setTimeout(() => {
                     document.getElementById("stage-2")?.scrollIntoView({
                       behavior: "smooth",
@@ -367,21 +389,21 @@ export default function ElevatePage() {
             </div>
           </section>
 
-          {/* Stage 2 card */}
+          {/* Stage 2 */}
           {stage === 2 && (
             <section
               id="stage-2"
               className="animate-fade-in rounded-2xl border border-white/10 bg-white/5 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur"
             >
               <div className="mb-6">
-                <h2 className="text-lg font-semibold tracking-tight">Project details</h2>
+                <h2 className="text-lg font-semibold tracking-tight">Details</h2>
                 <p className="mt-1 text-sm text-white/70">
                   A little more detail so we can guide you properly.
                 </p>
               </div>
 
-              {/* Always visible */}
               <div className="space-y-6">
+                {/* Always visible */}
                 <div>
                   <label className={labelBase}>What are you trying to achieve?</label>
                   <textarea
@@ -417,25 +439,28 @@ export default function ElevatePage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className={labelBase}>Where does work break down most?</label>
-                  <select
-                    value={breakdown}
-                    onChange={(e) => setBreakdown(e.target.value as any)}
-                    className={fieldBase}
-                  >
-                    <option value="">Select…</option>
-                    <option value="leads">Leads & enquiries</option>
-                    <option value="quoting">Quoting / proposals</option>
-                    <option value="delivery">Delivery / project management</option>
-                    <option value="finance">Invoicing / finance</option>
-                    <option value="comms">Internal communication</option>
-                    <option value="reporting">Reporting / visibility</option>
-                    <option value="no_process">We don’t have defined processes</option>
-                  </select>
-                </div>
+                {/* Breakdown (Automation / Consultancy) */}
+                {showBreakdown && (
+                  <div>
+                    <label className={labelBase}>Where does work break down most?</label>
+                    <select
+                      value={breakdown}
+                      onChange={(e) => setBreakdown(e.target.value as any)}
+                      className={fieldBase}
+                    >
+                      <option value="">Select…</option>
+                      <option value="leads">Leads & enquiries</option>
+                      <option value="quoting">Quoting / proposals</option>
+                      <option value="delivery">Delivery / project management</option>
+                      <option value="finance">Invoicing / finance</option>
+                      <option value="comms">Internal communication</option>
+                      <option value="reporting">Reporting / visibility</option>
+                      <option value="no_process">We don’t have defined processes</option>
+                    </select>
+                  </div>
+                )}
 
-                {/* Conditional: Tools */}
+                {/* Automation / Systems */}
                 {showToolsSection && (
                   <div className="rounded-xl border border-white/10 bg-black/20 p-5">
                     <h3 className="text-sm font-semibold text-white/80">
@@ -526,7 +551,7 @@ export default function ElevatePage() {
                   </div>
                 )}
 
-                {/* Conditional: Website */}
+                {/* Website */}
                 {showWebsiteSection && (
                   <div className="rounded-xl border border-white/10 bg-black/20 p-5">
                     <h3 className="text-sm font-semibold text-white/80">Website scope</h3>
@@ -565,7 +590,7 @@ export default function ElevatePage() {
                   </div>
                 )}
 
-                {/* Conditional: Branding */}
+                {/* Branding */}
                 {showBrandingSection && (
                   <div className="rounded-xl border border-white/10 bg-black/20 p-5">
                     <h3 className="text-sm font-semibold text-white/80">Branding</h3>
@@ -588,10 +613,13 @@ export default function ElevatePage() {
                   </div>
                 )}
 
-                {/* Conditional: Consultancy */}
+                {/* Consultancy */}
                 {showConsultancySection && (
                   <div className="rounded-xl border border-white/10 bg-black/20 p-5">
                     <h3 className="text-sm font-semibold text-white/80">Consultancy focus</h3>
+                    <p className="mt-1 text-xs text-white/60">
+                      Pick the closest fit — we can refine it together.
+                    </p>
 
                     <div className="mt-4">
                       <label className={labelBase}>What kind of support do you want?</label>
@@ -601,8 +629,8 @@ export default function ElevatePage() {
                         className={fieldBase}
                       >
                         <option value="">Select…</option>
-                        <option value="strategic">Strategic direction</option>
-                        <option value="operational">Operational structure</option>
+                        <option value="strategy">Strategy / direction</option>
+                        <option value="operations">Operations / ways of working</option>
                         <option value="training">Training & enablement</option>
                         <option value="growth">Growth roadmap</option>
                         <option value="all">A mix of the above</option>
@@ -611,7 +639,7 @@ export default function ElevatePage() {
                   </div>
                 )}
 
-                {/* Budget now in Stage 2 */}
+                {/* Budget */}
                 <div>
                   <label className={labelBase}>Estimated budget range</label>
                   <select
