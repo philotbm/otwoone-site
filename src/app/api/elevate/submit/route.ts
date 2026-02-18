@@ -2,114 +2,13 @@ import { Resend } from "resend";
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+
 type Confidence = "high" | "medium" | "low";
 
 function clampMoney(n: number) {
   return Math.max(0, Math.round(n / 50) * 50);
 }
-
-function computeQuote(answers: any) {
-  const services: string[] = answers?.services ?? [];
-  const primary: string = answers?.primary_service ?? services[0] ?? "unknown";
-
-  let low = 0;
-  let high = 0;
-  const drivers: string[] = [];
-  const assumptions: string[] = [];
-  const followups: string[] = [];
-
-  const add = (l: number, h: number, label?: string) => {
-    low += l;
-    high += h;
-    if (label) drivers.push(label);
-  };
-
-  // ===== BASES =====
-  if (services.includes("website")) add(2500, 4000, "Website base");
-  if (services.includes("automation")) add(2000, 5000, "Systems base");
-  if (services.includes("branding")) add(800, 2500, "Branding base");
-  if (services.includes("strategy")) add(600, 1500, "Strategy base");
-
-  // ===== WEBSITE MODIFIERS =====
-  const w = answers?.website ?? {};
-  if (services.includes("website")) {
-    if (w.pages === "2_5") add(600, 1200, "Pages: 2–5");
-    else if (w.pages === "6_10") add(1200, 2400, "Pages: 6–10");
-    else if (w.pages === "10_plus") add(2400, 4500, "Pages: 10+");
-    else followups.push("Confirm approx page count");
-
-    const integrations: string[] = w.integrations ?? [];
-    if (integrations.length)
-      add(250 * integrations.length, 600 * integrations.length, `Integrations: ${integrations.length}`);
-
-    if (w.content_ready === "none")
-      add(600, 1500, "Content support needed");
-  }
-
-  // ===== BRANDING MODIFIERS =====
-  const b = answers?.branding ?? {};
-  if (services.includes("branding")) {
-    if (b.scope === "refresh") add(600, 1200, "Brand refresh");
-    else if (b.scope === "full_identity") add(1500, 3000, "Full identity");
-  }
-
-  // ===== BUNDLE UPLIFT =====
-  if (services.includes("website") && services.includes("branding")) {
-    add(300, 800, "Website + Branding alignment");
-  }
-
-  // ===== CONFIDENCE =====
-  let confidence: Confidence = "high";
-  if (!services.length) confidence = "low";
-  if (services.includes("website") && !w.pages) confidence = "medium";
-  if (services.includes("branding") && !b.scope) confidence = "medium";
-
-  low = clampMoney(low);
-  high = clampMoney(Math.max(high, low + 500));
-
-  // ===== SUPPORT RECOMMENDATION =====
-  let supportTier = "essential";
-  let monthly = 79;
-
-  if (services.includes("website") && services.includes("branding")) {
-    supportTier = "growth";
-    monthly = 149;
-  }
-
-  if (services.includes("automation")) {
-    supportTier = "partner";
-    monthly = 249;
-  }
-
-  return {
-    quote: {
-      currency: "EUR",
-      low,
-      high,
-      confidence,
-      drivers,
-      assumptions,
-    },
-    support: {
-      recommended: supportTier,
-      monthly,
-      annual_value: monthly * 12,
-    },
-    followups,
-  };
-}
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-
-type EmailResult =
-  | { attempted: false; reason?: string }
-  | { attempted: true; sent: true; data?: unknown }
-  | { attempted: true; sent: false; error: string };
-
-type ResendSendResponse = {
-  data?: unknown;
-  error?: unknown;
-};
 
 function escapeHtml(input: unknown) {
   return String(input ?? "")
@@ -136,10 +35,183 @@ function humanizeKey(raw: string) {
     return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
   });
 
-  return titled
-    .replace(/\bAi\b/g, "AI")
-    .replace(/\bM365\b/g, "M365");
+  return titled.replace(/\bAi\b/g, "AI").replace(/\bM365\b/g, "M365");
 }
+
+/**
+ * Compute internal estimate from answers.
+ * Supports:
+ *  - V1 keys: need_help, website_type, has_branding, budget, timing
+ *  - V2 keys: services[], primary_service, website{...}, branding{...}
+ */
+function computeQuote(answers: any) {
+  // ---------- Service mapping (V2 first, then fallback to V1) ----------
+  const serviceFromV1 = String(answers?.need_help ?? "").toLowerCase();
+
+  const services: string[] =
+    Array.isArray(answers?.services) && answers.services.length
+      ? answers.services
+      : serviceFromV1
+      ? [
+          serviceFromV1.includes("website") ? "website" : "",
+          serviceFromV1.includes("automation") ? "automation" : "",
+          serviceFromV1.includes("backend") ? "automation" : "",
+          serviceFromV1.includes("branding") ? "branding" : "",
+          serviceFromV1.includes("consult") ? "strategy" : "",
+          serviceFromV1.includes("not sure") ? "unknown" : "",
+        ].filter(Boolean)
+      : [];
+
+  const primary: string = answers?.primary_service ?? services[0] ?? "unknown";
+
+  // ---------- Accumulators ----------
+  let low = 0;
+  let high = 0;
+
+  const drivers: string[] = [];
+  const assumptions: string[] = [];
+  const followups: string[] = [];
+
+  const add = (l: number, h: number, label?: string) => {
+    low += l;
+    high += h;
+    if (label) drivers.push(label);
+  };
+
+  // ---------- Bases ----------
+  if (services.includes("website")) add(2500, 4000, "Website base");
+  if (services.includes("automation")) add(2000, 5000, "Systems base");
+  if (services.includes("branding")) add(800, 2500, "Branding base");
+  if (services.includes("strategy")) add(600, 1500, "Strategy base");
+
+  // ---------- V1 mappings ----------
+  const websiteTypeV1 = String(answers?.website_type ?? "").toLowerCase(); // e.g. "multi"
+  const hasBrandingV1 = String(answers?.has_branding ?? "").toLowerCase(); // "no" | "partial" | "yes"
+  const budgetV1 = String(answers?.budget ?? "").toLowerCase(); // "Under €3k"
+  const timingV1 = String(answers?.timing ?? "").toLowerCase();
+
+  // ---------- V2 mappings ----------
+  const w = answers?.website ?? {};
+  const b = answers?.branding ?? {};
+
+  // ---------- Website modifiers (V2 + V1 fallback) ----------
+  if (services.includes("website")) {
+    // V2 pages (if present)
+    if (w.pages === "2_5") add(600, 1200, "Pages: 2–5");
+    else if (w.pages === "6_10") add(1200, 2400, "Pages: 6–10");
+    else if (w.pages === "10_plus") add(2400, 4500, "Pages: 10+");
+
+    // V2 integrations
+    const integrations: string[] = Array.isArray(w.integrations) ? w.integrations : [];
+    if (integrations.length) {
+      add(
+        250 * integrations.length,
+        600 * integrations.length,
+        `Integrations: ${integrations.length}`
+      );
+    }
+
+    // V2 content readiness
+    if (w.content_ready === "none") add(600, 1500, "Content support needed");
+
+    // V1 website type fallback (only if it adds signal)
+    if (websiteTypeV1) {
+      if (websiteTypeV1.includes("multi")) add(800, 1600, "Website: multi-page");
+      if (websiteTypeV1.includes("landing")) add(0, 400, "Website: landing page");
+      if (websiteTypeV1.includes("ecom")) add(2500, 5000, "Website: ecommerce");
+    } else if (!w.pages) {
+      // if we didn't get V2 pages AND no V1 website type
+      followups.push("Confirm website size / page count");
+    }
+  }
+
+  // ---------- Branding modifiers (V2 + V1 fallback) ----------
+  if (services.includes("branding")) {
+    if (b.scope === "refresh") add(600, 1200, "Brand refresh");
+    else if (b.scope === "full_identity") add(1500, 3000, "Full identity");
+    else followups.push("Branding: refresh or full identity?");
+  } else {
+    // If branding wasn’t selected but V1 says branding is missing/partial, we can nudge estimate + support
+    if (hasBrandingV1 === "no") add(600, 1500, "Branding needed");
+    if (hasBrandingV1 === "partial") add(300, 900, "Branding partial");
+  }
+
+  // ---------- Bundle uplift ----------
+  const needsBrandingHelp = hasBrandingV1 === "no" || hasBrandingV1 === "partial";
+  if (services.includes("website") && (services.includes("branding") || needsBrandingHelp)) {
+    add(300, 800, "Website + Branding alignment");
+  }
+
+  // ---------- Confidence ----------
+  let confidence: Confidence = "high";
+
+  if (!services.length || services.includes("unknown") || primary === "unknown") {
+    confidence = "low";
+  }
+
+  // Missing core scope signals lowers confidence
+  if (services.includes("website") && !w.pages && !websiteTypeV1) confidence = "medium";
+  if (services.includes("branding") && !b.scope) confidence = "medium";
+
+  // ---------- Budget/timing heuristic (light touch) ----------
+  // If someone selects very low budget, keep range realistic but don't hard-cap (we're internal).
+  if (budgetV1.includes("under") && budgetV1.includes("3k")) {
+    assumptions.push("Budget indicated: under €3k (may require phased scope)");
+    // widen slightly but keep low end realistic
+    high += 250;
+  }
+
+  if (timingV1.includes("asap")) {
+    assumptions.push("Timeline: ASAP (may require prioritisation / phased delivery)");
+  }
+
+  // ---------- Round + ensure sensible width ----------
+  low = clampMoney(low);
+  high = clampMoney(Math.max(high, low + 500));
+
+  // ---------- Support recommendation ----------
+  let supportTier = "essential";
+  let monthly = 79;
+
+  // Website + branding alignment => growth
+  if (services.includes("website") && (services.includes("branding") || needsBrandingHelp)) {
+    supportTier = "growth";
+    monthly = 149;
+  }
+
+  // Automation tends to require higher-touch support
+  if (services.includes("automation")) {
+    supportTier = "partner";
+    monthly = 249;
+  }
+
+  return {
+    quote: {
+      currency: "EUR",
+      low,
+      high,
+      confidence,
+      drivers,
+      assumptions,
+    },
+    support: {
+      recommended: supportTier,
+      monthly,
+      annual_value: monthly * 12,
+    },
+    followups,
+  };
+}
+
+type EmailResult =
+  | { attempted: false; reason?: string }
+  | { attempted: true; sent: true; data?: unknown }
+  | { attempted: true; sent: false; error: string };
+
+type ResendSendResponse = {
+  data?: unknown;
+  error?: unknown;
+};
 
 export async function POST(req: Request) {
   try {
@@ -184,7 +256,10 @@ export async function POST(req: Request) {
     if (error) {
       console.error("Supabase insert error:", error);
       return NextResponse.json(
-        { error: "Database insert failed", details: error.message ?? String(error) },
+        {
+          error: "Database insert failed",
+          details: (error as any)?.message ?? String(error),
+        },
         { status: 500 }
       );
     }
@@ -229,8 +304,7 @@ export async function POST(req: Request) {
         `Submission ID: ${inserted.id}`,
       ];
 
-      const subject = `Elevate Submission • ${contact_name || "New lead"} • ${inserted.id
-        }`;
+      const subject = `Elevate Submission • ${contact_name || "New lead"} • ${inserted.id}`;
 
       // --- Email formatting helpers ---
       const websiteRaw = (company_website || "").trim();
@@ -241,10 +315,10 @@ export async function POST(req: Request) {
 
       const websiteHtml = websiteHref
         ? `<a href="${escapeHtml(
-          websiteHref
-        )}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
-          websiteRaw
-        )}</a>`
+            websiteHref
+          )}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(
+            websiteRaw
+          )}</a>`
         : "Not provided.";
 
       const safeName = contact_name ? escapeHtml(contact_name) : "Not provided.";
@@ -258,20 +332,20 @@ export async function POST(req: Request) {
       const answersTableRows =
         answerEntries.length > 0
           ? answerEntries
-            .map(([k, v]) => {
-              // Skip empties entirely (removes "Not provided." noise)
-              if (v === null || v === undefined) return "";
-              const raw = typeof v === "string" ? v.trim() : String(v).trim();
-              if (!raw) return "";
+              .map(([k, v]) => {
+                // Skip empties entirely (removes "Not provided." noise)
+                if (v === null || v === undefined) return "";
+                const raw = typeof v === "string" ? v.trim() : String(v).trim();
+                if (!raw) return "";
 
-              const key = escapeHtml(humanizeKey(k));
+                const key = escapeHtml(humanizeKey(k));
 
-              const val =
-                typeof v === "string"
-                  ? escapeHtml(v)
-                  : escapeHtml(JSON.stringify(v, null, 2));
+                const val =
+                  typeof v === "string"
+                    ? escapeHtml(v)
+                    : escapeHtml(JSON.stringify(v, null, 2));
 
-              return `
+                return `
 <div style="margin:0 0 16px;">
   <div style="font-size:13px; font-weight:600; color:#0f172a; margin:0 0 6px;">
     ${key}
@@ -281,12 +355,11 @@ export async function POST(req: Request) {
   </div>
 </div>
 `;
-            })
-            .filter(Boolean)
-            .join("")
+              })
+              .filter(Boolean)
+              .join("")
           : "";
 
-      // If everything was empty, show a single subtle line
       const answersHtml =
         answersTableRows.trim().length > 0
           ? answersTableRows
@@ -336,32 +409,32 @@ export async function POST(req: Request) {
         ${answersHtml}
       </div>
 
-       <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
+      <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
 
-        <h3 style="margin:0 0 12px 0;font-size:16px;color:#1f293b;">
-          Internal Estimate
-        </h3>
+      <h3 style="margin:0 0 12px 0;font-size:16px;color:#1f293b;">
+        Internal Estimate
+      </h3>
 
-        <p style="margin:4px 0;">
-          <strong>Range:</strong>
-          €${computed.quote.low}  €${computed.quote.high}
-        </p>
+      <p style="margin:4px 0;">
+        <strong>Range:</strong>
+        €${computed.quote.low} – €${computed.quote.high}
+      </p>
 
-        <p style="margin:4px 0;">
-          <strong>Confidence:</strong>
-          ${computed.quote.confidence}
-        </p>
+      <p style="margin:4px 0;">
+        <strong>Confidence:</strong>
+        ${computed.quote.confidence}
+      </p>
 
-        <p style="margin:4px 0;">
-          <strong>Recommended Support:</strong>
-          ${computed.support.recommended}
-          (€${computed.support.monthly}/month)
-        </p>
+      <p style="margin:4px 0;">
+        <strong>Recommended Support:</strong>
+        ${computed.support.recommended}
+        (€${computed.support.monthly}/month)
+      </p>
 
-        <p style="margin:4px 0;">
-          <strong>Annual Recurring:</strong>
-          €${computed.support.annual_value}
-        </p>
+      <p style="margin:4px 0;">
+        <strong>Annual Recurring:</strong>
+        €${computed.support.annual_value}
+      </p>
 
       <!-- Footer Meta -->
       <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">
