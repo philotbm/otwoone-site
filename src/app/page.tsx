@@ -261,6 +261,43 @@ export default function Home() {
             </ul>
           </div>
         </div>
+        {/* Managed platform */}
+        <div className="mt-16 border-t border-white/10 pt-14">
+          <p className="text-xs font-semibold tracking-wider text-white/50 uppercase">
+            Managed platform
+          </p>
+
+          <h3 className="mt-3 text-xl md:text-2xl font-semibold tracking-tight text-white">
+            Your website, professionally managed
+          </h3>
+
+          <p className="mt-3 max-w-2xl text-white/60 leading-relaxed">
+            Every OTwoOne website runs on our managed platform to ensure performance, security and long-term reliability.
+            We don’t deliver projects and disappear.
+            We build properly.
+          </p>
+
+          <p className="mt-6 text-2xl font-semibold tracking-tight text-white">
+            €99 / month{" "}
+            <span className="text-white/50 font-normal">· Minimum 6-month term</span>
+          </p>
+
+          <ul className="mt-6 space-y-3 text-sm text-white/65">
+            <li>• Secure managed hosting</li>
+            <li>• Ongoing framework &amp; security updates</li>
+            <li>• Weekly backups</li>
+            <li>• Uptime &amp; performance monitoring</li>
+            <li>• Minor content updates (up to 30 mins / month)</li>
+            <li>• Bug fixes related to the original build</li>
+            <li>• Direct email support</li>
+          </ul>
+
+          <p className="mt-6 max-w-2xl text-sm text-white/60 leading-relaxed">
+            After 6 months, you can continue, upgrade, or request a structured handover.
+            <br />
+            <span className="text-white/70">We don’t trap clients. We build responsibly.</span>
+          </p>
+        </div>
       </section>
 
       {/* Process */}
