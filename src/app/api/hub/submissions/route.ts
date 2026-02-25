@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     const { data, error, count } = await supabaseServer
       .from("intake_submissions")
       .select(
-        "id, created_at, status, source, contact_name, contact_email, company_name, answers, sharepoint_item_id, sharepoint_synced_at, sharepoint_sync_error",
+        "id, created_at, status, source, stage, contact_name, contact_email, company_name, answers, sharepoint_item_id, sharepoint_synced_at, sharepoint_sync_error, project_sp_item_id, project_ref, agreed_budget",
         { count: "exact" }
       )
       .order("created_at", { ascending: false })
