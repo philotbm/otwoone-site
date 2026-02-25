@@ -25,6 +25,9 @@ type Submission = {
   sharepoint_item_id: string | null;
   sharepoint_synced_at: string | null;
   sharepoint_sync_error: string | null;
+  project_sp_item_id: string | null;
+  project_ref: string | null;
+  agreed_budget: number | null;
 };
 
 type SyncState = "idle" | "syncing" | "done" | "error";
@@ -332,6 +335,133 @@ function EmailModal({
   );
 }
 
+// ─── Accept Modal ─────────────────────────────────────────────────────────────
+
+function AcceptModal({
+  row,
+  onConfirm,
+  onClose,
+}: {
+  row: Submission;
+  onConfirm: (fields: {
+    agreedBudget: number;
+    depositAmount: number;
+    targetDelivery: string;
+    projectLead: string;
+  }) => void;
+  onClose: () => void;
+}) {
+  const [agreedBudget, setAgreedBudget] = useState("");
+  const [depositAmount, setDepositAmount] = useState("");
+  const [targetDelivery, setTargetDelivery] = useState("");
+  const [projectLead, setProjectLead] = useState("Phil");
+
+  function handleBudgetChange(val: string) {
+    setAgreedBudget(val);
+    const n = Number(val);
+    if (n > 0) setDepositAmount(String(Math.round(n * 0.5)));
+    else setDepositAmount("");
+  }
+
+  function handleConfirm() {
+    const b = Number(agreedBudget);
+    if (!b || b <= 0) return;
+    const d = Number(depositAmount) || Math.round(b * 0.5);
+    onConfirm({ agreedBudget: b, depositAmount: d, targetDelivery, projectLead });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0d0e14] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+          <div>
+            <p className="text-xs text-white/40 uppercase tracking-widest font-semibold">
+              Accepting project
+            </p>
+            <p className="mt-0.5 text-sm font-semibold text-white">
+              {row.contact_name ?? "Client"}
+              {row.company_name ? ` · ${row.company_name}` : ""}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-white/40 hover:text-white transition text-lg leading-none"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <div>
+            <label className="text-xs text-white/40 block mb-1.5">
+              Agreed Budget (€) <span className="text-violet-400">*</span>
+            </label>
+            <input
+              type="number"
+              value={agreedBudget}
+              onChange={(e) => handleBudgetChange(e.target.value)}
+              placeholder="e.g. 8000"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-violet-400/40 transition"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-white/40 block mb-1.5">
+              Deposit Amount (€){" "}
+              <span className="text-white/25">(defaults to 50%)</span>
+            </label>
+            <input
+              type="number"
+              value={depositAmount}
+              onChange={(e) => setDepositAmount(e.target.value)}
+              placeholder={
+                agreedBudget ? `€${Math.round(Number(agreedBudget) * 0.5)}` : "Amount"
+              }
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-violet-400/40 transition"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-white/40 block mb-1.5">Target Delivery</label>
+            <input
+              type="date"
+              value={targetDelivery}
+              onChange={(e) => setTargetDelivery(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-violet-400/40 transition"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-white/40 block mb-1.5">Project Lead</label>
+            <input
+              type="text"
+              value={projectLead}
+              onChange={(e) => setProjectLead(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-violet-400/40 transition"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-white/10 px-6 py-4">
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-white/10 px-4 py-2 text-sm text-white/50 hover:text-white transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!agreedBudget || Number(agreedBudget) <= 0}
+            className="rounded-xl bg-violet-600 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed transition"
+          >
+            Accept &amp; Create Project
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function HubPage() {
@@ -341,7 +471,24 @@ export default function HubPage() {
   const [syncStates, setSyncStates] = useState<Record<string, SyncState>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [stageModal, setStageModal] = useState<{ stage: Stage; name: string | null } | null>(null);
+  const [acceptPending, setAcceptPending] = useState<{
+    row: Submission;
+    nextStage: Stage;
+  } | null>(null);
   const [promptCopied, setPromptCopied] = useState<string | null>(null);
+
+  // Invoice panel — one open at a time
+  const [invoicePanel, setInvoicePanel] = useState<string | null>(null);
+  const [invoiceFields, setInvoiceFields] = useState({
+    type: "Deposit",
+    amount: "",
+    notes: "",
+  });
+  const [invoiceSubmitting, setInvoiceSubmitting] = useState(false);
+  const [invoiceResult, setInvoiceResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -379,7 +526,16 @@ export default function HubPage() {
     }
   }
 
-  async function advanceStage(row: Submission, nextStage: Stage) {
+  async function advanceStage(
+    row: Submission,
+    nextStage: Stage,
+    extra?: {
+      agreedBudget?: number;
+      depositAmount?: number;
+      targetDelivery?: string;
+      projectLead?: string;
+    }
+  ) {
     // Optimistic update
     setSubmissions((prev) =>
       prev.map((s) => (s.id === row.id ? { ...s, stage: nextStage } : s))
@@ -388,14 +544,29 @@ export default function HubPage() {
       await fetch("/api/hub/stage", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: row.id, stage: nextStage }),
+        body: JSON.stringify({ id: row.id, stage: nextStage, ...extra }),
       });
+      // Reload to pick up project_ref / agreed_budget written by backend hooks
+      if (
+        nextStage === "accepted" ||
+        nextStage === "deposit_paid" ||
+        nextStage === "delivered"
+      ) {
+        await load();
+      }
     } catch {
-      // Revert on error
       await load();
     }
-    // Show email template modal
     setStageModal({ stage: nextStage, name: row.contact_name });
+  }
+
+  // Intercepts "accepted" to show the AcceptModal first
+  function handleAdvanceStage(row: Submission, nextStage: Stage) {
+    if (nextStage === "accepted") {
+      setAcceptPending({ row, nextStage });
+    } else {
+      advanceStage(row, nextStage);
+    }
   }
 
   async function copyPrompt(row: Submission) {
@@ -403,6 +574,54 @@ export default function HubPage() {
     await navigator.clipboard.writeText(text);
     setPromptCopied(row.id);
     setTimeout(() => setPromptCopied(null), 2000);
+  }
+
+  function openInvoicePanel(row: Submission) {
+    setInvoicePanel(row.id);
+    setInvoiceResult(null);
+    setInvoiceFields({
+      type: "Deposit",
+      amount: row.agreed_budget
+        ? String(Math.round(row.agreed_budget * 0.5))
+        : "",
+      notes: "",
+    });
+  }
+
+  async function createInvoice(row: Submission) {
+    if (!row.project_ref || !invoiceFields.amount) return;
+    setInvoiceSubmitting(true);
+    setInvoiceResult(null);
+    try {
+      const res = await fetch("/api/hub/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          submissionId: row.id,
+          internalRef: row.project_ref,
+          invoiceType: invoiceFields.type,
+          amount: Number(invoiceFields.amount),
+          notes: invoiceFields.notes,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.ok) {
+        setInvoiceResult({
+          ok: true,
+          message: `✓ ${json.invoiceNumber} created in SharePoint`,
+        });
+        setInvoiceFields({ type: "Deposit", amount: "", notes: "" });
+      } else {
+        setInvoiceResult({
+          ok: false,
+          message: json.error ?? "Failed to create invoice",
+        });
+      }
+    } catch (err) {
+      setInvoiceResult({ ok: false, message: String(err) });
+    } finally {
+      setInvoiceSubmitting(false);
+    }
   }
 
   const unsynced = submissions.filter((s) => !s.sharepoint_synced_at).length;
@@ -416,6 +635,19 @@ export default function HubPage() {
           stage={stageModal.stage}
           name={stageModal.name}
           onClose={() => setStageModal(null)}
+        />
+      )}
+
+      {/* Accept modal */}
+      {acceptPending && (
+        <AcceptModal
+          row={acceptPending.row}
+          onConfirm={(fields) => {
+            const { row, nextStage } = acceptPending;
+            setAcceptPending(null);
+            advanceStage(row, nextStage, fields);
+          }}
+          onClose={() => setAcceptPending(null)}
         />
       )}
 
@@ -471,13 +703,14 @@ export default function HubPage() {
                     <th className="text-left px-4 py-3 text-xs font-medium text-white/50">Company</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-white/50">Services</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-white/50">Quote</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-white/50">Project</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-white/50">Stage</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-white/50">SharePoint</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody>
-                  {submissions.map((row) => {
+                  {submissions.flatMap((row) => {
                     const computed = row.answers?.computed ?? {};
                     const quote = computed.quote ?? {};
                     const services = Array.isArray(row.answers?.services)
@@ -488,141 +721,310 @@ export default function HubPage() {
                     const isExpanded = expanded === row.id;
                     const currentStage = row.stage ?? "submitted";
                     const currentIdx = STAGES.indexOf(currentStage as Stage);
-                    const nextStage = currentIdx < STAGES.length - 1
-                      ? STAGES[currentIdx + 1]
-                      : null;
+                    const nextStage =
+                      currentIdx < STAGES.length - 1
+                        ? STAGES[currentIdx + 1]
+                        : null;
 
-                    return (
-                      <>
-                        <tr
-                          key={row.id}
-                          className="border-b border-white/5 hover:bg-white/[0.02] transition cursor-pointer"
-                          onClick={() => setExpanded(isExpanded ? null : row.id)}
-                        >
-                          <td className="px-4 py-3 text-white/50 whitespace-nowrap">
-                            {formatDate(row.created_at)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="font-medium text-white/90">{row.contact_name ?? "—"}</div>
-                            <div className="text-xs text-white/40">{row.contact_email ?? ""}</div>
-                          </td>
-                          <td className="px-4 py-3 text-white/70">{row.company_name ?? "—"}</td>
-                          <td className="px-4 py-3 text-white/60 text-xs">{services}</td>
-                          <td className="px-4 py-3 text-white/70 whitespace-nowrap">
-                            {quote.low != null
-                              ? `€${quote.low}–€${quote.high}`
-                              : "—"}
-                            {quote.confidence && (
-                              <span className="ml-1.5 text-xs text-white/35">
-                                ({quote.confidence})
-                              </span>
+                    const mainRow = (
+                      <tr
+                        key={row.id}
+                        className="border-b border-white/5 hover:bg-white/[0.02] transition cursor-pointer"
+                        onClick={() => setExpanded(isExpanded ? null : row.id)}
+                      >
+                        <td className="px-4 py-3 text-white/50 whitespace-nowrap">
+                          {formatDate(row.created_at)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-white/90">
+                            {row.contact_name ?? "—"}
+                          </div>
+                          <div className="text-xs text-white/40">
+                            {row.contact_email ?? ""}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-white/70">
+                          {row.company_name ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-white/60 text-xs">{services}</td>
+                        <td className="px-4 py-3 text-white/70 whitespace-nowrap">
+                          {quote.low != null
+                            ? `€${quote.low}–€${quote.high}`
+                            : "—"}
+                          {quote.confidence && (
+                            <span className="ml-1.5 text-xs text-white/35">
+                              ({quote.confidence})
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.project_ref ? (
+                            <span className="inline-flex items-center rounded-full border border-violet-400/30 bg-violet-500/15 px-2.5 py-0.5 text-xs font-mono font-medium text-violet-300">
+                              {row.project_ref}
+                            </span>
+                          ) : (
+                            <span className="text-white/20">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <StageBadge stage={row.stage} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <SyncBadge item={row} />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              syncOne(row.id);
+                            }}
+                            disabled={isSyncing || !!row.sharepoint_synced_at}
+                            className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/60 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                          >
+                            {isSyncing
+                              ? "Syncing…"
+                              : row.sharepoint_synced_at
+                              ? "Synced ✓"
+                              : "Sync →"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+
+                    if (!isExpanded) return [mainRow];
+
+                    const detailRow = (
+                      <tr
+                        key={`${row.id}-detail`}
+                        className="bg-white/[0.015] border-b border-white/5"
+                      >
+                        <td colSpan={9} className="px-6 py-5">
+                          {/* Action bar */}
+                          <div className="flex flex-wrap items-center gap-3 mb-5 pb-4 border-b border-white/8">
+                            {nextStage && (
+                              <button
+                                onClick={() => handleAdvanceStage(row, nextStage)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 border border-white/15 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/15 hover:text-white transition"
+                              >
+                                Advance to {STAGE_LABELS[nextStage]} →
+                              </button>
                             )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <StageBadge stage={row.stage} />
-                          </td>
-                          <td className="px-4 py-3">
-                            <SyncBadge item={row} />
-                          </td>
-                          <td className="px-4 py-3 text-right">
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                syncOne(row.id);
-                              }}
-                              disabled={isSyncing || !!row.sharepoint_synced_at}
-                              className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/60 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                              onClick={() => copyPrompt(row)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/60 hover:text-white hover:border-white/20 transition"
                             >
-                              {isSyncing
-                                ? "Syncing…"
-                                : row.sharepoint_synced_at
-                                ? "Synced ✓"
-                                : "Sync →"}
+                              {promptCopied === row.id ? "Copied!" : "Copy AI Prompt"}
                             </button>
-                          </td>
-                        </tr>
+                            <select
+                              value={row.stage ?? "submitted"}
+                              onChange={(e) =>
+                                handleAdvanceStage(row, e.target.value as Stage)
+                              }
+                              onClick={(e) => e.stopPropagation()}
+                              className="rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white/50 outline-none cursor-pointer"
+                            >
+                              {STAGES.map((s) => (
+                                <option key={s} value={s}>
+                                  {STAGE_LABELS[s]}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                        {/* Expandable detail row */}
-                        {isExpanded && (
-                          <tr key={`${row.id}-detail`} className="bg-white/[0.015] border-b border-white/5">
-                            <td colSpan={8} className="px-6 py-5">
+                          {/* Project card */}
+                          {row.project_ref && (
+                            <div className="mb-5 rounded-xl border border-violet-400/20 bg-violet-500/[0.06] p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="text-xs font-semibold uppercase tracking-widest text-violet-400/70">
+                                    Project
+                                  </span>
+                                  <span className="font-mono text-sm font-semibold text-violet-200">
+                                    {row.project_ref}
+                                  </span>
+                                </div>
+                                <a
+                                  href="https://otwoone.sharepoint.com"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-xs text-white/30 hover:text-white/60 transition"
+                                >
+                                  Open in SharePoint →
+                                </a>
+                              </div>
 
-                              {/* Action bar */}
-                              <div className="flex flex-wrap items-center gap-3 mb-5 pb-4 border-b border-white/8">
-                                {/* Advance stage */}
-                                {nextStage && (
+                              <div className="grid grid-cols-3 gap-3 text-xs mb-4">
+                                <div>
+                                  <div className="text-white/40 mb-0.5">Agreed Budget</div>
+                                  <div className="text-white/80 font-medium">
+                                    {row.agreed_budget
+                                      ? `€${row.agreed_budget.toLocaleString()}`
+                                      : "—"}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-white/40 mb-0.5">Deposit</div>
+                                  <div className="text-white/80 font-medium">
+                                    {row.agreed_budget
+                                      ? `€${Math.round(
+                                          row.agreed_budget * 0.5
+                                        ).toLocaleString()}`
+                                      : "—"}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-white/40 mb-0.5">Stage</div>
+                                  <StageBadge stage={row.stage} />
+                                </div>
+                              </div>
+
+                              {/* Invoice creation */}
+                              <div className="border-t border-white/8 pt-3">
+                                <p className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-2">
+                                  Invoices
+                                </p>
+                                {invoicePanel === row.id ? (
+                                  <div className="space-y-2">
+                                    <div className="flex flex-wrap gap-2">
+                                      <select
+                                        value={invoiceFields.type}
+                                        onChange={(e) =>
+                                          setInvoiceFields((f) => ({
+                                            ...f,
+                                            type: e.target.value,
+                                          }))
+                                        }
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs text-white/70 outline-none"
+                                      >
+                                        <option value="Deposit">Deposit</option>
+                                        <option value="Milestone">Milestone</option>
+                                        <option value="Final">Final</option>
+                                      </select>
+                                      <input
+                                        type="number"
+                                        value={invoiceFields.amount}
+                                        onChange={(e) =>
+                                          setInvoiceFields((f) => ({
+                                            ...f,
+                                            amount: e.target.value,
+                                          }))
+                                        }
+                                        placeholder={
+                                          row.agreed_budget
+                                            ? `€${Math.round(row.agreed_budget * 0.5)}`
+                                            : "Amount (€)"
+                                        }
+                                        className="w-32 rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs text-white/70 placeholder-white/20 outline-none"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={invoiceFields.notes}
+                                        onChange={(e) =>
+                                          setInvoiceFields((f) => ({
+                                            ...f,
+                                            notes: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Notes (optional)"
+                                        className="flex-1 min-w-28 rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs text-white/70 placeholder-white/20 outline-none"
+                                      />
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          createInvoice(row);
+                                        }}
+                                        disabled={
+                                          invoiceSubmitting || !invoiceFields.amount
+                                        }
+                                        className="rounded-lg bg-white/10 border border-white/15 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                                      >
+                                        {invoiceSubmitting ? "Creating…" : "Create →"}
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setInvoicePanel(null);
+                                          setInvoiceResult(null);
+                                        }}
+                                        className="rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/40 hover:text-white/70 transition"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                    {invoiceResult && (
+                                      <p
+                                        className={`text-xs ${
+                                          invoiceResult.ok
+                                            ? "text-emerald-400"
+                                            : "text-red-400"
+                                        }`}
+                                      >
+                                        {invoiceResult.message}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
                                   <button
-                                    onClick={() => advanceStage(row, nextStage)}
-                                    className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 border border-white/15 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/15 hover:text-white transition"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openInvoicePanel(row);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/50 hover:text-white hover:border-white/20 transition"
                                   >
-                                    Advance to {STAGE_LABELS[nextStage]} →
+                                    + New invoice
                                   </button>
                                 )}
-                                {/* Copy AI prompt */}
-                                <button
-                                  onClick={() => copyPrompt(row)}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/60 hover:text-white hover:border-white/20 transition"
-                                >
-                                  {promptCopied === row.id ? "Copied!" : "Copy AI Prompt"}
-                                </button>
-                                {/* Stage override dropdown */}
-                                <select
-                                  value={row.stage ?? "submitted"}
-                                  onChange={(e) => advanceStage(row, e.target.value as Stage)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white/50 outline-none cursor-pointer"
-                                >
-                                  {STAGES.map((s) => (
-                                    <option key={s} value={s}>{STAGE_LABELS[s]}</option>
-                                  ))}
-                                </select>
                               </div>
+                            </div>
+                          )}
 
-                              {/* Detail fields */}
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                                {row.answers &&
-                                  Object.entries(row.answers)
-                                    .filter(([k]) => k !== "computed")
-                                    .map(([k, v]) => {
-                                      if (v === null || v === undefined) return null;
-                                      const val =
-                                        typeof v === "string"
-                                          ? v
-                                          : JSON.stringify(v, null, 2);
-                                      if (!val.trim()) return null;
-                                      return (
-                                        <div key={k}>
-                                          <div className="text-white/40 mb-0.5 capitalize">
-                                            {k.replace(/_/g, " ")}
-                                          </div>
-                                          <div className="text-white/80 whitespace-pre-wrap break-words">
-                                            {val}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                {row.sharepoint_item_id && (
-                                  <div>
-                                    <div className="text-white/40 mb-0.5">SP Item ID</div>
-                                    <div className="text-white/50 font-mono">
-                                      {row.sharepoint_item_id}
+                          {/* Detail fields */}
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                            {row.answers &&
+                              Object.entries(row.answers)
+                                .filter(([k]) => k !== "computed")
+                                .map(([k, v]) => {
+                                  if (v === null || v === undefined) return null;
+                                  const val =
+                                    typeof v === "string"
+                                      ? v
+                                      : JSON.stringify(v, null, 2);
+                                  if (!val.trim()) return null;
+                                  return (
+                                    <div key={k}>
+                                      <div className="text-white/40 mb-0.5 capitalize">
+                                        {k.replace(/_/g, " ")}
+                                      </div>
+                                      <div className="text-white/80 whitespace-pre-wrap break-words">
+                                        {val}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
-                                {row.sharepoint_sync_error && (
-                                  <div className="col-span-2 md:col-span-3">
-                                    <div className="text-red-400/70 mb-0.5">Sync error</div>
-                                    <div className="text-red-300/80 font-mono text-xs">
-                                      {row.sharepoint_sync_error}
-                                    </div>
-                                  </div>
-                                )}
+                                  );
+                                })}
+                            {row.sharepoint_item_id && (
+                              <div>
+                                <div className="text-white/40 mb-0.5">SP Item ID</div>
+                                <div className="text-white/50 font-mono">
+                                  {row.sharepoint_item_id}
+                                </div>
                               </div>
-                            </td>
-                          </tr>
-                        )}
-                      </>
+                            )}
+                            {row.sharepoint_sync_error && (
+                              <div className="col-span-2 md:col-span-3">
+                                <div className="text-red-400/70 mb-0.5">Sync error</div>
+                                <div className="text-red-300/80 font-mono text-xs">
+                                  {row.sharepoint_sync_error}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
                     );
+
+                    return [mainRow, detailRow];
                   })}
                 </tbody>
               </table>

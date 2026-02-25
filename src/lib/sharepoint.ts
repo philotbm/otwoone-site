@@ -6,11 +6,13 @@
  * Token is cached in memory and refreshed automatically before expiry.
  */
 
-const TENANT_ID = process.env.SHAREPOINT_TENANT_ID!;
-const CLIENT_ID = process.env.SHAREPOINT_CLIENT_ID!;
-const CLIENT_SECRET = process.env.SHAREPOINT_CLIENT_SECRET!;
-const SITE_ID = process.env.SHAREPOINT_SITE_ID!;
-const LIST_ID = process.env.SHAREPOINT_LIST_ID!;
+const TENANT_ID         = process.env.SHAREPOINT_TENANT_ID!;
+const CLIENT_ID         = process.env.SHAREPOINT_CLIENT_ID!;
+const CLIENT_SECRET     = process.env.SHAREPOINT_CLIENT_SECRET!;
+const SITE_ID           = process.env.SHAREPOINT_SITE_ID!;
+const LIST_ID           = process.env.SHAREPOINT_LIST_ID!;
+const PROJECTS_LIST_ID  = process.env.SHAREPOINT_PROJECTS_LIST_ID!;
+const INVOICES_LIST_ID  = process.env.SHAREPOINT_INVOICES_LIST_ID!;
 
 // ─── Token cache ────────────────────────────────────────────────────────────
 
@@ -116,6 +118,97 @@ export async function createSharePointItem(
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+// ─── Generic Graph item writer / updater ─────────────────────────────────────
+
+async function graphWriteItem(
+  listId: string,
+  fields: Record<string, unknown>,
+  itemId?: string
+): Promise<SharePointSyncResult> {
+  try {
+    const token = await getGraphToken();
+    const url = itemId
+      ? `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${listId}/items/${itemId}/fields`
+      : `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${listId}/items`;
+
+    const res = await fetch(url, {
+      method: itemId ? "PATCH" : "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(itemId ? fields : { fields }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      return { ok: false, error: `Graph API ${res.status}: ${err}` };
+    }
+
+    const data = await res.json();
+    return { ok: true, itemId: itemId ?? String(data.id) };
+  } catch (err: unknown) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+
+export type ProjectFields = {
+  Title: string;               // Internal ref e.g. "OTO-2026-001"
+  ProjectName?: string;
+  SubmissionID?: string;
+  ContactName?: string;
+  ContactEmail?: string;
+  Company?: string;
+  Service?: string;
+  Stage?: string;
+  AgreedBudget?: number;
+  DepositAmount?: number;
+  DepositPaid?: string;        // "Yes" | "No"
+  DepositPaidDate?: string;
+  FinalInvoiceSent?: string;   // "Yes" | "No"
+  FinalPaymentReceived?: string;
+  StartDate?: string;
+  TargetDelivery?: string;
+  ProjectLead?: string;
+  Notes?: string;
+};
+
+export async function createProjectItem(
+  fields: ProjectFields
+): Promise<SharePointSyncResult> {
+  if (!PROJECTS_LIST_ID) return { ok: false, error: "SHAREPOINT_PROJECTS_LIST_ID not configured" };
+  return graphWriteItem(PROJECTS_LIST_ID, fields as Record<string, unknown>);
+}
+
+export async function updateProjectItem(
+  itemId: string,
+  fields: Partial<ProjectFields>
+): Promise<SharePointSyncResult> {
+  if (!PROJECTS_LIST_ID) return { ok: false, error: "SHAREPOINT_PROJECTS_LIST_ID not configured" };
+  return graphWriteItem(PROJECTS_LIST_ID, fields as Record<string, unknown>, itemId);
+}
+
+// ─── Invoices ─────────────────────────────────────────────────────────────────
+
+export type InvoiceFields = {
+  Title: string;               // Invoice number e.g. "INV-2026-001"
+  SubmissionID?: string;
+  InternalRef?: string;        // Project ref e.g. "OTO-2026-001"
+  InvoiceType?: string;        // "Deposit" | "Milestone" | "Final"
+  Amount?: number;
+  IssuedDate?: string;
+  DueDate?: string;
+  PaidDate?: string;
+  Status?: string;             // "Draft" | "Sent" | "Paid" | "Overdue"
+  Notes?: string;
+};
+
+export async function createInvoiceItem(
+  fields: InvoiceFields
+): Promise<SharePointSyncResult> {
+  if (!INVOICES_LIST_ID) return { ok: false, error: "SHAREPOINT_INVOICES_LIST_ID not configured" };
+  return graphWriteItem(INVOICES_LIST_ID, fields as Record<string, unknown>);
 }
 
 // ─── Field mapper ─────────────────────────────────────────────────────────────
