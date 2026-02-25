@@ -7,14 +7,14 @@ const PILLARS = [
     label: "Studio",
     headline: "Engineering that ships.",
     description:
-      "From rapid Discovery Sprints to full MVP builds and ongoing engineering pods. We scope clearly, price fixed, and deliver shippable software.",
+      "We build websites, web apps, and custom digital tools for businesses that need something built properly. Every project starts with a planning session so you know exactly what you're getting before any work begins.",
     offers: [
-      "Discovery Sprint",
-      "Technical Audit & Roadmap",
+      "Project Planning & Scoping",
+      "Tech Health Check",
       "Prototype Sprint",
-      "MVP Build",
-      "Engineering Pod Retainer",
-      "Stabilisation & Performance Care",
+      "New Product Build",
+      "Ongoing Development Team",
+      "Support & Maintenance",
     ],
     accent: "border-white/20",
   },
@@ -22,12 +22,12 @@ const PILLARS = [
     label: "Consultancy",
     headline: "Clarity when it matters most.",
     description:
-      "Strategic and technical advisory for companies navigating a decision, scaling a team, or unlocking value through AI and automation.",
+      "Expert technology guidance for business owners and leaders making important decisions about systems, teams, or growth. We give you the answers without the full-time hire.",
     offers: [
-      "Fractional CTO Advisory",
-      "AI & Automation Assessment",
-      "Delivery & Utilisation Tune-Up",
-      "Value-Based Engagement",
+      "Part-Time Technology Director",
+      "AI & Automation Review",
+      "Team & Process Health Check",
+      "Outcome-Based Advisory",
     ],
     accent: "border-white/20",
   },
@@ -35,13 +35,13 @@ const PILLARS = [
     label: "Branding",
     headline: "Identity built to last.",
     description:
-      "Positioning, messaging, and visual systems designed to unify your brand and product. From foundational strategy to full design-system delivery.",
+      "We build your brand from the ground up. Clear messaging, a strong visual identity, and a web presence that reflects who you are and speaks to the right customers.",
     offers: [
-      "Brand Foundation",
-      "Visual Identity Kit",
-      "Brand + Website Launch",
-      "Design System Starter",
-      "Brand / Design Retainer",
+      "Brand Strategy & Messaging",
+      "Logo, Colours & Brand Guide",
+      "Brand + Website Package",
+      "Design Guidelines & Components",
+      "Ongoing Brand Support",
     ],
     accent: "border-white/20",
   },
@@ -51,37 +51,103 @@ const PROCESS_STEPS = [
   {
     n: "01",
     title: "Discovery",
-    body: "Every engagement starts here. A fixed-price sprint to map the problem, scope deliverables, and produce a clear delivery plan before a euro is committed to build.",
+    body: "Every project starts here. A fixed-price planning session where we map what you need, what it will take to build it, and what it will cost. No commitments until you're ready.",
   },
   {
     n: "02",
     title: "Proposal",
-    body: "You receive a fixed-price proposal with defined deliverables, acceptance criteria, and timeline. No hourly estimates. No scope creep surprises.",
+    body: "You receive a fixed-price proposal that sets out exactly what we'll build, when we'll deliver it, and what success looks like. No hourly billing, no hidden extras.",
   },
   {
     n: "03",
     title: "Delivery",
-    body: "Sprint-based execution with regular demos, QA gates, and structured handover. Code is documented. Decisions are recorded.",
+    body: "We build in stages, with regular progress updates and reviews along the way. You always know where the project stands, and everything is properly handed over at the end.",
   },
   {
     n: "04",
     title: "Ongoing",
-    body: "After launch: retainer or stabilisation care. We don't disappear. We build responsibly and stay engaged on the terms that make sense.",
+    body: "After launch, we stay involved. Every site we build can be covered by a monthly support plan. Foundation, Growth, or Accelerator, depending on how actively you want to develop your digital presence.",
   },
 ];
 
 const DIFFERENTIATORS = [
   {
     title: "Package-led, not hourly.",
-    body: "We don't sell time. Every engagement is scoped and priced as a package — so you know the investment before you commit.",
+    body: "We don't bill by the hour. Every project is scoped and priced upfront, so you know exactly what it costs before you say yes.",
   },
   {
     title: "Outcome-accountable.",
-    body: "We carry delivery risk. If scope is met, the project is done. Bugs in the original build are our problem, not an extra invoice.",
+    body: "We take responsibility for what we build. If something we built doesn't work as agreed, we fix it. That's not an extra charge. It's part of the job.",
   },
   {
     title: "Cork-based. Ireland-native.",
-    body: "We understand Irish business, GDPR, and the local market. Expansion to UK/EU is structured, not assumed.",
+    body: "We're based in Cork and we understand how Irish businesses work. We know the regulations, the market, and what it takes to grow here and into the UK and EU.",
+  },
+];
+
+const EXAMPLES = [
+  {
+    slug: "medical",
+    category: "Healthcare",
+    name: "Millfield Medical Centre",
+    description:
+      "GP practice website with online appointment requests, opening hours, and patient information.",
+    tags: ["Website", "Booking"],
+    accent: "text-sky-400",
+  },
+  {
+    slug: "legal",
+    category: "Professional Services",
+    name: "Lynch & Partners Solicitors",
+    description:
+      "Law firm site with practice areas, team profiles, and a client enquiry form.",
+    tags: ["Website", "Enquiry Form"],
+    accent: "text-amber-400",
+  },
+  {
+    slug: "store",
+    category: "Retail",
+    name: "Harbour Street Home",
+    description:
+      "Irish home goods online store with product catalogue, cart, and checkout.",
+    tags: ["eCommerce", "Online Store"],
+    accent: "text-emerald-400",
+  },
+  {
+    slug: "restaurant",
+    category: "Hospitality",
+    name: "The Copper Yard",
+    description:
+      "Cork pub and restaurant with menus, events listings, and a live table booking system.",
+    tags: ["Website", "Table Booking"],
+    accent: "text-rose-400",
+  },
+  {
+    slug: "accountancy",
+    category: "Professional Services",
+    name: "Clarke & Co. Accountants",
+    description:
+      "Accountancy practice site with service listings, team bios, and a contact/callback form.",
+    tags: ["Website", "Contact Form"],
+    accent: "text-violet-400",
+  },
+  {
+    slug: "fitness",
+    category: "Health & Wellness",
+    name: "Peak Fitness Studio",
+    description:
+      "Gym and fitness studio site with class timetable, membership options, and online sign-up.",
+    tags: ["Website", "Class Booking"],
+    accent: "text-orange-400",
+  },
+  {
+    slug: "fitness-app",
+    category: "Health & Wellness",
+    name: "Peak App — Booking System",
+    description:
+      "Mobile app design for a fitness studio. Class booking, timetable, membership management, and progress tracking.",
+    tags: ["App Design", "Booking"],
+    accent: "text-orange-400",
   },
 ];
 
@@ -107,10 +173,11 @@ export default function Home() {
 
           <nav className="hidden items-center gap-10 text-[13px] tracking-wide text-white/60 md:flex">
             {[
-              ["#services", "Services"],
-              ["#process",  "How we work"],
-              ["/pricing",  "Pricing"],
-              ["#contact",  "Contact"],
+              ["#services",  "Services"],
+              ["#process",   "How we work"],
+              ["#work",      "Our Work"],
+              ["/pricing",   "Pricing"],
+              ["#contact",   "Contact"],
             ].map(([href, label]) => (
               <a
                 key={href}
@@ -150,8 +217,9 @@ export default function Home() {
         </h1>
 
         <p className="mt-7 max-w-2xl text-base leading-relaxed text-white/60 md:text-lg">
-          A Cork-based practice that builds software, advises leadership teams, and
-          shapes brand identity. Discovery-led. Fixed-price. Built properly.
+          We help Irish businesses build the right digital solution. Websites,
+          apps, and tools that actually solve the problem. Properly planned,
+          fairly priced, delivered on time.
         </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -192,9 +260,9 @@ export default function Home() {
           Three disciplines. One practice.
         </h2>
         <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
-          We operate across studio development, strategic consultancy, and brand
-          design — often together on the same engagement, always with clear scope
-          and fixed pricing.
+          We work across software development, strategic consultancy, and brand
+          design. Often together on the same project, always with a clear scope
+          and a fixed price agreed before work begins.
         </p>
 
         <div className="mt-10 grid gap-5 md:grid-cols-3">
@@ -246,9 +314,8 @@ export default function Home() {
             Scope first. Build second.
           </h2>
           <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
-            Every engagement starts with a Discovery Sprint — a fixed-price, time-boxed
-            scope that produces a clear delivery plan, backlog, and quote before a build
-            commitment is made.
+            Every project starts with a planning session. We agree on exactly
+            what needs to be built, at what price, before any work begins.
           </p>
 
           <div className="mt-10 grid gap-4 md:grid-cols-4">
@@ -300,6 +367,124 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── Credentials ── */}
+      <section id="about" className="mx-auto max-w-6xl px-8 py-16 md:py-20">
+        <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
+          Why it matters
+        </p>
+        <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
+          Multinational experience. SME focus.
+        </h2>
+
+        <div className="mt-10 grid gap-8 md:grid-cols-2">
+          {/* Left: paragraphs */}
+          <div className="space-y-5">
+            <p className="text-sm leading-relaxed text-white/60">
+              OTwoOne is led by someone who has spent over a decade inside
+              large-scale multinational operations, including leading customer
+              experience and regulatory teams at Amazon. That includes guiding
+              the company through GDPR compliance across multiple European
+              markets.
+            </p>
+            <p className="text-sm leading-relaxed text-white/60">
+              What that means for you: we understand how to build things that
+              actually work at scale, how to navigate data protection and
+              regulatory requirements, and how to bring enterprise-grade thinking
+              to organisations of any size. Without the enterprise price tag or
+              the complexity.
+            </p>
+
+            {/* GDPR callout */}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 text-base">🔒</span>
+                <div>
+                  <p className="text-sm font-semibold text-white">GDPR & Data Protection</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-white/55">
+                    We have hands-on experience navigating GDPR compliance at
+                    scale, including policy design, team training, and
+                    cross-functional implementation. If your project involves
+                    personal data, customer records, or regulated information,
+                    we know the landscape.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: stat chips */}
+          <div className="flex flex-col justify-center gap-4">
+            {[
+              { stat: "10+ years", label: "Multinational sector experience" },
+              { stat: "Amazon", label: "Customer experience & regulatory leadership" },
+              { stat: "GDPR", label: "Hands-on compliance implementation" },
+            ].map((item) => (
+              <div
+                key={item.stat}
+                className="flex items-center gap-5 rounded-2xl border border-white/10
+                           bg-white/[0.03] p-5"
+              >
+                <span className="text-2xl font-semibold tracking-tight text-white">
+                  {item.stat}
+                </span>
+                <span className="text-sm text-white/50">{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Our Work ── */}
+      <section id="work" className="mx-auto max-w-6xl px-8 py-16 md:py-20">
+        <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
+          Our work
+        </p>
+        <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
+          What we build
+        </h2>
+        <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
+          A flavour of what OTwoOne delivers. Across sectors, for businesses of
+          all sizes.
+        </p>
+
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 md:grid-cols-3">
+          {EXAMPLES.map((ex) => (
+            <a
+              key={ex.slug}
+              href={`/work/${ex.slug}`}
+              className="group flex flex-col rounded-2xl border border-white/10
+                         bg-white/[0.03] p-6 transition-all duration-300
+                         hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.06]"
+            >
+              <p className={`text-xs font-semibold tracking-widest uppercase ${ex.accent}`}>
+                {ex.category}
+              </p>
+              <h3 className="mt-2 font-semibold text-white">{ex.name}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-white/55 flex-1">
+                {ex.description}
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {ex.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full border border-white/10 px-2.5 py-0.5
+                               text-xs text-white/40"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+
+              <p className="mt-4 text-sm font-semibold text-white/40
+                            transition-colors group-hover:text-white/70">
+                View demo →
+              </p>
+            </a>
+          ))}
+        </div>
+      </section>
+
       {/* ── Contact CTA ── */}
       <section id="contact" className="mx-auto max-w-6xl px-8 py-16 md:py-24">
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 md:p-12">
@@ -307,11 +492,12 @@ export default function Home() {
             Get started
           </p>
           <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
-            Start with a Discovery Sprint.
+            Let&apos;s talk about what you need.
           </h2>
           <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
-            Tell us what you&apos;re building or what you need. We&apos;ll review your brief and
-            come back with a scope, timeline, and fixed quote within one business day.
+            Tell us about your project or challenge. We&apos;ll review your details
+            and come back with a clear plan, timeline, and fixed price within
+            one business day.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -369,8 +555,8 @@ export default function Home() {
                 Company
               </p>
               {[
-                ["/pricing",         "How we price"],
-                ["/elevate",         "Start a project"],
+                ["/pricing",              "How we price"],
+                ["/elevate",              "Start a project"],
                 ["mailto:info@otwoone.ie", "Contact"],
               ].map(([href, label]) => (
                 <a key={href} href={href} className="hover:text-white transition-colors">{label}</a>
