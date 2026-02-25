@@ -27,20 +27,20 @@ const PILLARS: PillarDef[] = [
   {
     key: "studio",
     label: "Studio Development",
-    sub: "Websites · Apps · MVPs · Systems",
-    desc: "Engineering from Discovery Sprint to full build and ongoing pod retainer.",
+    sub: "Websites · Apps · Digital Tools · Systems",
+    desc: "Websites, apps, and digital tools. Built properly and delivered on time.",
   },
   {
     key: "consultancy",
     label: "Consultancy",
-    sub: "CTO Advisory · AI/Automation · Delivery Review",
-    desc: "Strategic and technical advisory to navigate decisions and scale delivery.",
+    sub: "Technology Advice · AI/Automation · Process Review",
+    desc: "Expert technology advice for business owners making important decisions.",
   },
   {
     key: "branding",
     label: "Branding & Design",
-    sub: "Identity · Visual Systems · Design",
-    desc: "Positioning, messaging, and visual identity — from foundation to full design system.",
+    sub: "Identity · Messaging · Visual Systems",
+    desc: "Brand strategy, visual identity, and design that tells the right story.",
   },
 ];
 
@@ -245,8 +245,38 @@ export default function ElevatePage() {
               Tell us what you need
             </h1>
             <p className="mt-1 text-sm md:text-base text-white/60">
-              We&apos;ll review your brief and come back with a scope and fixed price within one business day.
+              Fill in your details below. Once received, we&apos;ll review your brief,
+              prepare a quote, and come back within one business day to arrange a
+              scoping call.
             </p>
+          </div>
+        </div>
+
+        {/* Step 1 of 5 progress indicator */}
+        <div className="mb-8 rounded-2xl border border-white/8 bg-white/[0.02] p-5">
+          <div className="flex items-center gap-3">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs font-bold text-black shrink-0">
+              1
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-white">Step 1 of 5 · Tell us what you need</p>
+              <p className="text-xs text-white/40 mt-0.5">Fill in the form below and submit your brief</p>
+            </div>
+          </div>
+          <div className="mt-4 ml-3.5 pl-6 border-l border-white/10 space-y-2">
+            {[
+              { n: "2", label: "We review & send a quote" },
+              { n: "3", label: "Scoping call or meeting" },
+              { n: "4", label: "You accept & pay deposit" },
+              { n: "5", label: "Build begins" },
+            ].map((step) => (
+              <div key={step.n} className="flex items-center gap-3">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white/15 text-[10px] text-white/35 shrink-0">
+                  {step.n}
+                </span>
+                <span className="text-xs text-white/35">{step.label}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -321,7 +351,7 @@ export default function ElevatePage() {
             <div className={cx(S.section, S.divider)}>
               <h2 className={S.h2}>Studio Development</h2>
               <p className="mt-1.5 text-sm text-white/50">
-                A few details to help us understand the build.
+                Tell us a little about what you&apos;re looking to build.
               </p>
               <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Sel
@@ -329,33 +359,33 @@ export default function ElevatePage() {
                   value={studioWhat}
                   onChange={setStudioWhat}
                   options={[
-                    "MVP / new product",
-                    "Existing system rebuild or upgrade",
-                    "Marketing or growth website",
-                    "Internal tool or dashboard",
+                    "A new product or service",
+                    "An upgrade or rebuild of something that already exists",
+                    "A website to grow or promote my business",
+                    "An internal tool or dashboard for my team",
                     "Not sure yet",
                   ]}
                   span2
                 />
                 <Sel
-                  label="Preferred engagement type"
+                  label="How would you like to work together?"
                   value={studioEngType}
                   onChange={setStudioEngType}
                   options={[
-                    "Discovery Sprint first (scope before build)",
+                    "Start with a planning session before any build",
                     "Fixed-price project",
-                    "Ongoing engineering pod retainer",
+                    "Ongoing development support (monthly)",
                     "Not sure yet",
                   ]}
                 />
                 <Sel
-                  label="Current codebase?"
+                  label="Is there existing work to build on?"
                   value={studioCodebase}
                   onChange={setStudioCodebase}
                   options={[
-                    "Greenfield (starting from scratch)",
-                    "Existing codebase",
-                    "Partial / prototype",
+                    "Starting from scratch",
+                    "Yes, there's an existing system or codebase",
+                    "There's a prototype or partial build",
                     "Not applicable",
                   ]}
                 />
@@ -368,7 +398,7 @@ export default function ElevatePage() {
             <div className={cx(S.section, S.divider)}>
               <h2 className={S.h2}>Consultancy</h2>
               <p className="mt-1.5 text-sm text-white/50">
-                Help us understand the kind of support you need.
+                Tell us about the kind of help you&apos;re looking for.
               </p>
               <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Sel
@@ -376,10 +406,10 @@ export default function ElevatePage() {
                   value={conSupport}
                   onChange={setConSupport}
                   options={[
-                    "Fractional CTO / technical leadership",
-                    "AI & automation opportunity assessment",
-                    "Delivery & process audit",
-                    "Value-based / outcome-tied engagement",
+                    "Part-time technology director or tech leadership",
+                    "Advice on using AI or automation to improve my business",
+                    "A review of how my team works and delivers",
+                    "Outcome-based advisory",
                     "Not sure yet",
                   ]}
                   span2
@@ -389,9 +419,9 @@ export default function ElevatePage() {
                   value={conCadence}
                   onChange={setConCadence}
                   options={[
-                    "One-off assessment",
+                    "One-off review or assessment",
                     "Monthly advisory",
-                    "Ongoing embedded",
+                    "Ongoing, embedded support",
                     "Not sure yet",
                   ]}
                 />
@@ -415,7 +445,7 @@ export default function ElevatePage() {
             <div className={cx(S.section, S.divider)}>
               <h2 className={S.h2}>Branding & Design</h2>
               <p className="mt-1.5 text-sm text-white/50">
-                Tell us about your identity needs.
+                Tell us about your brand and what you need.
               </p>
               <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Sel
@@ -423,11 +453,11 @@ export default function ElevatePage() {
                   value={brandNeed}
                   onChange={setBrandNeed}
                   options={[
-                    "Brand Foundation (positioning & messaging)",
-                    "Visual Identity Kit (logo, palette, typography)",
-                    "Brand + Website launch package",
-                    "Design System Starter",
-                    "Ongoing brand / design retainer",
+                    "Brand strategy and messaging (what we stand for and how we say it)",
+                    "Full visual identity (logo, colours, fonts, brand guide)",
+                    "Brand and website together",
+                    "Design guidelines and component library for a digital product",
+                    "Ongoing brand or design support",
                     "Not sure yet",
                   ]}
                   span2
@@ -438,8 +468,8 @@ export default function ElevatePage() {
                   onChange={setBrandExisting}
                   options={[
                     "Starting from scratch",
-                    "Have some elements",
-                    "Full rebrand needed",
+                    "We have some brand elements but need more",
+                    "Full rebrand of an existing brand",
                   ]}
                 />
                 <Sel
@@ -447,8 +477,8 @@ export default function ElevatePage() {
                   value={brandOutput}
                   onChange={setBrandOutput}
                   options={[
-                    "Strategy / positioning document",
-                    "Visual assets only",
+                    "Strategy and messaging document",
+                    "Visual assets (logo, colours, fonts)",
                     "Both strategy + visual assets",
                   ]}
                 />
@@ -460,7 +490,7 @@ export default function ElevatePage() {
           <div className={cx(S.section, S.divider)}>
             <h2 className={S.h2}>Budget &amp; timeline</h2>
             <p className="mt-1.5 text-sm text-white/50">
-              Rough guidance — it helps us respond accurately.
+              This helps us tailor our response. No commitment required.
             </p>
             <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
               <Sel
@@ -492,7 +522,7 @@ export default function ElevatePage() {
                 <div className={S.label}>Anything else we should know?</div>
                 <textarea
                   className={S.textarea}
-                  placeholder="Optional — context, goals, links, what success looks like…"
+                  placeholder="Optional — tell us anything else that's useful. What does success look like? Any links? Any deadlines?"
                   value={extra}
                   onChange={(e) => setExtra(e.target.value)}
                 />
@@ -549,7 +579,7 @@ export default function ElevatePage() {
           {/* ─── Submit ─── */}
           <div className="mt-8 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-white/35 max-w-xs leading-relaxed">
-              By submitting, you&apos;re asking OTwoOne to review your brief and respond by email.
+              Submitting this form asks OTwoOne to review your details and get back to you by email.
               We respond within one business day.
             </p>
             <button
