@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { createSharePointItem, mapSubmissionToFields } from "@/lib/sharepoint";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
@@ -63,16 +64,159 @@ function humanizeKey(raw: string) {
 
 /**
  * Internal estimator.
- * - Supports V1 keys (current form): need_help, website_type, has_branding, branding_need, budget, timing
- * - Supports V2 keys (future): services[], primary_service, website{...}, branding{...}
  *
- * Solo OTwoOne support model:
- * - Branding-only => no recurring recommendation (support=null)
- * - Website => essential by default, growth if multi/large
- * - Automation => partner
+ * V3 (pillar-based, new form):
+ *   answers.pillars          string[]  — ["studio", "consultancy", "branding"]
+ *   answers.primary_pillar   string
+ *   answers.studio           { what, eng_type, codebase }
+ *   answers.consultancy      { support, frequency, team_size }
+ *   answers.branding         { need, existing, output }
+ *   answers.budget           string    — e.g. "€5k–€15k"
+ *   answers.timing           string    — e.g. "ASAP"
+ *
+ * V1 (legacy, old form — preserved for hub history):
+ *   answers.need_help, website_type, has_branding, branding_need, budget, timing
  */
 function computeQuote(answers: any): ComputedResult {
-  // ---------- Service mapping (V2 first, then fallback to V1) ----------
+  const pillars: string[] =
+    Array.isArray(answers?.pillars) && answers.pillars.length ? answers.pillars : [];
+
+  // ══════════════════════════════════════════════════════════════════════
+  // V3 path — pillar-based (new Elevate form)
+  // ══════════════════════════════════════════════════════════════════════
+  if (pillars.length > 0) {
+    const primaryPillar: string = answers?.primary_pillar ?? pillars[0] ?? "unknown";
+    const studio       = answers?.studio       ?? {};
+    const consultancy  = answers?.consultancy  ?? {};
+    const branding     = answers?.branding     ?? {};
+    const budget       = String(answers?.budget  ?? "").toLowerCase();
+    const timing       = String(answers?.timing  ?? "").toLowerCase();
+
+    let low  = 0;
+    let high = 0;
+    const drivers:     string[] = [];
+    const assumptions: string[] = [];
+    const followups:   string[] = [];
+
+    const add = (l: number, h: number, label?: string) => {
+      low  += l;
+      high += h;
+      if (label) drivers.push(label);
+    };
+
+    // ── Studio ──────────────────────────────────────────────────────────
+    if (pillars.includes("studio")) {
+      const what    = String(studio?.what     ?? "").toLowerCase();
+      const engType = String(studio?.eng_type ?? "").toLowerCase();
+      const codebase= String(studio?.codebase ?? "").toLowerCase();
+
+      if (engType.includes("pod") || engType.includes("retainer")) {
+        add(18000, 18000, "Studio: Engineering Pod Retainer (per month)");
+        assumptions.push("Engineering Pod is priced per month; 3-month minimum applies");
+      } else if (what.includes("mvp") || what.includes("new")) {
+        add(45000, 90000, "Studio: MVP Build");
+        assumptions.push("MVP final quote follows Discovery Sprint");
+      } else if (what.includes("marketing") || what.includes("site")) {
+        add(12000, 35000, "Studio: Marketing / Growth Site");
+      } else if (what.includes("internal")) {
+        add(12000, 35000, "Studio: Internal Tool Build");
+      } else {
+        // Scope unclear — price a Discovery Sprint as the entry point
+        add(8500, 11000, "Studio: Discovery Sprint (assumed entry point)");
+        assumptions.push("Build quote will follow Discovery Sprint scoping");
+        followups.push("Confirm project type to refine build estimate");
+      }
+
+      // Existing codebase uplift
+      if (codebase.includes("existing")) {
+        add(1500, 5000, "Existing codebase complexity uplift");
+        assumptions.push("Existing codebase review required before final quote");
+      }
+    }
+
+    // ── Consultancy ──────────────────────────────────────────────────────
+    if (pillars.includes("consultancy")) {
+      const support = String(consultancy?.support ?? "").toLowerCase();
+
+      if (support.includes("cto") || support.includes("fractional")) {
+        add(2500, 2500, "Consultancy: Fractional CTO Advisory (per month)");
+        assumptions.push("Fractional CTO is priced per month");
+      } else if (support.includes("ai") || support.includes("automation")) {
+        add(7500, 10000, "Consultancy: AI & Automation Assessment");
+      } else if (support.includes("delivery") || support.includes("audit")) {
+        add(5500, 8000, "Consultancy: Delivery & Utilisation Tune-Up");
+      } else {
+        add(5500, 10000, "Consultancy: Assessment (type TBC)");
+        followups.push("Confirm consultancy type — Fractional CTO / AI & Automation / Delivery Tune-Up");
+      }
+    }
+
+    // ── Branding ─────────────────────────────────────────────────────────
+    if (pillars.includes("branding")) {
+      const need = String(branding?.need ?? "").toLowerCase();
+
+      if (need.includes("brand_website") || need.includes("website")) {
+        add(18000, 35000, "Branding: Brand + Website Launch");
+      } else if (need.includes("design_system") || need.includes("system")) {
+        add(8500, 12000, "Branding: Design System Starter");
+      } else if (need.includes("visual_identity") || need.includes("visual")) {
+        add(11000, 15000, "Branding: Visual Identity Kit");
+      } else if (need.includes("brand_foundation") || need.includes("foundation")) {
+        add(7500, 10000, "Branding: Brand Foundation");
+      } else if (need.includes("retainer")) {
+        add(2500, 4000, "Branding: Brand/Design Retainer (per month)");
+        assumptions.push("Brand Retainer is priced per month; 3-month minimum applies");
+      } else {
+        // Default to Brand Foundation as starting point
+        add(7500, 10000, "Branding: Brand Foundation (assumed scope)");
+        followups.push("Clarify branding scope — Foundation / Identity Kit / Brand + Website / Design System");
+      }
+    }
+
+    // ── Multi-pillar coordination uplift ─────────────────────────────────
+    if (pillars.length >= 2) {
+      add(1500, 3000, "Multi-discipline coordination");
+    }
+
+    // ── ASAP timing: +15% urgency uplift ─────────────────────────────────
+    if (timing.includes("asap")) {
+      low  = Math.round(low  * 1.15);
+      high = Math.round(high * 1.15);
+      assumptions.push("ASAP timeline: 15% urgency uplift applied");
+    }
+
+    // ── Confidence ───────────────────────────────────────────────────────
+    let confidence: Confidence = "high";
+
+    if (!pillars.length || primaryPillar === "unknown") {
+      confidence = "low";
+    } else if (followups.length > 0) {
+      confidence = "medium";
+    }
+
+    if (budget.includes("prefer") || budget.includes("discuss")) {
+      if (confidence === "high") confidence = "medium";
+      assumptions.push("Budget not disclosed — range is preliminary");
+    } else if (budget.includes("<€3") || (budget.includes("3k") && budget.includes("–"))) {
+      assumptions.push("Indicated budget may be below typical project range — scope review recommended");
+    }
+
+    // ── Round ─────────────────────────────────────────────────────────────
+    low  = clampMoney(low);
+    high = clampMoney(Math.max(high, low + 500));
+
+    return {
+      quote: { currency: "EUR", low, high, confidence, drivers, assumptions },
+      support: null, // no recurring support tiers in new model
+      followups,
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // V1 (legacy) path — preserved for hub history / old submissions
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ---------- Service mapping (V1) ----------
   const serviceFromV1 = String(answers?.need_help ?? "").toLowerCase();
 
   const services: string[] =
@@ -80,73 +224,61 @@ function computeQuote(answers: any): ComputedResult {
       ? answers.services
       : serviceFromV1
       ? [
-          serviceFromV1.includes("website") ? "website" : "",
-          serviceFromV1.includes("automation") ? "automation" : "",
-          serviceFromV1.includes("backend") ? "automation" : "",
-          serviceFromV1.includes("branding") ? "branding" : "",
-          serviceFromV1.includes("consult") ? "strategy" : "",
-          serviceFromV1.includes("not sure") ? "unknown" : "",
+          serviceFromV1.includes("website")    ? "website"    : "",
+          serviceFromV1.includes("automation")  ? "automation" : "",
+          serviceFromV1.includes("backend")     ? "automation" : "",
+          serviceFromV1.includes("branding")    ? "branding"   : "",
+          serviceFromV1.includes("consult")     ? "strategy"   : "",
+          serviceFromV1.includes("not sure")    ? "unknown"    : "",
         ].filter(Boolean)
       : [];
 
   const primary: string = answers?.primary_service ?? services[0] ?? "unknown";
 
-  // ---------- Accumulators ----------
-  let low = 0;
+  let low  = 0;
   let high = 0;
-
-  const drivers: string[] = [];
+  const drivers:     string[] = [];
   const assumptions: string[] = [];
-  const followups: string[] = [];
+  const followups:   string[] = [];
 
   const add = (l: number, h: number, label?: string) => {
-    low += l;
+    low  += l;
     high += h;
     if (label) drivers.push(label);
   };
 
-  // ---------- V1 signals ----------
-  const websiteTypeV1 = String(answers?.website_type ?? "").toLowerCase(); // e.g. "multi"
-  const hasBrandingV1 = String(answers?.has_branding ?? "").toLowerCase(); // "no" | "partial" | "yes"
-  const brandingNeedV1 = String(answers?.branding_need ?? "").trim().toLowerCase(); // e.g. "logo", "identity"
-  const budgetV1 = String(answers?.budget ?? "").toLowerCase();
-  const timingV1 = String(answers?.timing ?? "").toLowerCase();
+  const websiteTypeV1  = String(answers?.website_type  ?? "").toLowerCase();
+  const hasBrandingV1  = String(answers?.has_branding  ?? "").toLowerCase();
+  const brandingNeedV1 = String(answers?.branding_need ?? "").trim().toLowerCase();
+  const budgetV1       = String(answers?.budget        ?? "").toLowerCase();
+  const timingV1       = String(answers?.timing        ?? "").toLowerCase();
 
-  // ---------- V2 objects ----------
-  const w = answers?.website ?? {};
+  const w = answers?.website  ?? {};
   const b = answers?.branding ?? {};
 
   // ---------- Bases ----------
-  if (services.includes("website")) add(2500, 4000, "Website base");
+  if (services.includes("website"))    add(2500, 4000, "Website base");
   if (services.includes("automation")) add(2000, 5000, "Systems base");
-  if (services.includes("branding")) add(800, 2500, "Branding base");
-  if (services.includes("strategy")) add(600, 1500, "Strategy base");
+  if (services.includes("branding"))   add(800,  2500, "Branding base");
+  if (services.includes("strategy"))   add(600,  1500, "Strategy base");
 
-  // ---------- Website modifiers (V2 + V1 fallback) ----------
+  // ---------- Website modifiers ----------
   if (services.includes("website")) {
-    // V2 pages
-    if (w.pages === "2_5") add(600, 1200, "Pages: 2–5");
+    if (w.pages === "2_5")       add(600,  1200, "Pages: 2–5");
     else if (w.pages === "6_10") add(1200, 2400, "Pages: 6–10");
     else if (w.pages === "10_plus") add(2400, 4500, "Pages: 10+");
 
-    // V2 integrations
     const integrations: string[] = Array.isArray(w.integrations) ? w.integrations : [];
     if (integrations.length) {
-      add(
-        250 * integrations.length,
-        600 * integrations.length,
-        `Integrations: ${integrations.length}`
-      );
+      add(250 * integrations.length, 600 * integrations.length, `Integrations: ${integrations.length}`);
     }
 
-    // V2 content readiness
     if (w.content_ready === "none") add(600, 1500, "Content support needed");
 
-    // V1 website type fallback
     if (websiteTypeV1) {
-      if (websiteTypeV1.includes("multi")) add(800, 1600, "Website: multi-page");
-      if (websiteTypeV1.includes("landing")) add(0, 400, "Website: landing page");
-      if (websiteTypeV1.includes("ecom")) add(2500, 5000, "Website: ecommerce");
+      if (websiteTypeV1.includes("multi"))   add(800,  1600, "Website: multi-page");
+      if (websiteTypeV1.includes("landing")) add(0,    400,  "Website: landing page");
+      if (websiteTypeV1.includes("ecom"))    add(2500, 5000, "Website: ecommerce");
     } else if (!w.pages) {
       followups.push("Confirm website size / page count");
     }
@@ -154,20 +286,21 @@ function computeQuote(answers: any): ComputedResult {
 
   // ---------- Branding modifiers ----------
   if (services.includes("branding")) {
-    if (b.scope === "refresh") add(600, 1200, "Brand refresh");
+    if (b.scope === "refresh")         add(600,  1200, "Brand refresh");
     else if (b.scope === "full_identity") add(1500, 3000, "Full identity");
     else if (!brandingNeedV1) followups.push("Branding: refresh or full identity?");
   } else {
-    // V1 branding signal (used for quote only; not for support recurring)
-    if (hasBrandingV1 === "no") add(600, 1500, "Branding needed");
-    if (hasBrandingV1 === "partial") add(300, 900, "Branding partial");
+    if (hasBrandingV1 === "no")      add(600, 1500, "Branding needed");
+    if (hasBrandingV1 === "partial") add(300, 900,  "Branding partial");
     if (brandingNeedV1) drivers.push(`Branding need: ${brandingNeedV1}`);
   }
 
-  // ---------- Bundle uplift (quote only) ----------
-  // This reflects coordination effort (even if branding is project-based).
+  // ---------- Bundle uplift ----------
   const hasAnyBrandingSignal =
-    services.includes("branding") || hasBrandingV1 === "no" || hasBrandingV1 === "partial" || Boolean(brandingNeedV1);
+    services.includes("branding") ||
+    hasBrandingV1 === "no" ||
+    hasBrandingV1 === "partial" ||
+    Boolean(brandingNeedV1);
 
   if (services.includes("website") && hasAnyBrandingSignal) {
     add(300, 800, "Website + Branding alignment");
@@ -175,65 +308,38 @@ function computeQuote(answers: any): ComputedResult {
 
   // ---------- Confidence ----------
   let confidence: Confidence = "high";
-
-  if (!services.length || services.includes("unknown") || primary === "unknown") {
-    confidence = "low";
-  }
-
-  if (services.includes("website") && !w.pages && !websiteTypeV1) confidence = "medium";
+  if (!services.length || services.includes("unknown") || primary === "unknown") confidence = "low";
+  if (services.includes("website")  && !w.pages && !websiteTypeV1)  confidence = "medium";
   if (services.includes("branding") && !b.scope && !brandingNeedV1) confidence = "medium";
 
-  // ---------- Light heuristics ----------
   if (budgetV1.includes("under") && (budgetV1.includes("3k") || budgetV1.includes("3000"))) {
     assumptions.push("Budget indicated: under €3k (may require phased scope)");
     high += 250;
   }
-
   if (timingV1.includes("asap")) {
     assumptions.push("Timeline: ASAP (may require prioritisation / phased delivery)");
   }
 
-  // ---------- Round + ensure sensible width ----------
-  low = clampMoney(low);
+  low  = clampMoney(low);
   high = clampMoney(Math.max(high, low + 500));
 
-  // ---------- SUPPORT RECOMMENDATION (Solo OTwoOne model) ----------
+  // ---------- Support recommendation (V1 model) ----------
   let support: ComputedSupport = null;
-
-  // Automation => Partner
   if (services.includes("automation")) {
     const monthly = 249;
     support = { recommended: "partner", monthly, annual_value: monthly * 12 };
-  }
-  // Website => Essential (default), Growth if multi/large
-  else if (services.includes("website")) {
+  } else if (services.includes("website")) {
     let recommended: "essential" | "growth" = "essential";
     let monthly = 79;
-
-    const isLargerWebsite =
+    const isLarger =
       websiteTypeV1.includes("multi") ||
-      w.pages === "2_5" ||
-      w.pages === "6_10" ||
-      w.pages === "10_plus";
-
-    if (isLargerWebsite) {
-      recommended = "growth";
-      monthly = 149;
-    }
-
+      w.pages === "2_5" || w.pages === "6_10" || w.pages === "10_plus";
+    if (isLarger) { recommended = "growth"; monthly = 149; }
     support = { recommended, monthly, annual_value: monthly * 12 };
   }
-  // Branding-only => support stays null
 
   return {
-    quote: {
-      currency: "EUR",
-      low,
-      high,
-      confidence,
-      drivers,
-      assumptions,
-    },
+    quote: { currency: "EUR", low, high, confidence, drivers, assumptions },
     support,
     followups,
   };
@@ -294,19 +400,58 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2) Attempt email notification
+    // 2) SharePoint sync — runs concurrently with email, non-blocking on failure
+    const spSyncPromise: Promise<{ spOk: boolean; spItemId?: string; spError?: string }> =
+      (async () => {
+        try {
+          const fields = mapSubmissionToFields({
+            ...inserted,
+            id: inserted.id,
+            answers,
+          });
+          const result = await createSharePointItem(fields);
+          if (result.ok) {
+            await supabaseServer
+              .from("intake_submissions")
+              .update({
+                sharepoint_item_id: result.itemId,
+                sharepoint_synced_at: new Date().toISOString(),
+                sharepoint_sync_error: null,
+              })
+              .eq("id", inserted.id);
+            return { spOk: true, spItemId: result.itemId };
+          } else {
+            await supabaseServer
+              .from("intake_submissions")
+              .update({ sharepoint_sync_error: result.error })
+              .eq("id", inserted.id);
+            return { spOk: false, spError: result.error };
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          await supabaseServer
+            .from("intake_submissions")
+            .update({ sharepoint_sync_error: msg })
+            .eq("id", inserted.id);
+          return { spOk: false, spError: msg };
+        }
+      })();
+
+    // 3) Attempt email notification
     const notifyEmail = process.env.ELEVATE_NOTIFY_EMAIL;
 
     let emailResult: EmailResult = { attempted: false };
 
     if (!RESEND_API_KEY) {
       emailResult = { attempted: false, reason: "Missing RESEND_API_KEY" };
-      return NextResponse.json({ success: true, id: inserted.id, email: emailResult });
+      const spResult = await spSyncPromise;
+      return NextResponse.json({ success: true, id: inserted.id, email: emailResult, sharepoint: spResult });
     }
 
     if (!notifyEmail) {
       emailResult = { attempted: false, reason: "Missing ELEVATE_NOTIFY_EMAIL" };
-      return NextResponse.json({ success: true, id: inserted.id, email: emailResult });
+      const spResult = await spSyncPromise;
+      return NextResponse.json({ success: true, id: inserted.id, email: emailResult, sharepoint: spResult });
     }
 
     try {
@@ -570,7 +715,8 @@ export async function POST(req: Request) {
       emailResult = { attempted: true, sent: false, error: toErrorMessage(err) };
     }
 
-    return NextResponse.json({ success: true, id: inserted.id, email: emailResult });
+    const spResult = await spSyncPromise;
+    return NextResponse.json({ success: true, id: inserted.id, email: emailResult, sharepoint: spResult });
   } catch (e: unknown) {
     return NextResponse.json(
       { error: "Invalid request", details: toErrorMessage(e) },

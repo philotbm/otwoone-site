@@ -1,20 +1,99 @@
-// deploy trigger
-
 import Image from "next/image";
 
-const PRICING_ANCHOR = {
-  starter: "from €1,800",
-  growth: "from €3,500",
-  systems: "from €5,000",
-};
+// ─── Data ────────────────────────────────────────────────────────────────────
+
+const PILLARS = [
+  {
+    label: "Studio",
+    headline: "Engineering that ships.",
+    description:
+      "From rapid Discovery Sprints to full MVP builds and ongoing engineering pods. We scope clearly, price fixed, and deliver shippable software.",
+    offers: [
+      "Discovery Sprint",
+      "Technical Audit & Roadmap",
+      "Prototype Sprint",
+      "MVP Build",
+      "Engineering Pod Retainer",
+      "Stabilisation & Performance Care",
+    ],
+    accent: "border-white/20",
+  },
+  {
+    label: "Consultancy",
+    headline: "Clarity when it matters most.",
+    description:
+      "Strategic and technical advisory for companies navigating a decision, scaling a team, or unlocking value through AI and automation.",
+    offers: [
+      "Fractional CTO Advisory",
+      "AI & Automation Assessment",
+      "Delivery & Utilisation Tune-Up",
+      "Value-Based Engagement",
+    ],
+    accent: "border-white/20",
+  },
+  {
+    label: "Branding",
+    headline: "Identity built to last.",
+    description:
+      "Positioning, messaging, and visual systems designed to unify your brand and product. From foundational strategy to full design-system delivery.",
+    offers: [
+      "Brand Foundation",
+      "Visual Identity Kit",
+      "Brand + Website Launch",
+      "Design System Starter",
+      "Brand / Design Retainer",
+    ],
+    accent: "border-white/20",
+  },
+];
+
+const PROCESS_STEPS = [
+  {
+    n: "01",
+    title: "Discovery",
+    body: "Every engagement starts here. A fixed-price sprint to map the problem, scope deliverables, and produce a clear delivery plan before a euro is committed to build.",
+  },
+  {
+    n: "02",
+    title: "Proposal",
+    body: "You receive a fixed-price proposal with defined deliverables, acceptance criteria, and timeline. No hourly estimates. No scope creep surprises.",
+  },
+  {
+    n: "03",
+    title: "Delivery",
+    body: "Sprint-based execution with regular demos, QA gates, and structured handover. Code is documented. Decisions are recorded.",
+  },
+  {
+    n: "04",
+    title: "Ongoing",
+    body: "After launch: retainer or stabilisation care. We don't disappear. We build responsibly and stay engaged on the terms that make sense.",
+  },
+];
+
+const DIFFERENTIATORS = [
+  {
+    title: "Package-led, not hourly.",
+    body: "We don't sell time. Every engagement is scoped and priced as a package — so you know the investment before you commit.",
+  },
+  {
+    title: "Outcome-accountable.",
+    body: "We carry delivery risk. If scope is met, the project is done. Bugs in the original build are our problem, not an extra invoice.",
+  },
+  {
+    title: "Cork-based. Ireland-native.",
+    body: "We understand Irish business, GDPR, and the local market. Expansion to UK/EU is structured, not assumed.",
+  },
+];
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Top bar */}
-      <header className="sticky top-0 z-50 border-b border-white/5 bg-black/70 backdrop-blur">
+
+      {/* ── Header ── */}
+      <header className="sticky top-0 z-50 border-b border-white/5 bg-black/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-8 py-3">
-          {/* Logo */}
           <a href="#" className="flex items-center gap-3 transition-opacity duration-200 hover:opacity-80">
             <Image
               src="/branding/otwoone-logo.png"
@@ -26,356 +105,282 @@ export default function Home() {
             />
           </a>
 
-          {/* Nav */}
           <nav className="hidden items-center gap-10 text-[13px] tracking-wide text-white/60 md:flex">
-            <a href="#services" className="relative transition-colors duration-200 hover:text-white after:absolute after:-bottom-1 after:left-0 after:h-[1px] after:w-0 after:bg-white after:transition-all after:duration-200 hover:after:w-full">
-              Services
-            </a>
-            <a href="#proof" className="relative transition-colors duration-200 hover:text-white after:absolute after:-bottom-1 after:left-0 after:h-[1px] after:w-0 after:bg-white after:transition-all after:duration-200 hover:after:w-full">
-              Examples
-            </a>
-            <a href="#pricing" className="relative transition-colors duration-200 hover:text-white after:absolute after:-bottom-1 after:left-0 after:h-[1px] after:w-0 after:bg-white after:transition-all after:duration-200 hover:after:w-full">
-              Pricing
-            </a>
-            <a href="#process" className="relative transition-colors duration-200 hover:text-white after:absolute after:-bottom-1 after:left-0 after:h-[1px] after:w-0 after:bg-white after:transition-all after:duration-200 hover:after:w-full">
-              Process
-            </a>
-            <a href="#contact" className="relative transition-colors duration-200 hover:text-white after:absolute after:-bottom-1 after:left-0 after:h-[1px] after:w-0 after:bg-white after:transition-all after:duration-200 hover:after:w-full">
-              Contact
-            </a>
+            {[
+              ["#services", "Services"],
+              ["#process",  "How we work"],
+              ["/pricing",  "Pricing"],
+              ["#contact",  "Contact"],
+            ].map(([href, label]) => (
+              <a
+                key={href}
+                href={href}
+                className="relative transition-colors duration-200 hover:text-white
+                           after:absolute after:-bottom-1 after:left-0 after:h-[1px]
+                           after:w-0 after:bg-white after:transition-all after:duration-200
+                           hover:after:w-full"
+              >
+                {label}
+              </a>
+            ))}
           </nav>
 
-          {/* CTA */}
           <a
-            href="#contact"
-            className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black hover:bg-white/90"
+            href="/elevate"
+            className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black
+                       transition-colors hover:bg-white/90"
           >
-            Talk to us
+            Start a project
           </a>
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="mx-auto max-w-6xl px-8 pb-14 pt-12 md:pb-20 md:pt-16">
-        <div className="grid gap-10 md:grid-cols-12 md:items-center">
-          <div className="md:col-span-7">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white/70">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Cork-based • Ireland &amp; remote
-            </div>
-
-            <h1 className="mt-6 text-4xl font-semibold tracking-[-0.02em] leading-[1.03] md:text-6xl">
-              Websites and systems, built properly.
-            </h1>
-
-            <p className="mt-6 max-w-xl text-base leading-relaxed text-white/65 md:text-lg">
-              We design and build high-performing websites and automation systems for growing companies. Clear scope. Structured delivery. Built to last.
-            </p>
-
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <a
-                href="#contact"
-                className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-black hover:bg-white/90"
-              >
-                Send us a brief
-              </a>
-              <a
-                href="#services"
-                className="inline-flex items-center justify-center rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white/90 hover:border-white/25 hover:text-white"
-              >
-                View services
-              </a>
-            </div>
-
-            <div className="mt-8 flex flex-wrap gap-3 text-sm text-white/60">
-              <span className="rounded-full border border-white/10 px-3 py-1">
-                Strategy &amp; copy
-              </span>
-              <span className="rounded-full border border-white/10 px-3 py-1">
-                Design &amp; brand
-              </span>
-              <span className="rounded-full border border-white/10 px-3 py-1">
-                Next.js builds
-              </span>
-              <span className="rounded-full border border-white/10 px-3 py-1">
-                Automation
-              </span>
-            </div>
-          </div>
-
-          <div className="md:col-span-5 md:-mt-6">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/7">
-              <p className="text-sm font-semibold text-white/80">Project investment guide</p>
-
-              <div className="mt-4 space-y-3 text-sm text-white/70">
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/30 px-5 py-4">
-                  <span>Landing page</span>
-                  <span className="font-semibold text-white/90 leading-snug">{PRICING_ANCHOR.starter}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/30 px-5 py-4">
-                  <span>Website (multi-page)</span>
-                  <span className="font-semibold text-white/90 leading-snug">{PRICING_ANCHOR.growth}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/30 px-5 py-4">
-                  <span>Automation & systems</span>
-                  <span className="font-semibold text-white/90 leading-snug">{PRICING_ANCHOR.systems}</span>
-                </div>
-              </div>
-
-              <p className="mt-5 text-xs leading-relaxed text-white/50">
-                Final pricing depends on scope, content readiness and integrations. We confirm a fixed quote before build.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Services */}
-      <section id="services" className="relative mx-auto max-w-6xl px-8 py-20 md:py-24">
-        <div className="absolute -top-10 left-0 right-0 h-16 bg-gradient-to-b from-black via-black/60 to-transparent pointer-events-none" />
-        <div className="flex items-end justify-between gap-6">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">What we do</h2>
-            <p className="mt-3 max-w-xl text-white/60 leading-relaxed">
-              Simple, high quality delivery, focused on outcomes and quality.
-            </p>
-          </div>
+      {/* ── Hero ── */}
+      <section className="mx-auto max-w-6xl px-8 pb-16 pt-14 md:pb-24 md:pt-20">
+        <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white/70">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          Cork-based · Ireland &amp; UK/EU
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/7">
-            <h3 className="text-lg font-semibold tracking-tight text-white">Websites that convert</h3>
-            <p className="mt-3 text-sm leading-relaxed text-white/65">
-              Premium design, sharp copy, fast load times, mobile-first — built to turn visits
-              into enquiries.
-            </p>
-          </div>
+        <h1 className="mt-7 text-5xl font-semibold tracking-[-0.03em] leading-[1.0] md:text-7xl">
+          Studio.{" "}
+          <span className="text-white/40">Consultancy.</span>
+          <br />
+          Brand.
+        </h1>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/7">
-            <h3 className="text-lg font-semibold tracking-tight text-white">Growth builds</h3>
-            <p className="mt-3 text-sm leading-relaxed text-white/65">
-              Multi-page sites, case studies, SEO foundations, analytics, lead capture and
-              integration-ready structure.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/7">
-            <h3 className="text-lg font-semibold tracking-tight text-white">Automation &amp; systems</h3>
-            <p className="mt-3 text-sm leading-relaxed text-white/65">
-              Quote flows, CRM setup, email automations, lightweight internal tools — remove
-              manual work and keep quality high.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Proof / Examples */}
-      <section id="proof" className="mx-auto max-w-6xl px-8 py-20 md:py-24">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Selected work</h2>
-          <p className="mt-3 max-w-xl text-white/60 leading-relaxed">
-            A small sample of what we ship. We’ll add full case studies as projects go live.
-          </p>
-
-          <div className="mt-8 grid gap-5 md:grid-cols-3">
-            {[
-              {
-                tag: "Landing page",
-                title: "High-converting service page",
-                outcomes: ["Clear CTA hierarchy", "Improved load speed", "Mobile-first layout"],
-              },
-              {
-                tag: "Growth site",
-                title: "Multi-page business build",
-                outcomes: ["Structured case studies", "SEO-ready architecture", "Analytics integration"],
-              },
-              {
-                tag: "Automation",
-                title: "Quote & intake system",
-                outcomes: ["Reduced manual admin", "CRM integration", "Streamlined handover"],
-              },
-            ].map((c) => (
-              <div
-                key={c.title}
-                className="rounded-2xl border border-white/10 bg-black/30 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20"
-              >
-                <div className="text-xs font-semibold text-white/50">{c.tag}</div>
-                <div className="mt-2 text-white font-semibold tracking-tight">
-                  {c.title}
-                </div>
-                <ul className="mt-4 space-y-2 text-sm text-white/65">
-                  {c.outcomes.map((o) => (
-                    <li key={o} className="flex items-center gap-2">
-                      <span className="h-1.5 w-1.5 rounded-full bg-white/40" />
-                      <span>{o}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="pricing" className="mx-auto max-w-6xl px-6 py-12 md:py-16">
-        <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Pricing</h2>
-        <p className="mt-3 max-w-xl text-white/60 leading-relaxed">
-          Clear starting points. Final pricing depends on scope, content readiness, and integrations. You’ll get a fixed quote before we start building.
+        <p className="mt-7 max-w-2xl text-base leading-relaxed text-white/60 md:text-lg">
+          A Cork-based practice that builds software, advises leadership teams, and
+          shapes brand identity. Discovery-led. Fixed-price. Built properly.
         </p>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-black/40 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20">            <p className="text-sm font-semibold text-white/80">Starter</p>
-            <p className="mt-2 text-2xl font-semibold">{PRICING_ANCHOR.starter}</p>
-            <ul className="mt-4 space-y-2 text-sm text-white/70">
-              <li>• Single page / small site</li>
-              <li>• Premium layout + copy polish</li>
-              <li>• Fast delivery</li>
-            </ul>
-          </div>
-
-          <div className="relative rounded-2xl border border-white/20 bg-white/10 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/30">
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-white/90 text-black text-xs font-semibold px-3 py-1">
-              Recommended
-            </div>
-
-            <p className="text-sm font-semibold text-white/80">Growth</p>
-            <p className="mt-2 text-3xl font-semibold tracking-tight">
-              {PRICING_ANCHOR.growth}
-            </p>
-
-            <ul className="mt-4 space-y-2 text-sm text-white/80">
-              <li>Multi-page site</li>
-              <li>Case study structure</li>
-              <li>Analytics + SEO foundation</li>
-            </ul>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-black/40 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20">
-            <p className="text-sm font-semibold text-white/80">Systems</p>
-            <p className="mt-2 text-2xl font-semibold">{PRICING_ANCHOR.systems}</p>
-            <ul className="mt-4 space-y-2 text-sm text-white/70">
-              <li>• Automations &amp; integrations</li>
-              <li>• Quote &amp; intake flows</li>
-              <li>• Internal tooling</li>
-            </ul>
-          </div>
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <a
+            href="/elevate"
+            className="inline-flex items-center justify-center rounded-full bg-white
+                       px-6 py-3 text-sm font-semibold text-black hover:bg-white/90"
+          >
+            Start with Discovery
+          </a>
+          <a
+            href="/pricing"
+            className="inline-flex items-center justify-center rounded-full border
+                       border-white/15 px-6 py-3 text-sm font-semibold text-white/90
+                       hover:border-white/25 hover:text-white"
+          >
+            How we engage →
+          </a>
         </div>
-        {/* Managed platform */}
-        <div className="mt-16 border-t border-white/10 pt-14">
-          <p className="text-xs font-semibold tracking-wider text-white/50 uppercase">
-            Managed platform
-          </p>
 
-          <h3 className="mt-3 text-xl md:text-2xl font-semibold tracking-tight text-white">
-            Your website, professionally managed
-          </h3>
-
-          <p className="mt-3 max-w-2xl text-white/60 leading-relaxed">
-            Every OTwoOne website runs on our managed platform to ensure performance, security and long-term reliability.
-            We don’t deliver projects and disappear.
-            We build properly.
-          </p>
-
-          <p className="mt-6 text-2xl font-semibold tracking-tight text-white">
-            €99 / month{" "}
-            <span className="text-white/50 font-normal">· Minimum 6-month term</span>
-          </p>
-
-          <ul className="mt-6 space-y-3 text-sm text-white/65">
-            <li>• Secure managed hosting</li>
-            <li>• Ongoing framework &amp; security updates</li>
-            <li>• Weekly backups</li>
-            <li>• Uptime &amp; performance monitoring</li>
-            <li>• Minor content updates (up to 30 mins / month)</li>
-            <li>• Bug fixes related to the original build</li>
-            <li>• Direct email support</li>
-          </ul>
-
-          <p className="mt-6 max-w-2xl text-sm text-white/60 leading-relaxed">
-            After 6 months, you can continue, upgrade, or request a structured handover.
-            <br />
-            <span className="text-white/70">We don’t trap clients. We build responsibly.</span>
-          </p>
+        <div className="mt-10 flex flex-wrap gap-2.5 text-xs text-white/50">
+          {["Studio development", "Technical consulting", "Brand &amp; identity", "Design systems", "AI &amp; automation"].map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full border border-white/10 px-3 py-1"
+              dangerouslySetInnerHTML={{ __html: tag }}
+            />
+          ))}
         </div>
       </section>
 
-      {/* Process */}
-      <section id="process" className="mx-auto max-w-6xl px-6 py-12 md:py-16">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-8 md:p-10">
-          <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Process</h2>
-          <p className="mt-3 max-w-xl text-white/60 leading-relaxed">
-            Clear milestones. Product delivered, fully ready to launch.
+      {/* ── Three Pillars ── */}
+      <section id="services" className="mx-auto max-w-6xl px-8 py-20 md:py-24">
+        <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
+          What we do
+        </p>
+        <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
+          Three disciplines. One practice.
+        </h2>
+        <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
+          We operate across studio development, strategic consultancy, and brand
+          design — often together on the same engagement, always with clear scope
+          and fixed pricing.
+        </p>
+
+        <div className="mt-10 grid gap-5 md:grid-cols-3">
+          {PILLARS.map((p) => (
+            <div
+              key={p.label}
+              className="group flex flex-col rounded-2xl border border-white/10
+                         bg-white/[0.03] p-7 transition-all duration-300
+                         hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.06]"
+            >
+              <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
+                {p.label}
+              </p>
+              <h3 className="mt-3 text-xl font-semibold tracking-tight text-white">
+                {p.headline}
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-white/55">
+                {p.description}
+              </p>
+
+              <ul className="mt-6 space-y-2 border-t border-white/8 pt-6">
+                {p.offers.map((o) => (
+                  <li key={o} className="flex items-center gap-2.5 text-sm text-white/60">
+                    <span className="h-1 w-1 shrink-0 rounded-full bg-white/30" />
+                    {o}
+                  </li>
+                ))}
+              </ul>
+
+              <a
+                href="/elevate"
+                className="mt-auto pt-6 text-sm font-semibold text-white/50
+                           transition-colors duration-200 group-hover:text-white/80"
+              >
+                Start a brief →
+              </a>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── How we engage ── */}
+      <section id="process" className="mx-auto max-w-6xl px-8 py-20 md:py-24">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 md:p-12">
+          <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
+            How we engage
+          </p>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
+            Scope first. Build second.
+          </h2>
+          <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
+            Every engagement starts with a Discovery Sprint — a fixed-price, time-boxed
+            scope that produces a clear delivery plan, backlog, and quote before a build
+            commitment is made.
           </p>
 
-          <div className="mt-7 grid gap-4 md:grid-cols-4">
-            {[
-              { k: "01", t: "Scope", d: "Define outcomes, structure, integrations and delivery plan." },
-              { k: "02", t: "Design", d: "Refined layout, clear hierarchy and conversion focus." },
-              { k: "03", t: "Build", d: "Clean code, fast performance and structured integrations." },
-              { k: "04", t: "Launch", d: "QA, analytics setup and a confident go-live." },
-            ].map((s) => (
-              <div key={s.k} className="rounded-xl border border-white/10 bg-black/30 p-5">
-                <div className="text-xs font-semibold text-white/60">{s.k}</div>
-                <div className="mt-2 text-white/90 font-semibold">{s.t}</div>
-                <div className="mt-2 text-sm text-white/70">{s.d}</div>
+          <div className="mt-10 grid gap-4 md:grid-cols-4">
+            {PROCESS_STEPS.map((s) => (
+              <div
+                key={s.n}
+                className="rounded-xl border border-white/10 bg-black/40 p-5"
+              >
+                <div className="text-xs font-semibold tracking-widest text-white/35">{s.n}</div>
+                <div className="mt-3 font-semibold text-white">{s.title}</div>
+                <div className="mt-2.5 text-sm leading-relaxed text-white/55">{s.body}</div>
               </div>
             ))}
           </div>
+
+          <div className="mt-8 flex flex-wrap gap-3">
+            <a
+              href="/pricing"
+              className="inline-flex items-center justify-center rounded-full border
+                         border-white/15 px-5 py-2.5 text-sm font-semibold text-white/80
+                         hover:border-white/25 hover:text-white"
+            >
+              See how pricing works →
+            </a>
+          </div>
         </div>
       </section>
 
-      {/* Contact */}
-      <section id="contact" className="mx-auto max-w-6xl px-6 py-12 md:py-16">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-8 md:p-10">
-          <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
-            Let’s build something sharp.
+      {/* ── Differentiators ── */}
+      <section className="mx-auto max-w-6xl px-8 py-16 md:py-20">
+        <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
+          Why OTwoOne
+        </p>
+        <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
+          Built for outcomes, not activity.
+        </h2>
+
+        <div className="mt-10 grid gap-5 md:grid-cols-3">
+          {DIFFERENTIATORS.map((d) => (
+            <div
+              key={d.title}
+              className="rounded-2xl border border-white/10 bg-white/[0.03] p-6
+                         transition-all duration-300 hover:-translate-y-1 hover:border-white/20"
+            >
+              <h3 className="font-semibold text-white leading-snug">{d.title}</h3>
+              <p className="mt-3 text-sm leading-relaxed text-white/55">{d.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Contact CTA ── */}
+      <section id="contact" className="mx-auto max-w-6xl px-8 py-16 md:py-24">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 md:p-12">
+          <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
+            Get started
+          </p>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
+            Start with a Discovery Sprint.
           </h2>
-          <p className="mt-3 max-w-xl text-white/60 leading-relaxed">
-            Tell us what you need. We’ll confirm scope, timeline and fixed pricing.
+          <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
+            Tell us what you&apos;re building or what you need. We&apos;ll review your brief and
+            come back with a scope, timeline, and fixed quote within one business day.
           </p>
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <a
+              href="/elevate"
+              className="inline-flex items-center justify-center rounded-full bg-white
+                         px-6 py-3 text-sm font-semibold text-black hover:bg-white/90"
+            >
+              Submit a brief
+            </a>
             <a
               href="mailto:info@otwoone.ie"
-              className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-black hover:bg-white/90"
+              className="inline-flex items-center justify-center rounded-full border
+                         border-white/15 px-6 py-3 text-sm font-semibold text-white/90
+                         hover:border-white/25 hover:text-white"
             >
-              Send a brief. We’ll confirm scope, timeline and a fixed quote.
-            </a>
-            <a
-              href="#services"
-              className="inline-flex items-center justify-center rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white/90 hover:border-white/25 hover:text-white"
-            >
-              Review services
+              info@otwoone.ie
             </a>
           </div>
 
-          <p className="mt-6 text-xs text-white/50">
-            Cork • Ireland • Response within one business day.
+          <p className="mt-6 text-xs text-white/40">
+            Cork · Ireland · Response within one business day.
           </p>
         </div>
       </section>
 
-      {/* Footer */}
+      {/* ── Footer ── */}
       <footer className="border-t border-white/10 py-10">
-        <div className="mx-auto max-w-6xl px-6 flex flex-col gap-6 md:flex-row md:items-center md:justify-between text-sm text-white/60">
-
-          <div>
-            <div className="text-white/80 font-semibold">OTwoOne</div>
-            <div>Websites and systems that support real business growth.</div>
+        <div className="mx-auto max-w-6xl px-8 flex flex-col gap-8 md:flex-row md:items-start md:justify-between text-sm text-white/50">
+          <div className="flex flex-col gap-2">
+            <Image
+              src="/branding/otwoone-logo.png"
+              alt="OTwoOne"
+              width={120}
+              height={32}
+              className="h-[28px] w-auto opacity-60"
+            />
+            <p className="max-w-xs leading-relaxed text-white/40">
+              Studio · Consultancy · Branding<br />
+              Cork, Ireland
+            </p>
           </div>
 
-          <div className="flex gap-6">
-            <a href="#services" className="hover:text-white transition-colors">
-              Services
-            </a>
-            <a href="#pricing" className="hover:text-white transition-colors">
-              Pricing
-            </a>
-            <a href="#contact" className="hover:text-white transition-colors">
-              Contact
-            </a>
+          <div className="flex gap-10">
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-semibold tracking-widest text-white/30 uppercase">
+                Services
+              </p>
+              {["Studio", "Consultancy", "Branding"].map((s) => (
+                <a key={s} href="#services" className="hover:text-white transition-colors">{s}</a>
+              ))}
+            </div>
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-semibold tracking-widest text-white/30 uppercase">
+                Company
+              </p>
+              {[
+                ["/pricing",         "How we price"],
+                ["/elevate",         "Start a project"],
+                ["mailto:info@otwoone.ie", "Contact"],
+              ].map(([href, label]) => (
+                <a key={href} href={href} className="hover:text-white transition-colors">{label}</a>
+              ))}
+            </div>
           </div>
+        </div>
+
+        <div className="mx-auto max-w-6xl px-8 mt-8 border-t border-white/5 pt-6 text-xs text-white/30">
+          © {new Date().getFullYear()} OTwoOne Ltd. All rights reserved. · Cork, Ireland
         </div>
       </footer>
     </div>
