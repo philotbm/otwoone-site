@@ -4,46 +4,19 @@ import Image from "next/image";
 
 const PILLARS = [
   {
-    label: "Studio",
-    headline: "Engineering that ships.",
+    label: "Websites",
     description:
-      "We build websites, web apps, and custom digital tools for businesses that need something built properly. Every project starts with a planning session so you know exactly what you're getting before any work begins.",
-    offers: [
-      "Project Planning & Scoping",
-      "Tech Health Check",
-      "Prototype Sprint",
-      "New Product Build",
-      "Ongoing Development Team",
-      "Support & Maintenance",
-    ],
-    accent: "border-white/20",
+      "Strategic websites designed to convert. Fast, clean and credible.",
   },
   {
-    label: "Consultancy",
-    headline: "Clarity when it matters most.",
+    label: "Automation & Systems",
     description:
-      "Expert technology guidance for business owners and leaders making important decisions about systems, teams, or growth. We give you the answers without the full-time hire.",
-    offers: [
-      "Part-Time Technology Director",
-      "AI & Automation Review",
-      "Team & Process Health Check",
-      "Outcome-Based Advisory",
-    ],
-    accent: "border-white/20",
+      "Automation, dashboards, booking flows and integrations that remove friction.",
   },
   {
-    label: "Branding",
-    headline: "Identity built to last.",
+    label: "Strategy & Advisory",
     description:
-      "We build your brand from the ground up. Clear messaging, a strong visual identity, and a web presence that reflects who you are and speaks to the right customers.",
-    offers: [
-      "Brand Strategy & Messaging",
-      "Logo, Colours & Brand Guide",
-      "Brand + Website Package",
-      "Design Guidelines & Components",
-      "Ongoing Brand Support",
-    ],
-    accent: "border-white/20",
+      "Clear direction for growing teams. From scope to roadmap to execution.",
   },
 ];
 
@@ -143,7 +116,7 @@ const EXAMPLES = [
   {
     slug: "fitness-app",
     category: "Health & Wellness",
-    name: "Peak App — Booking System",
+    name: "Peak App: Booking System",
     description:
       "Mobile app design for a fitness studio. Class booking, timetable, membership management, and progress tracking.",
     tags: ["App Design", "Booking"],
@@ -173,10 +146,9 @@ export default function Home() {
 
           <nav className="hidden items-center gap-10 text-[13px] tracking-wide text-white/60 md:flex">
             {[
-              ["#services",  "Services"],
+              ["/services",   "Services"],
               ["#process",   "How we work"],
               ["#work",      "Our Work"],
-              ["/pricing",   "Pricing"],
               ["#contact",   "Contact"],
             ].map(([href, label]) => (
               <a
@@ -210,16 +182,15 @@ export default function Home() {
         </div>
 
         <h1 className="mt-7 text-5xl font-semibold tracking-[-0.03em] leading-[1.0] md:text-7xl">
-          Studio.{" "}
-          <span className="text-white/40">Consultancy.</span>
+          Websites, systems,
           <br />
-          Brand.
+          <span className="text-white/40">and platforms.</span>
         </h1>
 
         <p className="mt-7 max-w-2xl text-base leading-relaxed text-white/60 md:text-lg">
           We help Irish businesses build the right digital solution. Websites,
-          apps, and tools that actually solve the problem. Properly planned,
-          fairly priced, delivered on time.
+          systems and platforms that solve the problem. Properly planned
+          and delivered on time.
         </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -231,17 +202,17 @@ export default function Home() {
             Start with Discovery
           </a>
           <a
-            href="/pricing"
+            href="/services"
             className="inline-flex items-center justify-center rounded-full border
                        border-white/15 px-6 py-3 text-sm font-semibold text-white/90
                        hover:border-white/25 hover:text-white"
           >
-            How we engage →
+            View services →
           </a>
         </div>
 
         <div className="mt-10 flex flex-wrap gap-2.5 text-xs text-white/50">
-          {["Studio development", "Technical consulting", "Brand &amp; identity", "Design systems", "AI &amp; automation"].map((tag) => (
+          {["Websites", "Automation &amp; systems", "Platforms", "Design &amp; identity", "AI &amp; automation"].map((tag) => (
             <span
               key={tag}
               className="rounded-full border border-white/10 px-3 py-1"
@@ -257,12 +228,10 @@ export default function Home() {
           What we do
         </p>
         <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
-          Three disciplines. One practice.
+          Digital foundations for growing companies.
         </h2>
         <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
-          We work across software development, strategic consultancy, and brand
-          design. Often together on the same project, always with a clear scope
-          and a fixed price agreed before work begins.
+          Websites, systems and scalable platforms for growing companies. Clear scope, fixed pricing and delivery you can trust.
         </p>
 
         <div className="mt-10 grid gap-5 md:grid-cols-3">
@@ -276,25 +245,12 @@ export default function Home() {
               <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
                 {p.label}
               </p>
-              <h3 className="mt-3 text-xl font-semibold tracking-tight text-white">
-                {p.headline}
-              </h3>
-              <p className="mt-3 text-sm leading-relaxed text-white/55">
+              <p className="mt-4 flex-1 text-sm leading-relaxed text-white/60">
                 {p.description}
               </p>
-
-              <ul className="mt-6 space-y-2 border-t border-white/8 pt-6">
-                {p.offers.map((o) => (
-                  <li key={o} className="flex items-center gap-2.5 text-sm text-white/60">
-                    <span className="h-1 w-1 shrink-0 rounded-full bg-white/30" />
-                    {o}
-                  </li>
-                ))}
-              </ul>
-
               <a
                 href="/elevate"
-                className="mt-auto pt-6 text-sm font-semibold text-white/50
+                className="mt-6 text-sm font-semibold text-white/50
                            transition-colors duration-200 group-hover:text-white/80"
               >
                 Start a brief →
@@ -333,12 +289,12 @@ export default function Home() {
 
           <div className="mt-8 flex flex-wrap gap-3">
             <a
-              href="/pricing"
+              href="/elevate"
               className="inline-flex items-center justify-center rounded-full border
                          border-white/15 px-5 py-2.5 text-sm font-semibold text-white/80
                          hover:border-white/25 hover:text-white"
             >
-              See how pricing works →
+              Start with Discovery →
             </a>
           </div>
         </div>
@@ -373,25 +329,23 @@ export default function Home() {
           Why it matters
         </p>
         <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
-          Multinational experience. SME focus.
+          High standards. SME focus.
         </h2>
 
         <div className="mt-10 grid gap-8 md:grid-cols-2">
           {/* Left: paragraphs */}
           <div className="space-y-5">
             <p className="text-sm leading-relaxed text-white/60">
-              OTwoOne is led by someone who has spent over a decade inside
-              large-scale multinational operations, including leading customer
-              experience and regulatory teams at Amazon. That includes guiding
-              the company through GDPR compliance across multiple European
-              markets.
+              We bring experience from large-scale, high-expectation environments
+              where delivery and accountability matter. That translates into
+              clearer scope, stronger execution and systems that hold up as
+              you grow.
             </p>
             <p className="text-sm leading-relaxed text-white/60">
-              What that means for you: we understand how to build things that
-              actually work at scale, how to navigate data protection and
-              regulatory requirements, and how to bring enterprise-grade thinking
-              to organisations of any size. Without the enterprise price tag or
-              the complexity.
+              We are comfortable working with personal data and regulated
+              considerations where required. We design with privacy and good
+              practice in mind. You get disciplined delivery without unnecessary
+              complexity.
             </p>
 
             {/* GDPR callout */}
@@ -401,11 +355,10 @@ export default function Home() {
                 <div>
                   <p className="text-sm font-semibold text-white">GDPR & Data Protection</p>
                   <p className="mt-1.5 text-xs leading-relaxed text-white/55">
-                    We have hands-on experience navigating GDPR compliance at
-                    scale, including policy design, team training, and
-                    cross-functional implementation. If your project involves
-                    personal data, customer records, or regulated information,
-                    we know the landscape.
+                    We have worked in GDPR-aware environments and understand
+                    what good practice looks like. If your project involves
+                    customer records or sensitive information, we approach
+                    it properly.
                   </p>
                 </div>
               </div>
@@ -415,9 +368,9 @@ export default function Home() {
           {/* Right: stat chips */}
           <div className="flex flex-col justify-center gap-4">
             {[
-              { stat: "10+ years", label: "Multinational sector experience" },
-              { stat: "Amazon", label: "Customer experience & regulatory leadership" },
-              { stat: "GDPR", label: "Hands-on compliance implementation" },
+              { stat: "10+ years", label: "Large-scale delivery experience" },
+              { stat: "EU/UK", label: "Multi-market operations awareness" },
+              { stat: "GDPR", label: "Privacy and compliance mindset" },
             ].map((item) => (
               <div
                 key={item.stat}
@@ -443,7 +396,7 @@ export default function Home() {
           What we build
         </h2>
         <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
-          A flavour of what OTwoOne delivers. Across sectors, for businesses of
+          A snapshot of what OTwoOne delivers. Across sectors, for businesses of
           all sizes.
         </p>
 
@@ -536,7 +489,7 @@ export default function Home() {
               className="h-[28px] w-auto opacity-60"
             />
             <p className="max-w-xs leading-relaxed text-white/40">
-              Studio · Consultancy · Branding<br />
+              Websites · Systems · Advisory<br />
               Cork, Ireland
             </p>
           </div>
@@ -546,8 +499,8 @@ export default function Home() {
               <p className="text-xs font-semibold tracking-widest text-white/30 uppercase">
                 Services
               </p>
-              {["Studio", "Consultancy", "Branding"].map((s) => (
-                <a key={s} href="#services" className="hover:text-white transition-colors">{s}</a>
+              {["Websites", "Systems", "Advisory"].map((s) => (
+                <a key={s} href="/services" className="hover:text-white transition-colors">{s}</a>
               ))}
             </div>
             <div className="flex flex-col gap-3">
@@ -555,7 +508,7 @@ export default function Home() {
                 Company
               </p>
               {[
-                ["/pricing",              "How we price"],
+                ["/services",             "Our services"],
                 ["/elevate",              "Start a project"],
                 ["mailto:info@otwoone.ie", "Contact"],
               ].map(([href, label]) => (
