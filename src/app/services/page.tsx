@@ -224,6 +224,9 @@ export default function ServicesPage() {
         <h2 className="mt-4 text-2xl font-semibold tracking-tight md:text-3xl">
           Ongoing support to keep your site secure, fast and up to date.
         </h2>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/55">
+          Ideal for sites that need updates, fixes and steady improvement after launch.
+        </p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {SUPPORT_PLANS.map((plan) => (
