@@ -33,13 +33,13 @@ const SERVICES = [
     label: "Digital Platforms",
     heading: "Platforms built around how you operate.",
     description:
-      "When off the shelf tools do not fit, we build a platform that does. Portals, booking products, membership systems and operational hubs designed to scale.",
+      "When off the shelf tools do not fit, we build a platform that does. Booking systems, client portals, membership platforms and operational hubs designed around how your business actually works. Built to scale as you grow.",
     includes: [
       "Client and customer portals",
-      "Booking and scheduling products",
-      "Membership and subscription systems",
-      "Internal tools and admin workflows",
-      "Payments, billing and reporting modules",
+      "Booking and scheduling systems",
+      "Membership and subscription platforms",
+      "Multi-location or multi-user systems",
+      "Payments, billing and reporting",
     ],
   },
   {
@@ -193,6 +193,11 @@ export default function ServicesPage() {
                   <p className="mt-4 text-sm leading-relaxed text-white/55">
                     {s.description}
                   </p>
+                  {s.label === "Digital Platforms" && (
+                    <p className="mt-3 text-sm text-white/45">
+                      We approach platforms as products, not projects.
+                    </p>
+                  )}
                   <a
                     href="/elevate"
                     className="mt-6 inline-flex items-center text-sm font-semibold
