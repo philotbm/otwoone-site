@@ -5,9 +5,9 @@ import Image from "next/image";
 const SERVICES = [
   {
     label: "Websites",
-    heading: "Sites that work as hard as you do.",
+    heading: "Websites built for trust and conversion.",
     description:
-      "Fast, credible websites built to convert visitors into customers. Every project starts with a clear brief and is built to perform from day one.",
+      "Fast, credible websites that turn interest into enquiries. We start with a clear brief, then build for performance from day one.",
     includes: [
       "Marketing and landing pages",
       "Booking and enquiry flows",
@@ -18,9 +18,9 @@ const SERVICES = [
   },
   {
     label: "Automation & Systems",
-    heading: "Eliminate manual work. Build efficient operations.",
+    heading: "Systems that remove friction.",
     description:
-      "We design and build the systems that remove friction from your business — booking flows, dashboards, integrations and automated reporting.",
+      "We design and build practical systems that cut manual work. Booking flows, dashboards, integrations and automated reporting.",
     includes: [
       "CRM and booking integrations",
       "Internal dashboards and reporting",
@@ -31,22 +31,22 @@ const SERVICES = [
   },
   {
     label: "Digital Platforms",
-    heading: "Custom platforms built around your workflows.",
+    heading: "Platforms built around how you operate.",
     description:
-      "When off-the-shelf tools don't fit, we build platforms from scratch. Multi-user systems, client portals, subscription tools and operational hubs designed for scale.",
+      "When off the shelf tools do not fit, we build a platform that does. Portals, booking products, membership systems and operational hubs designed to scale.",
     includes: [
       "Client and customer portals",
-      "Subscription and membership platforms",
-      "Internal tools and admin systems",
-      "Invoicing, billing and project management modules",
-      "Multi-tenant SaaS architecture",
+      "Booking and scheduling products",
+      "Membership and subscription systems",
+      "Internal tools and admin workflows",
+      "Payments, billing and reporting modules",
     ],
   },
   {
     label: "Branding",
-    heading: "Identity that earns trust at first glance.",
+    heading: "Brand identity, built to last.",
     description:
-      "Brand foundations that are clear, consistent and built to last — from strategy and positioning through to a complete visual identity.",
+      "Clear messaging and a consistent visual identity that earns trust. Designed to work across your website, documents and social channels.",
     includes: [
       "Brand strategy and messaging",
       "Logo system and visual identity",
@@ -57,14 +57,14 @@ const SERVICES = [
   },
   {
     label: "Strategic Advisory",
-    heading: "The clarity founders need to move forward.",
+    heading: "Clarity before you build.",
     description:
-      "We work alongside business leaders as a trusted technical partner — helping scope projects, evaluate technology decisions, and build the right plan before spending a euro.",
+      "We help teams make the right decisions on scope, systems and delivery. Clear recommendations, practical next steps, and a plan you can execute.",
     includes: [
-      "Fractional CTO and technical leadership",
-      "AI and automation assessment",
       "Scope and roadmap planning",
-      "Technology evaluation and team review",
+      "Technology options and trade offs",
+      "AI and automation assessment",
+      "System and process review",
       "GDPR and data protection guidance",
     ],
   },
@@ -76,7 +76,7 @@ const SUPPORT_PLANS = [
     price: "€99",
     period: "/ month",
     features: [
-      "Hosting & performance monitoring",
+      "Hosting monitoring and uptime checks",
       "Core updates",
       "Security monitoring",
       "Minor content edits",
@@ -90,7 +90,7 @@ const SUPPORT_PLANS = [
       "Everything in Foundation",
       "Monthly reporting",
       "Priority support",
-      "Conversion tweaks",
+      "Small conversion improvements",
     ],
     highlighted: true,
   },
@@ -100,9 +100,9 @@ const SUPPORT_PLANS = [
     period: "/ month",
     features: [
       "Everything in Growth",
-      "Ongoing optimisation",
-      "Quarterly strategy review",
-      "Technical improvements & testing",
+      "Ongoing improvements",
+      "Quarterly review and planning",
+      "Technical fixes and testing",
     ],
   },
 ];
@@ -168,7 +168,7 @@ export default function ServicesPage() {
             <span className="text-white/35">for growing companies.</span>
           </h1>
           <p className="mt-7 text-base leading-relaxed text-white/55 md:text-lg">
-            Websites, systems and scalable platforms — built properly.
+            Websites, systems and scalable platforms built properly.
           </p>
         </div>
       </section>
@@ -222,7 +222,7 @@ export default function ServicesPage() {
           Website Support Plans
         </p>
         <h2 className="mt-4 text-2xl font-semibold tracking-tight md:text-3xl">
-          Ongoing support to keep your site secure, fast and improving.
+          Ongoing support to keep your site secure, fast and up to date.
         </h2>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -275,7 +275,7 @@ export default function ServicesPage() {
         </div>
 
         <p className="mt-5 text-xs text-white/35">
-          Plans are available to all OTwoOne clients. Exact scope confirmed on engagement.
+          Plans are available to OTwoOne clients. Scope is confirmed at the start.
         </p>
       </section>
 
@@ -286,7 +286,7 @@ export default function ServicesPage() {
             Ready to start?
           </h2>
           <p className="mt-3 max-w-xl text-white/55 leading-relaxed">
-            Tell us what you need. We&apos;ll review your brief and come back with
+            Tell us what you need. We will review your brief and come back with
             a clear plan and fixed price within one business day.
           </p>
 
