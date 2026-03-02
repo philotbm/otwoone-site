@@ -5,8 +5,6 @@ import { useParams } from "next/navigation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Step = "basics" | "next";
-
 type BasicsForm = {
   contact_name: string;
   project_name: string;
@@ -21,15 +19,12 @@ function cx(...classes: Array<string | false | null | undefined>) {
 
 // ─── Env vars ─────────────────────────────────────────────────────────────────
 //
-// NEXT_PUBLIC_BOOKINGS_URL — your Microsoft Bookings page URL.
+// NEXT_PUBLIC_BOOKINGS_URL — Microsoft Bookings page URL.
 // Set in .env.local and in Vercel Environment Variables (all scopes).
 //
-// If you ever need per-project-type booking pages, add:
-//   NEXT_PUBLIC_BOOKINGS_URL_LAUNCH
-//   NEXT_PUBLIC_BOOKINGS_URL_FOUNDATION
-//   NEXT_PUBLIC_BOOKINGS_URL_GROWTH
-//   NEXT_PUBLIC_BOOKINGS_URL_ACCELERATOR
-// and resolve them via a ?type= query param. For now, one URL covers all types.
+// Per-project-type variant pattern (future):
+//   NEXT_PUBLIC_BOOKINGS_URL_LAUNCH | _FOUNDATION | _GROWTH | _ACCELERATOR
+//   resolved via ?type= query param.
 //
 const BOOKINGS_URL = process.env.NEXT_PUBLIC_BOOKINGS_URL ?? "";
 
@@ -55,15 +50,9 @@ function Card({
   );
 }
 
-// ─── Input ────────────────────────────────────────────────────────────────────
+// ─── Field wrapper ────────────────────────────────────────────────────────────
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="block text-xs text-gray-500 mb-1.5">{label}</label>
@@ -80,13 +69,9 @@ const inputCls =
 export default function ClientPortalPage() {
   const { token } = useParams<{ token: string }>();
 
-  // Token is the project UUID — validated against DB in a future iteration.
-  // For now the page is accessible to anyone with the link (share privately).
-  void token;
-
-  const [step, setStep]           = useState<Step>("basics");
   const [step1Saved, setStep1Saved] = useState(false);
-  const [saving, setSaving]       = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [saveError, setSaveError]   = useState("");
 
   const [basics, setBasics] = useState<BasicsForm>({
     contact_name: "",
@@ -96,25 +81,53 @@ export default function ClientPortalPage() {
 
   function setField<K extends keyof BasicsForm>(key: K, val: string) {
     setBasics((prev) => ({ ...prev, [key]: val }));
+    // Clear any previous error when the user edits a field
+    if (saveError) setSaveError("");
   }
 
+  // Matches server-side minimums: name ≥ 2 chars, goals ≥ 10 chars
   const basicsValid =
-    basics.contact_name.trim().length > 0 &&
-    basics.project_name.trim().length > 0 &&
-    basics.goals.trim().length > 0;
+    basics.contact_name.trim().length >= 2 &&
+    basics.project_name.trim().length >= 2 &&
+    basics.goals.trim().length >= 10;
+
+  // ── Save Step 1 ────────────────────────────────────────────────────────────
 
   async function handleSaveBasics() {
     if (!basicsValid || saving) return;
     setSaving(true);
+    setSaveError("");
 
-    // TODO: POST to /api/projects/[token]/basics to persist in DB.
-    // For now, simulate a short save delay and set local flag.
-    await new Promise((r) => setTimeout(r, 500));
+    try {
+      const res = await fetch(`/api/projects/${token}/intake`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contact_name: basics.contact_name.trim(),
+          project_name: basics.project_name.trim(),
+          goals:        basics.goals.trim(),
+        }),
+      });
 
-    setSaving(false);
-    setStep1Saved(true);
-    setStep("next");
+      const json = await res.json() as { ok?: boolean; error?: string };
+
+      if (!res.ok) {
+        throw new Error(json.error ?? "Failed to save. Please try again.");
+      }
+
+      // Only gate the booking panel on a confirmed server save
+      setStep1Saved(true);
+
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Failed to save. Please try again."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <main className="min-h-screen bg-[#05060a] px-4 py-16">
@@ -148,6 +161,7 @@ export default function ClientPortalPage() {
             }
           >
             <div className="space-y-4">
+
               <Field label="Your name">
                 <input
                   type="text"
@@ -181,6 +195,13 @@ export default function ClientPortalPage() {
                 />
               </Field>
 
+              {/* Inline error — shown on API failure, cleared on next edit */}
+              {saveError && (
+                <div className="px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+                  {saveError}
+                </div>
+              )}
+
               {!step1Saved && (
                 <button
                   type="button"
@@ -196,11 +217,12 @@ export default function ClientPortalPage() {
                   {saving ? "Saving…" : "Save & continue"}
                 </button>
               )}
+
             </div>
           </Card>
         </div>
 
-        {/* ── Book a call — only shown after Step 1 is saved ──────────────────── */}
+        {/* ── Book a call — only after server-confirmed Step 1 save ────────────── */}
         {step1Saved && BOOKINGS_URL && (
           <div className="mb-4 bg-indigo-500/[0.07] border border-indigo-500/20 rounded-xl px-5 py-5">
             <h2 className="text-sm font-semibold text-white mb-1">Book a call</h2>
