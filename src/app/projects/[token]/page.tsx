@@ -87,6 +87,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputCls =
   "w-full px-4 py-3 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors";
 
+// ─── Review row ───────────────────────────────────────────────────────────────
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-3 text-sm">
+      <dt className="w-28 shrink-0 text-gray-600">{label}</dt>
+      <dd className="text-gray-300 break-words min-w-0">{value}</dd>
+    </div>
+  );
+}
+
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function ClientPortalPage() {
@@ -179,6 +190,12 @@ export default function ClientPortalPage() {
     }
   }
 
+  // ── Step 3 state ────────────────────────────────────────────────────────────
+  const [confirmed,    setConfirmed]    = useState(false);
+  const [submitting,   setSubmitting]   = useState(false);
+  const [submitError,  setSubmitError]  = useState("");
+  const [submitted,    setSubmitted]    = useState(false);
+
   // ── Save Step 2 ────────────────────────────────────────────────────────────
 
   async function handleSaveStep2() {
@@ -213,6 +230,36 @@ export default function ClientPortalPage() {
       );
     } finally {
       setSaving2(false);
+    }
+  }
+
+  // ── Submit ────────────────────────────────────────────────────────────────
+
+  async function handleSubmit() {
+    if (!confirmed || submitting || submitted) return;
+    setSubmitting(true);
+    setSubmitError("");
+
+    try {
+      const res = await fetch(`/api/projects/${token}/intake/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const json = await res.json() as { ok?: boolean; error?: string };
+
+      if (!res.ok) {
+        throw new Error(json.error ?? "Failed to submit. Please try again.");
+      }
+
+      setSubmitted(true);
+
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error ? err.message : "Failed to submit. Please try again."
+      );
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -454,11 +501,96 @@ export default function ClientPortalPage() {
           </div>
         )}
 
-        {/* ── Step 3 placeholder — shown after Step 2 saved ────────────────────── */}
+        {/* ── Step 3: Review & submit — shown after Step 2 saved ───────────────── */}
         {step2Saved && (
-          <div className="mb-4 opacity-60">
-            <Card title="Step 3 — Review & submit">
-              <p className="text-sm text-gray-500">Coming next — we&apos;ll walk you through the final steps here.</p>
+          <div className="mb-4">
+            <Card
+              title="Step 3 — Review & submit"
+              badge={
+                submitted ? (
+                  <span className="text-xs font-medium text-green-400">Submitted ✓</span>
+                ) : null
+              }
+            >
+              <div className="space-y-5">
+
+                {/* ── Summary: Step 1 ─────────────────────────────────────── */}
+                <div>
+                  <p className="text-xs font-medium tracking-widest uppercase text-gray-600 mb-2">Basics</p>
+                  <dl className="space-y-1.5">
+                    <ReviewRow label="Name"         value={basics.contact_name} />
+                    <ReviewRow label="Project"      value={basics.project_name} />
+                    <ReviewRow label="Goals"        value={basics.goals} />
+                  </dl>
+                </div>
+
+                <div className="border-t border-white/5" />
+
+                {/* ── Summary: Step 2 ─────────────────────────────────────── */}
+                <div>
+                  <p className="text-xs font-medium tracking-widest uppercase text-gray-600 mb-2">Project details</p>
+                  <dl className="space-y-1.5">
+                    <ReviewRow label="Headline"    value={step2.headline} />
+                    {step2.subheadline && (
+                      <ReviewRow label="Sub-headline" value={step2.subheadline} />
+                    )}
+                    <ReviewRow label="Services"    value={validServices.join(", ")} />
+                    <ReviewRow label="About"       value={step2.about} />
+                    <ReviewRow
+                      label="Primary CTA"
+                      value={CTA_OPTIONS.find((o) => o.value === step2.primary_cta)?.label ?? step2.primary_cta}
+                    />
+                  </dl>
+                </div>
+
+                {/* ── Confirmation + submit ────────────────────────────────── */}
+                {!submitted ? (
+                  <>
+                    <div className="border-t border-white/5" />
+
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={confirmed}
+                        onChange={(e) => {
+                          setConfirmed(e.target.checked);
+                          if (submitError) setSubmitError("");
+                        }}
+                        className="mt-0.5 h-4 w-4 rounded border-white/20 bg-white/[0.04] accent-indigo-500 cursor-pointer"
+                      />
+                      <span className="text-sm text-gray-400 leading-snug">
+                        I confirm the above information is correct.
+                      </span>
+                    </label>
+
+                    {submitError && (
+                      <div className="px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+                        {submitError}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleSubmit}
+                      disabled={!confirmed || submitting}
+                      className={cx(
+                        "w-full py-3 rounded-lg text-sm font-medium transition-all",
+                        confirmed && !submitting
+                          ? "bg-indigo-600 hover:bg-indigo-500 text-white"
+                          : "bg-white/5 text-gray-600 cursor-not-allowed"
+                      )}
+                    >
+                      {submitting ? "Submitting…" : "Submit"}
+                    </button>
+                  </>
+                ) : (
+                  <div className="px-4 py-4 rounded-lg bg-green-500/10 border border-green-500/20 text-sm text-green-400 leading-relaxed">
+                    <p className="font-medium mb-0.5">Thanks — we&apos;ve got everything we need!</p>
+                    <p className="text-green-500/70">We&apos;ll be in touch shortly to kick things off.</p>
+                  </div>
+                )}
+
+              </div>
             </Card>
           </div>
         )}
