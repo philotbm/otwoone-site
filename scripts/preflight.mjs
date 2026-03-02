@@ -67,6 +67,7 @@ const REQUIRED = [
  */
 const OPTIONAL = [
   'NEXT_PUBLIC_SITE_URL',          // used in hub email links
+  'NEXT_PUBLIC_BOOKINGS_URL',      // Microsoft Bookings link shown in client portal after Step 1
   'SHAREPOINT_TENANT_ID',          // SharePoint folder creation
   'SHAREPOINT_CLIENT_ID',
   'SHAREPOINT_CLIENT_SECRET',
