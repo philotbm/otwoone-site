@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Fetch the lead to get contact/company info for folder naming
   const { data: lead, error: leadFetchErr } = await supabaseServer
     .from('leads')
-    .select('id, contact_name, company_name, status')
+    .select('id, contact_name, contact_email, company_name, status')
     .eq('id', id)
     .single();
 
@@ -61,11 +61,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { data: project, error: projectErr } = await supabaseServer
     .from('projects')
     .insert({
-      lead_id:            id,
-      project_status:     'project_setup_complete',
+      lead_id:              id,
+      project_status:       'project_setup_complete',
       hosting_required,
-      maintenance_plan:   hosting_required ? maintenance_plan : 'none',
-      maintenance_status: 'pending',
+      maintenance_plan:     hosting_required ? maintenance_plan : 'none',
+      maintenance_status:   'pending',
+      client_contact_email: lead.contact_email?.trim() || null,
+      client_contact_name:  lead.contact_name?.trim()  || null,
     })
     .select('id')
     .single();
