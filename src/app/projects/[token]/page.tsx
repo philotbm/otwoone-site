@@ -136,7 +136,7 @@ export default function ClientPortalPage() {
   }
 
   // Valid services: entries with ≥ 2 chars
-  const validServices = step2.services.filter((s) => s.trim().length >= 2);
+  const validServices = step2.services.map((s) => s.trim()).filter((s) => s.length >= 2);
 
   const step2Valid =
     step2.headline.trim().length >= 4 &&

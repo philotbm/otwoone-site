@@ -64,6 +64,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       { status: 422 }
     );
   }
+  if (validServices.length > 6) {
+    return NextResponse.json(
+      { error: 'Please enter no more than 6 services.' },
+      { status: 422 }
+    );
+  }
 
   if (about.length < 40) {
     return NextResponse.json(
