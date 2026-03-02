@@ -40,7 +40,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { data: intake, error: intakeErr } = await supabaseServer
     .from('project_intakes')
-    .select('step1, step2')
+    .select('step1, step2, completed_at')
     .eq('project_id', project.id)
     .single();
 
@@ -58,12 +58,16 @@ export async function POST(_req: NextRequest, { params }: Params) {
     typeof s1.project_name === 'string' && s1.project_name.trim().length >= 2 &&
     typeof s1.goals        === 'string' && s1.goals.trim().length >= 10;
 
-  // step2 completeness
+  // step2 completeness — mirrors step2 save route validation
   const s2 = (intake.step2 ?? {}) as Record<string, unknown>;
-  const s2Services = Array.isArray(s2.services) ? s2.services : [];
+  const rawS2Services = Array.isArray(s2.services) ? s2.services : [];
+  const validS2Services = rawS2Services
+    .map((s: unknown) => String(s ?? '').trim())
+    .filter((s) => s.length >= 2);
   const s2Ok =
     typeof s2.headline    === 'string' && s2.headline.trim().length >= 4 &&
-    s2Services.length >= 3 &&
+    validS2Services.length >= 3 &&
+    validS2Services.length <= 6 &&
     typeof s2.about       === 'string' && s2.about.trim().length >= 40 &&
     typeof s2.primary_cta === 'string' && s2.primary_cta.trim().length > 0;
 
@@ -74,21 +78,24 @@ export async function POST(_req: NextRequest, { params }: Params) {
     );
   }
 
-  // ── Mark intake complete ──────────────────────────────────────────────────
+  // ── Mark intake complete (preserve original completed_at on re-submit) ────
 
   const now = new Date().toISOString();
 
-  const { error: intakeUpdateErr } = await supabaseServer
-    .from('project_intakes')
-    .update({ completed_at: now })
-    .eq('project_id', project.id);
+  // Only write completed_at if this is the first submission.
+  if (!intake.completed_at) {
+    const { error: intakeUpdateErr } = await supabaseServer
+      .from('project_intakes')
+      .update({ completed_at: now })
+      .eq('project_id', project.id);
 
-  if (intakeUpdateErr) {
-    console.error('[intake/submit] project_intakes update error:', intakeUpdateErr);
-    return NextResponse.json(
-      { error: 'Failed to submit. Please try again.' },
-      { status: 500 }
-    );
+    if (intakeUpdateErr) {
+      console.error('[intake/submit] project_intakes update error:', intakeUpdateErr);
+      return NextResponse.json(
+        { error: 'Failed to submit. Please try again.' },
+        { status: 500 }
+      );
+    }
   }
 
   // ── Mark project intake status complete ───────────────────────────────────
