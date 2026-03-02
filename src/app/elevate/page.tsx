@@ -391,7 +391,8 @@ export default function ElevatePage() {
 
         {/* Header */}
         <div className="mb-10">
-          <p className="text-xs font-medium tracking-widest uppercase text-indigo-400 mb-2">Elevate</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/branding/otwoone-logo-wordmark-white.png" alt="OTwoOne" width={120} className="mb-5 h-auto" />
           <h1 className="text-3xl font-semibold text-white mb-3">Tell us about your project</h1>
           <p className="text-gray-400 text-sm leading-relaxed">
             We'll use this to understand what you need and come back to you with a clear way forward.
