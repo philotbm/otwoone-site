@@ -23,6 +23,7 @@ type Project = {
   delivery_completed_at: string | null;
   sharepoint_folder_url: string | null;
   sharepoint_folder_error: string | null;
+  intake_status: "not_sent" | "sent" | "in_progress" | "complete" | null;
 };
 
 type Lead = {
@@ -299,6 +300,12 @@ export default function LeadDetailPage() {
   const [notes, setNotes]           = useState("");
   const [notesSaved, setNotesSaved] = useState(false);
 
+  // Portal link state
+  const [portalSending, setPortalSending] = useState(false);
+  const [portalSent,    setPortalSent]    = useState(false);
+  const [portalUrl,     setPortalUrl]     = useState("");
+  const [portalError,   setPortalError]   = useState("");
+
   // Local edit state
   const [status, setStatus]                     = useState<LeadStatus>("lead_submitted");
   const [goNoGo, setGoNoGo]                     = useState<"go" | "nogo" | "">("");
@@ -348,6 +355,25 @@ export default function LeadDetailPage() {
     setSaving(false);
     setNotesSaved(true);
     setTimeout(() => setNotesSaved(false), 2000);
+  }
+
+  // ── Send portal link ─────────────────────────────────────────────────────────
+
+  async function sendPortalLink(projectId: string) {
+    if (portalSending) return;
+    setPortalSending(true);
+    setPortalError("");
+    try {
+      const res  = await fetch(`/api/hub/projects/${projectId}/send-intake`, { method: "POST" });
+      const json = await res.json() as { ok?: boolean; intake_url?: string; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to send portal link.");
+      setPortalUrl(json.intake_url ?? "");
+      setPortalSent(true);
+    } catch (err) {
+      setPortalError(err instanceof Error ? err.message : "Failed to send portal link.");
+    } finally {
+      setPortalSending(false);
+    }
   }
 
   // ── Project status update ─────────────────────────────────────────────────────
@@ -654,6 +680,52 @@ export default function LeadDetailPage() {
                   )}
                 </div>
               </div>
+
+              {/* ── Portal link action ────────────────────────────────────── */}
+              <div className="pt-4 mt-1 border-t border-white/5 flex items-center gap-3 flex-wrap">
+                <span className="text-xs text-gray-500 w-36 shrink-0">
+                  Intake portal
+                  {project.intake_status && project.intake_status !== "not_sent" && (
+                    <span className={cx(
+                      "ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
+                      project.intake_status === "complete"    ? "bg-green-500/15 text-green-400" :
+                      project.intake_status === "in_progress" ? "bg-yellow-500/15 text-yellow-400" :
+                      "bg-indigo-500/15 text-indigo-400"
+                    )}>
+                      {project.intake_status.replace("_", " ")}
+                    </span>
+                  )}
+                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {!portalSent ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => sendPortalLink(project.id)}
+                        disabled={portalSending}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                      >
+                        {portalSending ? "Sending…" : "Send portal link"}
+                      </button>
+                      {portalError && (
+                        <span className="text-xs text-red-400">{portalError}</span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-green-400 font-medium">Link sent ✓</span>
+                      <button
+                        type="button"
+                        onClick={() => navigator.clipboard.writeText(portalUrl)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors"
+                      >
+                        Copy link
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
             </Section>
           </div>
         )}
