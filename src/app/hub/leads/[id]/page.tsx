@@ -1,0 +1,676 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type LeadStatus =
+  | "lead_submitted"
+  | "discovery_active"
+  | "proposal_sent"
+  | "lost_pre_deposit"
+  | "converted";
+
+type Project = {
+  id: string;
+  created_at: string;
+  project_status: "project_setup_complete" | "build_active" | "delivered" | null;
+  hosting_required: boolean;
+  maintenance_plan: "essential" | "growth" | "accelerator" | "none" | null;
+  maintenance_status: "pending" | "active" | "suspended" | "cancelled" | null;
+  delivery_completed_at: string | null;
+  sharepoint_folder_url: string | null;
+  sharepoint_folder_error: string | null;
+};
+
+type Lead = {
+  id: string;
+  created_at: string;
+  source: string;
+  status: LeadStatus;
+  contact_name: string | null;
+  contact_email: string;
+  company_name: string | null;
+  company_website: string | null;
+  role: string | null;
+  decision_authority: string | null;
+  engagement_type: string | null;
+  budget: string | null;
+  timeline: string | null;
+  go_no_go: boolean | null;
+  discovery_depth: string | null;
+  discovery_depth_suggested: string | null;
+  clarity_score: number | null;
+  alignment_score: number | null;
+  complexity_score: number | null;
+  authority_score: number | null;
+  total_score: number | null;
+  proposed_hosting_required: boolean | null;
+  proposed_maintenance_plan: string | null;
+  lead_details: {
+    raw_submission: Record<string, unknown> | null;
+    clarifier_answers: Record<string, string> | null;
+    success_definition: string | null;
+    internal_notes: string | null;
+  } | null;
+  projects: Project[] | null;
+};
+
+// ─── Labels ───────────────────────────────────────────────────────────────────
+
+const ENGAGEMENT_LABELS: Record<string, string> = {
+  build_new:       "Build something new",
+  improve_existing:"Improve an existing website or system",
+  tech_advice:     "Technology advice / strategic guidance",
+  branding:        "Branding or design work",
+  ongoing_support: "Ongoing support",
+};
+
+const BUDGET_LABELS: Record<string, string> = {
+  under_3k:  "Under €3k",
+  "3k_5k":   "€3k–€5k",
+  "5k_15k":  "€5k–€15k",
+  "15k_40k": "€15k–€40k",
+  "40k_plus":"€40k+",
+  not_sure:  "Not sure yet",
+};
+
+const TIMELINE_LABELS: Record<string, string> = {
+  asap:         "As soon as possible",
+  "1_3_months": "1–3 months",
+  "3_6_months": "3–6 months",
+  planning:     "Planning ahead",
+};
+
+const AUTHORITY_LABELS: Record<string, string> = {
+  yes:    "Yes — decision maker",
+  shared: "Shared — needs sign-off",
+  no:     "No — gathering info",
+};
+
+const STATUS_OPTIONS: LeadStatus[] = [
+  "lead_submitted", "discovery_active", "proposal_sent", "lost_pre_deposit", "converted",
+];
+
+const STATUS_LABELS: Record<LeadStatus, string> = {
+  lead_submitted:   "Submitted",
+  discovery_active: "Discovery",
+  proposal_sent:    "Proposal Sent",
+  lost_pre_deposit: "Lost",
+  converted:        "Converted",
+};
+
+const MAINTENANCE_PLANS = ["essential", "growth", "accelerator", "none"] as const;
+const MAINTENANCE_MONTHLY: Record<string, number> = {
+  essential: 99, growth: 199, accelerator: 299,
+};
+const PROJECT_STATUSES = ["project_setup_complete", "build_active", "delivered"] as const;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function fmt(dateStr: string | null) {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleDateString("en-IE", {
+    day: "numeric", month: "short", year: "numeric",
+  });
+}
+
+// ─── Section wrapper ───────────────────────────────────────────────────────────
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
+      <div className="px-5 py-3 border-b border-white/5">
+        <h2 className="text-xs font-medium tracking-widest uppercase text-gray-500">{title}</h2>
+      </div>
+      <div className="px-5 py-4">{children}</div>
+    </div>
+  );
+}
+
+// ─── Row ──────────────────────────────────────────────────────────────────────
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-4 py-1.5">
+      <span className="text-xs text-gray-500 w-36 shrink-0 mt-0.5">{label}</span>
+      <span className="text-sm text-gray-200 flex-1">{value || "—"}</span>
+    </div>
+  );
+}
+
+// ─── Score bar ─────────────────────────────────────────────────────────────────
+
+function ScoreBar({ score }: { score: number | null }) {
+  if (score == null) return <span className="text-gray-600 text-sm">—</span>;
+  const pct = (score / 5) * 100;
+  const colour = score >= 4 ? "bg-green-500" : score >= 3 ? "bg-yellow-500" : "bg-red-500";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+        <div className={cx("h-full rounded-full", colour)} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-xs text-gray-400 w-6">{score}/5</span>
+    </div>
+  );
+}
+
+// ─── Convert modal ─────────────────────────────────────────────────────────────
+
+function ConvertModal({
+  lead,
+  onClose,
+  onConverted,
+}: {
+  lead: Lead;
+  onClose: () => void;
+  onConverted: () => void;
+}) {
+  const [hostingRequired, setHostingRequired] = useState(
+    lead.proposed_hosting_required ?? true
+  );
+  const [maintenancePlan, setMaintenancePlan] = useState(
+    lead.proposed_maintenance_plan ?? "essential"
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState("");
+
+  async function handleConvert() {
+    if (hostingRequired && maintenancePlan === "none") {
+      setError("Select a maintenance plan when hosting is included.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/hub/leads/${lead.id}/convert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hosting_required: hostingRequired,
+          maintenance_plan: hostingRequired ? maintenancePlan : "none",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Conversion failed");
+      onConverted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Conversion failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+      <div className="bg-[#0e0f14] border border-white/10 rounded-2xl w-full max-w-sm p-6">
+        <h2 className="text-base font-semibold text-white mb-1">Convert Lead</h2>
+        <p className="text-xs text-gray-500 mb-6">Deposit confirmed — this will create a project.</p>
+
+        {/* Hosting */}
+        <div className="mb-5">
+          <label className="text-xs text-gray-400 block mb-3">Hosting included?</label>
+          <div className="flex gap-2">
+            {[true, false].map((v) => (
+              <button
+                key={String(v)}
+                type="button"
+                onClick={() => setHostingRequired(v)}
+                className={cx(
+                  "flex-1 py-2.5 rounded-lg text-sm border transition-all",
+                  hostingRequired === v
+                    ? "border-indigo-500 bg-indigo-500/10 text-indigo-200"
+                    : "border-white/10 text-gray-400 hover:border-white/20"
+                )}
+              >
+                {v ? "Yes" : "No"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Maintenance plan */}
+        {hostingRequired && (
+          <div className="mb-5">
+            <label className="text-xs text-gray-400 block mb-3">Maintenance plan</label>
+            <div className="space-y-2">
+              {(["essential", "growth", "accelerator"] as const).map((plan) => (
+                <button
+                  key={plan}
+                  type="button"
+                  onClick={() => setMaintenancePlan(plan)}
+                  className={cx(
+                    "w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm border transition-all",
+                    maintenancePlan === plan
+                      ? "border-indigo-500 bg-indigo-500/10 text-indigo-200"
+                      : "border-white/10 text-gray-400 hover:border-white/20"
+                  )}
+                >
+                  <span className="capitalize">{plan}</span>
+                  <span className="text-xs text-gray-500">€{MAINTENANCE_MONTHLY[plan]}/mo</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <p className="text-xs text-red-400 mb-4">{error}</p>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-lg text-sm border border-white/10 text-gray-400 hover:text-gray-300"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConvert}
+            disabled={saving}
+            className="flex-1 py-2.5 rounded-lg text-sm bg-indigo-600 hover:bg-indigo-500 text-white font-medium disabled:opacity-50"
+          >
+            {saving ? "Converting…" : "Convert"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
+
+export default function LeadDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const router  = useRouter();
+
+  const [lead, setLead]             = useState<Lead | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [saving, setSaving]         = useState(false);
+  const [showConvert, setShowConvert] = useState(false);
+  const [notes, setNotes]           = useState("");
+  const [notesSaved, setNotesSaved] = useState(false);
+
+  // Local edit state
+  const [status, setStatus]                     = useState<LeadStatus>("lead_submitted");
+  const [goNoGo, setGoNoGo]                     = useState<"go" | "nogo" | "">("");
+  const [discoveryDepth, setDiscoveryDepth]     = useState("");
+  const [proposedHosting, setProposedHosting]   = useState<"yes" | "no" | "">("");
+  const [proposedPlan, setProposedPlan]         = useState("");
+
+  const fetchLead = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res  = await fetch(`/api/hub/leads/${id}`);
+      const json = await res.json();
+      const l: Lead = json.data;
+      setLead(l);
+      setStatus(l.status);
+      setGoNoGo(l.go_no_go === true ? "go" : l.go_no_go === false ? "nogo" : "");
+      setDiscoveryDepth(l.discovery_depth ?? "");
+      setProposedHosting(l.proposed_hosting_required === true ? "yes" : l.proposed_hosting_required === false ? "no" : "");
+      setProposedPlan(l.proposed_maintenance_plan ?? "");
+      setNotes(l.lead_details?.internal_notes ?? "");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => { fetchLead(); }, [fetchLead]);
+
+  // ── Save lead fields ──────────────────────────────────────────────────────────
+
+  async function saveField(fields: Record<string, unknown>) {
+    setSaving(true);
+    await fetch(`/api/hub/leads/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    setSaving(false);
+  }
+
+  async function saveNotes() {
+    setSaving(true);
+    await fetch(`/api/hub/leads/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ internal_notes: notes }),
+    });
+    setSaving(false);
+    setNotesSaved(true);
+    setTimeout(() => setNotesSaved(false), 2000);
+  }
+
+  // ── Project status update ─────────────────────────────────────────────────────
+
+  async function updateProjectStatus(projectId: string, newStatus: string) {
+    setSaving(true);
+    await fetch(`/api/hub/projects/${projectId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_status: newStatus }),
+    });
+    setSaving(false);
+    fetchLead();
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#05060a] flex items-center justify-center">
+        <p className="text-sm text-gray-600">Loading…</p>
+      </div>
+    );
+  }
+
+  if (!lead) {
+    return (
+      <div className="min-h-screen bg-[#05060a] flex items-center justify-center">
+        <p className="text-sm text-red-400">Lead not found.</p>
+      </div>
+    );
+  }
+
+  const project = lead.projects?.[0] ?? null;
+  const isConverted = lead.status === "converted";
+
+  return (
+    <div className="min-h-screen bg-[#05060a] text-gray-200">
+
+      {/* Header */}
+      <header className="border-b border-white/5 px-6 py-4 flex items-center gap-4">
+        <Link href="/hub" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+          ← Hub
+        </Link>
+        <div className="flex-1">
+          <h1 className="text-base font-semibold text-white">
+            {lead.company_name || lead.contact_name || lead.contact_email}
+          </h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {lead.engagement_type ? (ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type) : "—"}
+            {" · "}Submitted {fmt(lead.created_at)}
+          </p>
+        </div>
+
+        {/* Convert button */}
+        {!isConverted && (
+          <button
+            onClick={() => setShowConvert(true)}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+          >
+            Convert (Deposit Paid)
+          </button>
+        )}
+        {isConverted && (
+          <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+            Converted
+          </span>
+        )}
+      </header>
+
+      <div className="px-6 py-6 max-w-4xl mx-auto grid grid-cols-1 gap-5 lg:grid-cols-2">
+
+        {/* Client info */}
+        <Section title="Client info">
+          <Row label="Name"         value={lead.contact_name} />
+          <Row label="Email"        value={<a href={`mailto:${lead.contact_email}`} className="text-indigo-400 hover:text-indigo-300">{lead.contact_email}</a>} />
+          <Row label="Company"      value={lead.company_name} />
+          <Row label="Website"      value={lead.company_website ? <a href={lead.company_website} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300">{lead.company_website}</a> : null} />
+          <Row label="Role"         value={lead.role} />
+          <Row label="Authority"    value={AUTHORITY_LABELS[lead.decision_authority ?? ""] ?? lead.decision_authority} />
+        </Section>
+
+        {/* Submission details */}
+        <Section title="Submission details">
+          <Row label="Engagement"   value={ENGAGEMENT_LABELS[lead.engagement_type ?? ""] ?? lead.engagement_type} />
+          <Row label="Budget"       value={BUDGET_LABELS[lead.budget ?? ""] ?? lead.budget} />
+          <Row label="Timeline"     value={TIMELINE_LABELS[lead.timeline ?? ""] ?? lead.timeline} />
+          {lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0 && (
+            <div className="mt-3 pt-3 border-t border-white/5">
+              <p className="text-xs text-gray-500 mb-2 uppercase tracking-wide">Clarifiers</p>
+              {Object.entries(lead.lead_details.clarifier_answers).map(([k, v]) => (
+                <Row key={k} label={k.replace(/_/g, " ")} value={String(v)} />
+              ))}
+            </div>
+          )}
+          {lead.lead_details?.success_definition && (
+            <div className="mt-3 pt-3 border-t border-white/5">
+              <p className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">Success definition</p>
+              <p className="text-sm text-gray-300 leading-relaxed">{lead.lead_details.success_definition}</p>
+            </div>
+          )}
+        </Section>
+
+        {/* Internal scoring */}
+        <Section title="Internal scoring">
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-24">Clarity</span>
+              <div className="flex-1"><ScoreBar score={lead.clarity_score} /></div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-24">Alignment</span>
+              <div className="flex-1"><ScoreBar score={lead.alignment_score} /></div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-24">Complexity</span>
+              <div className="flex-1"><ScoreBar score={lead.complexity_score} /></div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-24">Authority</span>
+              <div className="flex-1"><ScoreBar score={lead.authority_score} /></div>
+            </div>
+            <div className="pt-2 border-t border-white/5 flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-24">Total</span>
+              <span className={cx(
+                "text-base font-semibold",
+                (lead.total_score ?? 0) >= 4 ? "text-green-400" :
+                (lead.total_score ?? 0) >= 3 ? "text-yellow-400" : "text-red-400"
+              )}>
+                {lead.total_score?.toFixed(1) ?? "—"}/5
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-24">Discovery rec.</span>
+              <span className="text-xs font-medium uppercase tracking-wide text-indigo-400">
+                {lead.discovery_depth_suggested ?? "—"}
+              </span>
+            </div>
+          </div>
+        </Section>
+
+        {/* Internal controls */}
+        <Section title="Internal controls">
+          <div className="space-y-4">
+            {/* Status */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1.5">Status</label>
+              <select
+                value={status}
+                onChange={(e) => {
+                  const v = e.target.value as LeadStatus;
+                  setStatus(v);
+                  saveField({ status: v });
+                }}
+                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+              >
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Go / No-Go */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1.5">Go / No-Go</label>
+              <select
+                value={goNoGo}
+                onChange={(e) => {
+                  const v = e.target.value as "go" | "nogo" | "";
+                  setGoNoGo(v);
+                  saveField({ go_no_go: v === "go" ? true : v === "nogo" ? false : null });
+                }}
+                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+              >
+                <option value="">Not set</option>
+                <option value="go">Go</option>
+                <option value="nogo">No-Go</option>
+              </select>
+            </div>
+
+            {/* Discovery override */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1.5">Discovery override</label>
+              <select
+                value={discoveryDepth}
+                onChange={(e) => {
+                  setDiscoveryDepth(e.target.value);
+                  saveField({ discovery_depth: e.target.value || null });
+                }}
+                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+              >
+                <option value="">— Use recommended ({lead.discovery_depth_suggested ?? "core"})</option>
+                <option value="lite">Lite</option>
+                <option value="core">Core</option>
+                <option value="deep">Deep</option>
+              </select>
+            </div>
+
+            {/* Proposed hosting */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1.5">Hosting proposed</label>
+              <select
+                value={proposedHosting}
+                onChange={(e) => {
+                  setProposedHosting(e.target.value as "yes" | "no" | "");
+                  saveField({ proposed_hosting_required: e.target.value === "yes" ? true : e.target.value === "no" ? false : null });
+                }}
+                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+              >
+                <option value="">Not set</option>
+                <option value="yes">Yes — hosting included</option>
+                <option value="no">No — client hosts</option>
+              </select>
+            </div>
+
+            {/* Proposed maintenance plan */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1.5">Maintenance plan proposed</label>
+              <select
+                value={proposedPlan}
+                onChange={(e) => {
+                  setProposedPlan(e.target.value);
+                  saveField({ proposed_maintenance_plan: e.target.value || null });
+                }}
+                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+              >
+                <option value="">Not set</option>
+                {MAINTENANCE_PLANS.map((p) => (
+                  <option key={p} value={p}>
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                    {MAINTENANCE_MONTHLY[p] ? ` — €${MAINTENANCE_MONTHLY[p]}/mo` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </Section>
+
+        {/* Internal notes (full width) */}
+        <div className="lg:col-span-2">
+          <Section title="Internal notes">
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notes visible only in Hub…"
+              rows={4}
+              className="w-full bg-transparent text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none resize-none leading-relaxed"
+            />
+            <div className="flex items-center justify-between pt-3 border-t border-white/5 mt-3">
+              <span className={cx("text-xs transition-opacity", notesSaved ? "text-green-400 opacity-100" : "opacity-0")}>
+                Saved
+              </span>
+              <button
+                onClick={saveNotes}
+                disabled={saving}
+                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50"
+              >
+                Save notes
+              </button>
+            </div>
+          </Section>
+        </div>
+
+        {/* Project (if converted) */}
+        {project && (
+          <div className="lg:col-span-2">
+            <Section title="Project">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <div>
+                  <Row label="Project ID"     value={<span className="font-mono text-xs text-gray-400">{project.id.slice(0, 8).toUpperCase()}</span>} />
+                  <Row label="Status"         value={
+                    <select
+                      defaultValue={project.project_status ?? ""}
+                      onChange={(e) => updateProjectStatus(project.id, e.target.value)}
+                      className="bg-transparent border border-white/10 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60"
+                    >
+                      {PROJECT_STATUSES.map((s) => (
+                        <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                      ))}
+                    </select>
+                  } />
+                  <Row label="Hosting"        value={project.hosting_required ? "Yes" : "No"} />
+                  <Row label="Maint. plan"    value={project.maintenance_plan ?? "—"} />
+                  <Row label="Maint. status"  value={project.maintenance_status ?? "—"} />
+                  {project.delivery_completed_at && (
+                    <Row label="Delivered"    value={fmt(project.delivery_completed_at)} />
+                  )}
+                </div>
+                <div>
+                  {project.sharepoint_folder_url && (
+                    <Row label="SP Folder" value={
+                      <a href={project.sharepoint_folder_url} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 text-xs break-all">
+                        Open folder →
+                      </a>
+                    } />
+                  )}
+                  {project.sharepoint_folder_error && (
+                    <div className="mt-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                      <p className="text-xs text-red-400">SharePoint folder error: {project.sharepoint_folder_error}</p>
+                    </div>
+                  )}
+                  {!project.sharepoint_folder_url && !project.sharepoint_folder_error && (
+                    <Row label="SP Folder" value={<span className="text-gray-600 text-xs">Creating…</span>} />
+                  )}
+                </div>
+              </div>
+            </Section>
+          </div>
+        )}
+      </div>
+
+      {/* Convert modal */}
+      {showConvert && (
+        <ConvertModal
+          lead={lead}
+          onClose={() => setShowConvert(false)}
+          onConverted={() => {
+            setShowConvert(false);
+            fetchLead();
+            router.refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
