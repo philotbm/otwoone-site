@@ -13,6 +13,9 @@ const SITE_ID           = process.env.SHAREPOINT_SITE_ID!;
 const LIST_ID           = process.env.SHAREPOINT_LIST_ID!;
 const PROJECTS_LIST_ID  = process.env.SHAREPOINT_PROJECTS_LIST_ID!;
 const INVOICES_LIST_ID  = process.env.SHAREPOINT_INVOICES_LIST_ID!;
+// Drive ID for the document library where project folders are created
+// e.g. process.env.SHAREPOINT_DRIVE_ID or fall back to site default drive
+const DRIVE_ID          = process.env.SHAREPOINT_DRIVE_ID ?? '';
 
 // ─── Token cache ────────────────────────────────────────────────────────────
 
@@ -211,51 +214,59 @@ export async function createInvoiceItem(
   return graphWriteItem(INVOICES_LIST_ID, fields as Record<string, unknown>);
 }
 
-// ─── Field mapper ─────────────────────────────────────────────────────────────
+// ─── Project folder creation ──────────────────────────────────────────────────
+
+export type FolderResult =
+  | { ok: true; folderUrl: string }
+  | { ok: false; error: string };
 
 /**
- * Maps a raw Supabase intake_submission row to SharePoint list fields.
+ * Creates a project folder in the configured SharePoint document library.
+ * Called only on lead conversion (deposit confirmed).
+ *
+ * Requires SHAREPOINT_DRIVE_ID env var (the document library drive ID).
+ * Falls back gracefully if env vars are missing.
  */
-export function mapSubmissionToFields(row: {
-  id: string;
-  contact_name?: string | null;
-  contact_email?: string | null;
-  company_name?: string | null;
-  company_website?: string | null;
-  answers?: Record<string, any> | null;
-  created_at?: string | null;
-}): ElevateSubmissionFields {
-  const a = row.answers ?? {};
-  const computed = a.computed ?? {};
-  const quote = computed.quote ?? {};
-  const support = computed.support ?? null;
+export async function createProjectFolder(
+  folderName: string
+): Promise<FolderResult> {
+  if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET || !SITE_ID) {
+    return { ok: false, error: "SharePoint env vars not configured" };
+  }
 
-  const services = Array.isArray(a.services)
-    ? a.services.join(", ")
-    : a.need_help ?? "";
+  if (!DRIVE_ID) {
+    return { ok: false, error: "SHAREPOINT_DRIVE_ID not configured" };
+  }
 
-  // Confidence is a SharePoint Choice column with choices: "High" | "Medium" | "Low"
-  // The raw value from Supabase is lowercase ("high", "medium", "low") — must title-case it
-  const rawConfidence: string = quote.confidence ?? "";
-  const confidence = rawConfidence
-    ? rawConfidence.charAt(0).toUpperCase() + rawConfidence.slice(1).toLowerCase()
-    : undefined;
+  try {
+    const token = await getGraphToken();
 
-  return {
-    Title: row.id,
-    ContactName: row.contact_name ?? "",
-    ContactEmail: row.contact_email ?? "",
-    Company: row.company_name ?? "",
-    // CompanyWebsite intentionally omitted — Graph API cannot write to this column type
-    Services: services,
-    PrimaryService: a.primary_service ?? "",
-    Budget: a.budget ?? "",
-    Timing: a.timing ?? "",
-    QuoteLow: typeof quote.low === "number" ? quote.low : undefined,
-    QuoteHigh: typeof quote.high === "number" ? quote.high : undefined,
-    ...(confidence ? { Confidence: confidence } : {}),
-    SupportTier: support?.recommended ?? "project-based",
-    Extra: a.extra ?? "",
-    SubmittedAt: row.created_at ?? new Date().toISOString(),
-  };
+    const url = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/drives/${DRIVE_ID}/root/children`;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: folderName,
+        folder: {},
+        "@microsoft.graph.conflictBehavior": "rename",
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      return { ok: false, error: `Graph API ${res.status}: ${err}` };
+    }
+
+    const data = await res.json();
+    return { ok: true, folderUrl: data.webUrl ?? "" };
+  } catch (err: unknown) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }

@@ -1,13 +1,20 @@
 "use client";
 
-import React, { FormEvent, useMemo, useState } from "react";
+import React, { useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Status = "idle" | "sending" | "done" | "error";
-type PillarKey = "studio" | "consultancy" | "branding";
+type Step = "engagement" | "clarifiers" | "context" | "contact";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+type EngagementType =
+  | "build_new"
+  | "improve_existing"
+  | "tech_advice"
+  | "branding"
+  | "ongoing_support";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -19,600 +26,670 @@ function normalizeWebsite(w: string): string {
   return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
 }
 
-// ─── Pillar definitions ───────────────────────────────────────────────────────
+// ─── Clarifier questions per engagement type ──────────────────────────────────
 
-type PillarDef = { key: PillarKey; label: string; sub: string; desc: string };
+type ClarifierOption = { value: string; label: string };
+type ClarifierQuestion = { key: string; question: string; options: ClarifierOption[] };
 
-const PILLARS: PillarDef[] = [
-  {
-    key: "studio",
-    label: "Studio Development",
-    sub: "Websites · Apps · Digital Tools · Systems",
-    desc: "Websites, apps, and digital tools. Built properly and delivered on time.",
-  },
-  {
-    key: "consultancy",
-    label: "Consultancy",
-    sub: "Technology Advice · AI/Automation · Process Review",
-    desc: "Expert technology advice for business owners making important decisions.",
-  },
-  {
-    key: "branding",
-    label: "Branding & Design",
-    sub: "Identity · Messaging · Visual Systems",
-    desc: "Brand strategy, visual identity, and design that tells the right story.",
-  },
-];
-
-// ─── Style constants ──────────────────────────────────────────────────────────
-
-const S = {
-  page:    "min-h-screen bg-[#05060a] text-white relative overflow-x-hidden",
-  glow:    "absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full blur-3xl opacity-30 bg-gradient-to-b from-indigo-600/30 via-slate-900/0 to-transparent pointer-events-none",
-  wrap:    "relative mx-auto w-full max-w-5xl px-6 py-14",
-  card:    "rounded-2xl border border-white/10 bg-white/[0.03] shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_20px_60px_rgba(0,0,0,0.55)]",
-  inner:   "rounded-2xl border border-white/10 bg-white/[0.02]",
-  label:   "text-sm text-white/70",
-  input:   "mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-indigo-500/40",
-  select:  "mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-white outline-none focus:ring-2 focus:ring-indigo-500/40 cursor-pointer appearance-none",
-  textarea:"mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-indigo-500/40 min-h-[110px]",
-  tileBase:"relative rounded-2xl border border-white/10 bg-white/[0.02] px-5 py-5 text-left transition-all duration-200 cursor-pointer",
-  tileOn:  "border-indigo-400/40 bg-indigo-500/20 shadow-[0_0_0_1px_rgba(99,102,241,0.25)]",
-  pillBase:"absolute right-4 top-4 grid place-items-center h-5 w-5 rounded-full border border-white/15 transition-all duration-200",
-  pillOn:  "bg-indigo-500 border-indigo-400/60",
-  section: "mt-10",
-  h2:      "text-xl font-semibold tracking-tight text-white",
-  divider: "border-t border-white/8 pt-6 mt-6",
+const CLARIFIERS: Record<EngagementType, ClarifierQuestion[]> = {
+  build_new: [
+    {
+      key: "what_building",
+      question: "What are you building?",
+      options: [
+        { value: "web_app",      label: "Web application or SaaS" },
+        { value: "website",      label: "Marketing or informational website" },
+        { value: "internal_tool",label: "Internal tool or portal" },
+        { value: "ecommerce",    label: "E-commerce store" },
+        { value: "not_sure",     label: "Not sure yet" },
+      ],
+    },
+    {
+      key: "design_ready",
+      question: "Do you have designs or wireframes?",
+      options: [
+        { value: "yes",     label: "Yes — designs are ready" },
+        { value: "partial", label: "Partially — some direction" },
+        { value: "no",      label: "No — starting from scratch" },
+      ],
+    },
+    {
+      key: "team_involved",
+      question: "Who will be involved on your side?",
+      options: [
+        { value: "just_me",  label: "Just me" },
+        { value: "small",    label: "Small team (2–5 people)" },
+        { value: "larger",   label: "Larger organisation" },
+      ],
+    },
+  ],
+  improve_existing: [
+    {
+      key: "what_to_improve",
+      question: "What needs improving?",
+      options: [
+        { value: "performance",  label: "Performance or reliability" },
+        { value: "design_ux",    label: "Design and UX" },
+        { value: "new_features", label: "Add new features" },
+        { value: "integrations", label: "Integrations or APIs" },
+        { value: "not_sure",     label: "Not sure — need an assessment" },
+      ],
+    },
+    {
+      key: "current_tech",
+      question: "What technology is it built on?",
+      options: [
+        { value: "custom",   label: "Custom-built application" },
+        { value: "wordpress",label: "WordPress" },
+        { value: "other_cms",label: "Other CMS or platform" },
+        { value: "unknown",  label: "I'm not sure" },
+      ],
+    },
+    {
+      key: "urgency",
+      question: "How urgent is this?",
+      options: [
+        { value: "critical",     label: "Critical — needs fixing now" },
+        { value: "prioritised",  label: "Enhancement — prioritised" },
+        { value: "nice_to_have", label: "Nice-to-have" },
+      ],
+    },
+  ],
+  tech_advice: [
+    {
+      key: "advice_area",
+      question: "What area do you need guidance on?",
+      options: [
+        { value: "architecture",    label: "Technical architecture or stack decisions" },
+        { value: "ai_automation",   label: "AI or automation opportunities" },
+        { value: "team_hiring",     label: "Team structure or hiring" },
+        { value: "delivery_review", label: "Delivery process or delivery review" },
+        { value: "not_sure",        label: "Not sure — I need a sounding board" },
+      ],
+    },
+    {
+      key: "existing_team",
+      question: "Do you have a technical team in place?",
+      options: [
+        { value: "yes",         label: "Yes — I have a technical team" },
+        { value: "no",          label: "No — I need guidance on where to start" },
+        { value: "contractors", label: "Mix of internal and contractors" },
+      ],
+    },
+    {
+      key: "advice_output",
+      question: "What would be most useful?",
+      options: [
+        { value: "report",     label: "Audit report or written recommendation" },
+        { value: "advisory",   label: "Ongoing advisory relationship" },
+        { value: "workshop",   label: "Hands-on workshop or training session" },
+      ],
+    },
+  ],
+  branding: [
+    {
+      key: "branding_need",
+      question: "What do you need?",
+      options: [
+        { value: "identity_new",    label: "Brand identity from scratch" },
+        { value: "brand_refresh",   label: "Brand refresh" },
+        { value: "design_system",   label: "Design system for a digital product" },
+        { value: "website_design",  label: "Website design only (no development)" },
+        { value: "not_sure",        label: "Not sure — open to recommendations" },
+      ],
+    },
+    {
+      key: "existing_brand",
+      question: "Where are you starting from?",
+      options: [
+        { value: "nothing",   label: "Nothing yet — starting fresh" },
+        { value: "some",      label: "Some brand elements (logo, colours)" },
+        { value: "full_rebrand", label: "Full rebrand — replacing existing brand" },
+      ],
+    },
+    {
+      key: "branding_output",
+      question: "What's the primary output?",
+      options: [
+        { value: "logo_visual",   label: "Logo and visual identity" },
+        { value: "brand_guide",   label: "Full brand guidelines" },
+        { value: "website_design_output", label: "Website design included" },
+      ],
+    },
+  ],
+  ongoing_support: [
+    {
+      key: "support_type",
+      question: "What type of support?",
+      options: [
+        { value: "maintenance",  label: "Website maintenance and updates" },
+        { value: "hosting",      label: "Hosting and security" },
+        { value: "strategic",    label: "Strategic technology guidance" },
+        { value: "dev_retainer", label: "Development retainer" },
+      ],
+    },
+    {
+      key: "existing_client",
+      question: "Have you worked with OTwoOne before?",
+      options: [
+        { value: "new",       label: "New client" },
+        { value: "returning", label: "Yes — returning client" },
+      ],
+    },
+    {
+      key: "support_frequency",
+      question: "How often do you need support?",
+      options: [
+        { value: "ad_hoc",    label: "Ad hoc as needed" },
+        { value: "monthly",   label: "Monthly retainer" },
+        { value: "embedded",  label: "Embedded / ongoing" },
+      ],
+    },
+  ],
 };
 
-// ─── Sub-question: Sel component ──────────────────────────────────────────────
+// ─── Engagement options ────────────────────────────────────────────────────────
 
-function Sel({
-  label,
-  value,
-  onChange,
-  options,
-  span2 = false,
+const ENGAGEMENT_OPTIONS: { value: EngagementType; label: string; sub: string }[] = [
+  { value: "build_new",        label: "Build something new",                        sub: "Web apps, SaaS, sites, internal tools" },
+  { value: "improve_existing", label: "Improve an existing website or system",      sub: "Performance, features, UX, integrations" },
+  { value: "tech_advice",      label: "Technology advice / strategic guidance",     sub: "Architecture, AI, delivery, team decisions" },
+  { value: "branding",         label: "Branding or design work",                    sub: "Identity, design systems, website design" },
+  { value: "ongoing_support",  label: "Ongoing support",                            sub: "Maintenance, hosting, retainers" },
+];
+
+// ─── Budget options ────────────────────────────────────────────────────────────
+
+const BUDGET_OPTIONS = [
+  { value: "under_3k",  label: "Under €3k" },
+  { value: "3k_5k",     label: "€3k–€5k" },
+  { value: "5k_15k",    label: "€5k–€15k" },
+  { value: "15k_40k",   label: "€15k–€40k" },
+  { value: "40k_plus",  label: "€40k+" },
+  { value: "not_sure",  label: "Not sure yet" },
+];
+
+const TIMELINE_OPTIONS = [
+  { value: "asap",        label: "As soon as possible" },
+  { value: "1_3_months",  label: "1–3 months" },
+  { value: "3_6_months",  label: "3–6 months" },
+  { value: "planning",    label: "Planning ahead" },
+];
+
+const AUTHORITY_OPTIONS = [
+  { value: "yes",    label: "Yes — I'm the decision maker" },
+  { value: "shared", label: "Shared — need sign-off from others" },
+  { value: "no",     label: "No — I'm gathering information" },
+];
+
+// ─── Option button ─────────────────────────────────────────────────────────────
+
+function OptionBtn({
+  selected, onClick, children,
 }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-  span2?: boolean;
+  selected: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
 }) {
   return (
-    <div className={span2 ? "md:col-span-2" : ""}>
-      <div className={S.label}>{label}</div>
-      <select
-        className={S.select}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="">Select…</option>
-        {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        "w-full text-left px-4 py-3 rounded-lg border text-sm transition-all",
+        selected
+          ? "border-indigo-500 bg-indigo-500/10 text-indigo-200"
+          : "border-white/10 bg-white/[0.03] text-gray-300 hover:border-white/25 hover:bg-white/[0.06]"
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Section heading ───────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-xs font-medium tracking-widest uppercase text-indigo-400 mb-4">
+      {children}
+    </p>
+  );
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
 
 export default function ElevatePage() {
-  const [status, setStatus]   = useState<Status>("idle");
-  const [errorMsg, setErrorMsg] = useState("");
+  // Step state
+  const [step, setStep] = useState<Step>("engagement");
 
-  // Pillars
-  const [pillars, setPillars]         = useState<PillarKey[]>(["studio"]);
-  const [primaryPillar, setPrimary]   = useState<PillarKey>("studio");
+  // Engagement
+  const [engagementType, setEngagementType] = useState<EngagementType | "">("");
+
+  // Clarifiers: map of question key → selected option value
+  const [clarifierAnswers, setClarifierAnswers] = useState<Record<string, string>>({});
+
+  // Context
+  const [budget, setBudget]                   = useState("");
+  const [timeline, setTimeline]               = useState("");
+  const [successDefinition, setSuccessDefinition] = useState("");
 
   // Contact
-  const [name,    setName]    = useState("");
-  const [email,   setEmail]   = useState("");
-  const [company, setCompany] = useState("");
-  const [website, setWebsite] = useState("");
+  const [name, setName]                       = useState("");
+  const [email, setEmail]                     = useState("");
+  const [company, setCompany]                 = useState("");
+  const [website, setWebsite]                 = useState("");
+  const [role, setRole]                       = useState("");
+  const [decisionAuthority, setDecisionAuthority] = useState("");
 
-  // Common
-  const [budget,   setBudget]   = useState("");
-  const [timing,   setTiming]   = useState("");
-  const [extra,    setExtra]    = useState("");
+  // Submit state
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMsg, setErrorMsg] = useState("");
 
-  // Studio
-  const [studioWhat,     setStudioWhat]     = useState("");
-  const [studioEngType,  setStudioEngType]  = useState("");
-  const [studioCodebase, setStudioCodebase] = useState("");
+  // Derived
+  const clarifierQuestions =
+    engagementType ? CLARIFIERS[engagementType] ?? [] : [];
 
-  // Consultancy
-  const [conSupport,   setConSupport]   = useState("");
-  const [conCadence,   setConCadence]   = useState("");
-  const [conTeamSize,  setConTeamSize]  = useState("");
+  const clarifierComplete = clarifierQuestions.every(
+    (q) => clarifierAnswers[q.key]
+  );
 
-  // Branding
-  const [brandNeed,    setBrandNeed]    = useState("");
-  const [brandExisting,setBrandExisting] = useState("");
-  const [brandOutput,  setBrandOutput]  = useState("");
+  // ── Navigation helpers ───────────────────────────────────────────────────────
 
-  // ── Derived ───────────────────────────────────────────────────────────────
-
-  const pillarSet = useMemo(() => new Set(pillars), [pillars]);
-
-  const hasStudio      = pillarSet.has("studio");
-  const hasConsultancy = pillarSet.has("consultancy");
-  const hasBranding    = pillarSet.has("branding");
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-
-  function togglePillar(key: PillarKey) {
-    setPillars((prev) => {
-      const exists = prev.includes(key);
-      const next = exists ? prev.filter((k) => k !== key) : [...prev, key];
-      const safe = next.length ? next : ["studio" as PillarKey];
-      if (!safe.includes(primaryPillar)) setPrimary(safe[0]);
-      return safe;
-    });
+  function goToStep(s: Step) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setStep(s);
   }
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  function handleEngagementNext() {
+    if (!engagementType) return;
+    // Reset clarifiers when engagement type changes
+    setClarifierAnswers({});
+    goToStep("clarifiers");
+  }
+
+  function handleClarifiersNext() {
+    goToStep("context");
+  }
+
+  function handleContextNext() {
+    if (!successDefinition.trim()) return;
+    goToStep("contact");
+  }
+
+  // ── Submit ───────────────────────────────────────────────────────────────────
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setErrorMsg("");
+    if (!email.trim()) return;
+
     setStatus("sending");
-
-    if (!email.trim()) {
-      setStatus("error");
-      setErrorMsg("Please enter an email so we can reply.");
-      return;
-    }
-
-    const answers: Record<string, unknown> = {
-      // Pillar selections
-      pillars,
-      primary_pillar: primaryPillar,
-
-      // Common
-      budget:  budget  || undefined,
-      timing:  timing  || undefined,
-      extra:   extra   || undefined,
-
-      // Studio-specific
-      studio: hasStudio ? {
-        what:      studioWhat     || undefined,
-        eng_type:  studioEngType  || undefined,
-        codebase:  studioCodebase || undefined,
-      } : undefined,
-
-      // Consultancy-specific
-      consultancy: hasConsultancy ? {
-        support:   conSupport  || undefined,
-        cadence:   conCadence  || undefined,
-        team_size: conTeamSize || undefined,
-      } : undefined,
-
-      // Branding-specific
-      branding: hasBranding ? {
-        need:     brandNeed     || undefined,
-        existing: brandExisting || undefined,
-        output:   brandOutput   || undefined,
-      } : undefined,
-
-      // Legacy-compatible fields for the API's quote engine
-      services: pillars,
-      primary_service: primaryPillar,
-      need_help: pillars.join(", "),
-    };
+    setErrorMsg("");
 
     try {
       const res = await fetch("/api/elevate/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contact_name:     name,
-          contact_email:    email,
-          company_name:     company,
-          company_website:  normalizeWebsite(website),
-          answers,
+          contact_name:       name.trim() || null,
+          contact_email:      email.trim(),
+          company_name:       company.trim() || null,
+          company_website:    normalizeWebsite(website) || null,
+          role:               role.trim() || null,
+          decision_authority: decisionAuthority || null,
+          engagement_type:    engagementType,
+          budget:             budget || null,
+          timeline:           timeline || null,
+          success_definition: successDefinition.trim() || null,
+          clarifier_answers:  clarifierAnswers,
         }),
       });
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Submission failed");
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Submission failed");
+      }
 
       setStatus("done");
-    } catch (err: unknown) {
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setStatus("error");
-      setErrorMsg(err instanceof Error ? err.message : "Something went wrong.");
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Confirmation screen ──────────────────────────────────────────────────────
+
+  if (status === "done") {
+    return (
+      <main className="min-h-screen bg-[#05060a] flex items-center justify-center px-4 py-24">
+        <div className="max-w-md text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-500/15 border border-indigo-500/30 mb-6">
+            <svg className="w-5 h-5 text-indigo-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-semibold text-white mb-3">We've received your details</h1>
+          <p className="text-gray-400 leading-relaxed">
+            Thanks for getting in touch. We'll review your submission and be in touch within 1–2 business days.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  // ── Form layout ──────────────────────────────────────────────────────────────
+
+  const stepIndex: Record<Step, number> = {
+    engagement: 0, clarifiers: 1, context: 2, contact: 3,
+  };
+  const currentStepIndex = stepIndex[step];
 
   return (
-    <div className={S.page}>
-      <div className={S.glow} />
+    <main className="min-h-screen bg-[#05060a] px-4 py-20">
+      <div className="max-w-xl mx-auto">
 
-      <div className={S.wrap}>
         {/* Header */}
-        <div className="mb-10 flex items-start gap-6">
-          <a href="/" className="pt-1">
-            <img
-              src="/branding/otwoone-logo.png"
-              alt="OTwoOne"
-              className="h-12 w-auto opacity-90"
-            />
-          </a>
-          <div className="flex-1">
-            <h1 className="text-xl md:text-2xl font-semibold tracking-tight leading-snug text-white">
-              Tell us what you need
-            </h1>
-            <p className="mt-1 text-sm md:text-base text-white/60">
-              Fill in your details below. Once received, we&apos;ll review your brief,
-              prepare a quote, and come back within one business day to arrange a
-              scoping call.
-            </p>
-          </div>
+        <div className="mb-10">
+          <p className="text-xs font-medium tracking-widest uppercase text-indigo-400 mb-2">Elevate</p>
+          <h1 className="text-3xl font-semibold text-white mb-3">Tell us about your project</h1>
+          <p className="text-gray-400 text-sm leading-relaxed">
+            We'll use this to understand what you need and come back to you with a clear way forward.
+          </p>
         </div>
 
-        {/* Step 1 of 5 progress indicator */}
-        <div className="mb-8 rounded-2xl border border-white/8 bg-white/[0.02] p-5">
-          <div className="flex items-center gap-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs font-bold text-black shrink-0">
-              1
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-white">Step 1 of 5 · Tell us what you need</p>
-              <p className="text-xs text-white/40 mt-0.5">Fill in the form below and submit your brief</p>
+        {/* Progress dots */}
+        <div className="flex items-center gap-2 mb-10">
+          {(["engagement", "clarifiers", "context", "contact"] as Step[]).map((s, i) => (
+            <div
+              key={s}
+              className={cx(
+                "h-1 rounded-full transition-all",
+                i <= currentStepIndex ? "bg-indigo-500" : "bg-white/10",
+                i === currentStepIndex ? "w-8" : "w-4"
+              )}
+            />
+          ))}
+        </div>
+
+        {/* ── Step 1: Engagement Type ────────────────────────────────────────── */}
+        {step === "engagement" && (
+          <div className="space-y-3">
+            <SectionLabel>What brings you here?</SectionLabel>
+
+            {ENGAGEMENT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setEngagementType(opt.value)}
+                className={cx(
+                  "w-full text-left px-5 py-4 rounded-xl border transition-all",
+                  engagementType === opt.value
+                    ? "border-indigo-500 bg-indigo-500/10"
+                    : "border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]"
+                )}
+              >
+                <span className={cx(
+                  "block text-sm font-medium mb-0.5",
+                  engagementType === opt.value ? "text-indigo-200" : "text-gray-200"
+                )}>
+                  {opt.label}
+                </span>
+                <span className="block text-xs text-gray-500">{opt.sub}</span>
+              </button>
+            ))}
+
+            <div className="pt-4">
+              <button
+                type="button"
+                onClick={handleEngagementNext}
+                disabled={!engagementType}
+                className={cx(
+                  "w-full py-3 rounded-lg text-sm font-medium transition-all",
+                  engagementType
+                    ? "bg-indigo-600 hover:bg-indigo-500 text-white"
+                    : "bg-white/5 text-gray-600 cursor-not-allowed"
+                )}
+              >
+                Continue
+              </button>
             </div>
           </div>
-          <div className="mt-4 ml-3.5 pl-6 border-l border-white/10 space-y-2">
-            {[
-              { n: "2", label: "We review & send a quote" },
-              { n: "3", label: "Scoping call or meeting" },
-              { n: "4", label: "You accept & pay deposit" },
-              { n: "5", label: "Build begins" },
-            ].map((step) => (
-              <div key={step.n} className="flex items-center gap-3">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white/15 text-[10px] text-white/35 shrink-0">
-                  {step.n}
-                </span>
-                <span className="text-xs text-white/35">{step.label}</span>
+        )}
+
+        {/* ── Step 2: Clarifiers ────────────────────────────────────────────── */}
+        {step === "clarifiers" && engagementType && (
+          <div className="space-y-8">
+            <SectionLabel>
+              {ENGAGEMENT_OPTIONS.find(e => e.value === engagementType)?.label}
+            </SectionLabel>
+
+            {clarifierQuestions.map((q) => (
+              <div key={q.key}>
+                <p className="text-sm text-gray-300 mb-3">{q.question}</p>
+                <div className="space-y-2">
+                  {q.options.map((opt) => (
+                    <OptionBtn
+                      key={opt.value}
+                      selected={clarifierAnswers[q.key] === opt.value}
+                      onClick={() =>
+                        setClarifierAnswers((prev) => ({ ...prev, [q.key]: opt.value }))
+                      }
+                    >
+                      {opt.label}
+                    </OptionBtn>
+                  ))}
+                </div>
               </div>
             ))}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => goToStep("engagement")}
+                className="flex-1 py-3 rounded-lg text-sm font-medium border border-white/10 text-gray-400 hover:text-gray-300 hover:border-white/20 transition-all"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleClarifiersNext}
+                disabled={!clarifierComplete}
+                className={cx(
+                  "flex-2 flex-grow py-3 rounded-lg text-sm font-medium transition-all",
+                  clarifierComplete
+                    ? "bg-indigo-600 hover:bg-indigo-500 text-white"
+                    : "bg-white/5 text-gray-600 cursor-not-allowed"
+                )}
+              >
+                Continue
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* ── Form ── */}
-        <form onSubmit={handleSubmit} className={cx(S.card, "p-6 md:p-8")}>
-
-          {/* ─── Section 1: Pillars ─── */}
-          <div>
-            <h2 className={S.h2}>What are you looking for help with?</h2>
-            <p className="mt-1.5 text-sm text-white/50">Select all that apply.</p>
-
-            <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
-              {PILLARS.map((p) => {
-                const on = pillarSet.has(p.key);
-                return (
-                  <button
-                    type="button"
-                    key={p.key}
-                    onClick={() => togglePillar(p.key)}
-                    className={cx(S.tileBase, on && S.tileOn)}
+        {/* ── Step 3: Context ───────────────────────────────────────────────── */}
+        {step === "context" && (
+          <div className="space-y-8">
+            {/* Budget */}
+            <div>
+              <SectionLabel>Budget</SectionLabel>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {BUDGET_OPTIONS.map((opt) => (
+                  <OptionBtn
+                    key={opt.value}
+                    selected={budget === opt.value}
+                    onClick={() => setBudget(opt.value)}
                   >
-                    <span className={cx(S.pillBase, on && S.pillOn)}>
-                      {on && (
-                        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                          <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </span>
-                    <div className="text-base font-semibold pr-8">{p.label}</div>
-                    <div className="mt-0.5 text-xs text-white/45 font-medium">{p.sub}</div>
-                    <div className="mt-2 text-sm text-white/55 leading-snug">{p.desc}</div>
-                  </button>
-                );
-              })}
+                    {opt.label}
+                  </OptionBtn>
+                ))}
+              </div>
             </div>
 
-            {/* Primary pillar (only if 2+ selected) */}
-            {pillars.length > 1 && (
-              <div className={cx(S.inner, "mt-5 p-5")}>
-                <div className="text-sm font-semibold text-white/80">
-                  Which is the main priority?
-                </div>
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {pillars.map((pk) => {
-                    const def = PILLARS.find((d) => d.key === pk)!;
-                    return (
-                      <label
-                        key={pk}
-                        className={cx(
-                          "flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3 cursor-pointer transition-all duration-150",
-                          primaryPillar === pk && "border-indigo-400/40 bg-indigo-500/10"
-                        )}
-                      >
-                        <input
-                          type="radio"
-                          name="primary_pillar"
-                          className="h-4 w-4 accent-indigo-500"
-                          checked={primaryPillar === pk}
-                          onChange={() => setPrimary(pk)}
-                        />
-                        <span className="text-sm">{def.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+            {/* Timeline */}
+            <div>
+              <SectionLabel>Timeline</SectionLabel>
+              <div className="grid grid-cols-2 gap-2">
+                {TIMELINE_OPTIONS.map((opt) => (
+                  <OptionBtn
+                    key={opt.value}
+                    selected={timeline === opt.value}
+                    onClick={() => setTimeline(opt.value)}
+                  >
+                    {opt.label}
+                  </OptionBtn>
+                ))}
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* ─── Section 2: Studio questions ─── */}
-          {hasStudio && (
-            <div className={cx(S.section, S.divider)}>
-              <h2 className={S.h2}>Studio Development</h2>
-              <p className="mt-1.5 text-sm text-white/50">
-                Tell us a little about what you&apos;re looking to build.
+            {/* Success definition */}
+            <div>
+              <SectionLabel>Success definition</SectionLabel>
+              <p className="text-xs text-gray-500 mb-3">
+                How will you know this has been a success? Be specific.
               </p>
-              <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Sel
-                  label="What are you building?"
-                  value={studioWhat}
-                  onChange={setStudioWhat}
-                  options={[
-                    "A new product or service",
-                    "An upgrade or rebuild of something that already exists",
-                    "A website to grow or promote my business",
-                    "An internal tool or dashboard for my team",
-                    "Not sure yet",
-                  ]}
-                  span2
-                />
-                <Sel
-                  label="How would you like to work together?"
-                  value={studioEngType}
-                  onChange={setStudioEngType}
-                  options={[
-                    "Start with a planning session before any build",
-                    "Fixed-price project",
-                    "Ongoing development support (monthly)",
-                    "Not sure yet",
-                  ]}
-                />
-                <Sel
-                  label="Is there existing work to build on?"
-                  value={studioCodebase}
-                  onChange={setStudioCodebase}
-                  options={[
-                    "Starting from scratch",
-                    "Yes, there's an existing system or codebase",
-                    "There's a prototype or partial build",
-                    "Not applicable",
-                  ]}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* ─── Section 3: Consultancy questions ─── */}
-          {hasConsultancy && (
-            <div className={cx(S.section, S.divider)}>
-              <h2 className={S.h2}>Consultancy</h2>
-              <p className="mt-1.5 text-sm text-white/50">
-                Tell us about the kind of help you&apos;re looking for.
-              </p>
-              <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Sel
-                  label="What kind of support?"
-                  value={conSupport}
-                  onChange={setConSupport}
-                  options={[
-                    "Part-time technology director or tech leadership",
-                    "Advice on using AI or automation to improve my business",
-                    "A review of how my team works and delivers",
-                    "Outcome-based advisory",
-                    "Not sure yet",
-                  ]}
-                  span2
-                />
-                <Sel
-                  label="How often?"
-                  value={conCadence}
-                  onChange={setConCadence}
-                  options={[
-                    "One-off review or assessment",
-                    "Monthly advisory",
-                    "Ongoing, embedded support",
-                    "Not sure yet",
-                  ]}
-                />
-                <Sel
-                  label="Team size"
-                  value={conTeamSize}
-                  onChange={setConTeamSize}
-                  options={[
-                    "Just me / founder",
-                    "2–10 people",
-                    "11–50 people",
-                    "50+ people",
-                  ]}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* ─── Section 4: Branding questions ─── */}
-          {hasBranding && (
-            <div className={cx(S.section, S.divider)}>
-              <h2 className={S.h2}>Branding & Design</h2>
-              <p className="mt-1.5 text-sm text-white/50">
-                Tell us about your brand and what you need.
-              </p>
-              <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Sel
-                  label="What do you need?"
-                  value={brandNeed}
-                  onChange={setBrandNeed}
-                  options={[
-                    "Brand strategy and messaging (what we stand for and how we say it)",
-                    "Full visual identity (logo, colours, fonts, brand guide)",
-                    "Brand and website together",
-                    "Design guidelines and component library for a digital product",
-                    "Ongoing brand or design support",
-                    "Not sure yet",
-                  ]}
-                  span2
-                />
-                <Sel
-                  label="Existing brand?"
-                  value={brandExisting}
-                  onChange={setBrandExisting}
-                  options={[
-                    "Starting from scratch",
-                    "We have some brand elements but need more",
-                    "Full rebrand of an existing brand",
-                  ]}
-                />
-                <Sel
-                  label="What do you need delivered?"
-                  value={brandOutput}
-                  onChange={setBrandOutput}
-                  options={[
-                    "Strategy and messaging document",
-                    "Visual assets (logo, colours, fonts)",
-                    "Both strategy + visual assets",
-                  ]}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* ─── Section 5: Common details ─── */}
-          <div className={cx(S.section, S.divider)}>
-            <h2 className={S.h2}>Budget &amp; timeline</h2>
-            <p className="mt-1.5 text-sm text-white/50">
-              This helps us tailor our response. No commitment required.
-            </p>
-            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Sel
-                label="Budget range"
-                value={budget}
-                onChange={setBudget}
-                options={[
-                  "Under €3k",
-                  "€3k–€5k",
-                  "€5k–€15k",
-                  "€15k–€40k",
-                  "€40k–€100k",
-                  "€100k+",
-                  "Prefer to discuss",
-                ]}
+              <textarea
+                value={successDefinition}
+                onChange={(e) => setSuccessDefinition(e.target.value)}
+                placeholder="e.g. We launch the new site before Q3, reduce bounce rate, and start getting inbound leads from search..."
+                rows={4}
+                className="w-full px-4 py-3 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
               />
-              <Sel
-                label="Timeline"
-                value={timing}
-                onChange={setTiming}
-                options={[
-                  "ASAP (within 4 weeks)",
-                  "1–3 months",
-                  "3–6 months",
-                  "Planning ahead (6 months+)",
-                ]}
-              />
-              <div className="md:col-span-2">
-                <div className={S.label}>Anything else we should know?</div>
-                <textarea
-                  className={S.textarea}
-                  placeholder="Optional — tell us anything else that's useful. What does success look like? Any links? Any deadlines?"
-                  value={extra}
-                  onChange={(e) => setExtra(e.target.value)}
-                />
-              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => goToStep("clarifiers")}
+                className="flex-1 py-3 rounded-lg text-sm font-medium border border-white/10 text-gray-400 hover:text-gray-300 hover:border-white/20 transition-all"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleContextNext}
+                disabled={!successDefinition.trim()}
+                className={cx(
+                  "flex-2 flex-grow py-3 rounded-lg text-sm font-medium transition-all",
+                  successDefinition.trim()
+                    ? "bg-indigo-600 hover:bg-indigo-500 text-white"
+                    : "bg-white/5 text-gray-600 cursor-not-allowed"
+                )}
+              >
+                Continue
+              </button>
             </div>
           </div>
+        )}
 
-          {/* ─── Section 6: Contact ─── */}
-          <div className={cx(S.section, S.divider)}>
-            <h2 className={S.h2}>Your details</h2>
-            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* ── Step 4: Contact ───────────────────────────────────────────────── */}
+        {step === "contact" && (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <SectionLabel>Your details</SectionLabel>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <div className={S.label}>Name</div>
+                <label className="block text-xs text-gray-500 mb-1.5">Name</label>
                 <input
-                  className={S.input}
-                  placeholder="Your name"
+                  type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  placeholder="Your name"
+                  className="w-full px-4 py-3 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
                 />
               </div>
               <div>
-                <div className={S.label}>
-                  Email <span className="text-indigo-300">*</span>
-                </div>
+                <label className="block text-xs text-gray-500 mb-1.5">Email <span className="text-indigo-400">*</span></label>
                 <input
                   type="email"
-                  className={S.input}
-                  placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  required
+                  className="w-full px-4 py-3 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
                 />
               </div>
               <div>
-                <div className={S.label}>Company</div>
+                <label className="block text-xs text-gray-500 mb-1.5">Company</label>
                 <input
-                  className={S.input}
-                  placeholder="Company name"
+                  type="text"
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
+                  placeholder="Company name"
+                  className="w-full px-4 py-3 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
                 />
               </div>
               <div>
-                <div className={S.label}>Website <span className="text-white/35 text-xs">(optional)</span></div>
+                <label className="block text-xs text-gray-500 mb-1.5">Website</label>
                 <input
-                  className={S.input}
-                  placeholder="yoursite.com"
+                  type="text"
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="yourcompany.com"
+                  className="w-full px-4 py-3 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
                 />
               </div>
             </div>
-          </div>
 
-          {/* ─── Submit ─── */}
-          <div className="mt-8 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-white/35 max-w-xs leading-relaxed">
-              Submitting this form asks OTwoOne to review your details and get back to you by email.
-              We respond within one business day.
-            </p>
-            <button
-              type="submit"
-              disabled={status === "sending"}
-              className={cx(
-                "rounded-xl px-7 py-3 text-sm font-semibold transition-colors shrink-0",
-                status === "sending"
-                  ? "bg-white/10 text-white/50 cursor-not-allowed"
-                  : "bg-white text-black hover:bg-white/90"
-              )}
-            >
-              {status === "sending" ? "Submitting…" : "Submit brief"}
-            </button>
-          </div>
-
-          {status === "done" && (
-            <div className="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-200">
-              ✓ Brief received. We&apos;ll review your details and reply within one business day.
+            <div>
+              <label className="block text-xs text-gray-500 mb-1.5">Your role</label>
+              <input
+                type="text"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                placeholder="e.g. Founder, Head of Product, Marketing Manager"
+                className="w-full px-4 py-3 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
+              />
             </div>
-          )}
 
-          {status === "error" && (
-            <div className="mt-6 rounded-xl border border-red-400/20 bg-red-500/10 px-5 py-4 text-sm text-red-200">
-              {errorMsg || "Something went wrong. Please try again or email info@otwoone.ie."}
+            {/* Decision authority */}
+            <div>
+              <label className="block text-xs text-gray-500 mb-3">Decision authority</label>
+              <div className="space-y-2">
+                {AUTHORITY_OPTIONS.map((opt) => (
+                  <OptionBtn
+                    key={opt.value}
+                    selected={decisionAuthority === opt.value}
+                    onClick={() => setDecisionAuthority(opt.value)}
+                  >
+                    {opt.label}
+                  </OptionBtn>
+                ))}
+              </div>
             </div>
-          )}
-        </form>
 
-        <div className="mt-10 text-center text-xs text-white/25">
-          OTwoOne · Studio · Consultancy · Branding · Cork, Ireland
-        </div>
+            {/* Error */}
+            {status === "error" && (
+              <div className="px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+                {errorMsg || "Something went wrong. Please try again."}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => goToStep("context")}
+                className="flex-1 py-3 rounded-lg text-sm font-medium border border-white/10 text-gray-400 hover:text-gray-300 hover:border-white/20 transition-all"
+              >
+                Back
+              </button>
+              <button
+                type="submit"
+                disabled={!email.trim() || status === "sending"}
+                className={cx(
+                  "flex-2 flex-grow py-3 rounded-lg text-sm font-medium transition-all",
+                  email.trim() && status !== "sending"
+                    ? "bg-indigo-600 hover:bg-indigo-500 text-white"
+                    : "bg-white/5 text-gray-600 cursor-not-allowed"
+                )}
+              >
+                {status === "sending" ? "Sending…" : "Submit"}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
-    </div>
+    </main>
   );
 }
