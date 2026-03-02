@@ -171,9 +171,13 @@ function buildClientEmail(name: string): string {
 <body style="margin:0;padding:0;background:#0a0b0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e5e7eb;">
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;">
     <tr>
-      <td style="padding:40px 24px 24px;">
-        <p style="margin:0 0 8px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#6366f1;">OTwoOne</p>
-        <h1 style="margin:0;font-size:22px;font-weight:600;color:#f9fafb;">We've received your details</h1>
+      <td style="padding:40px 24px 28px;">
+        <img src="https://www.otwoone.ie/branding/otwoone-logo-wordmark-white.png" alt="OTwoOne" width="140" style="display:block;border:0;height:auto;" />
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 24px 28px;">
+        <h1 style="margin:0 0 4px;font-size:22px;font-weight:600;color:#f9fafb;">We've received your details</h1>
       </td>
     </tr>
     <tr>

@@ -502,10 +502,10 @@ export default function LeadDetailPage() {
                   setStatus(v);
                   saveField({ status: v });
                 }}
-                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+                className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
               >
                 {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                  <option key={s} value={s} className="bg-[#0e0f14] text-gray-200">{STATUS_LABELS[s]}</option>
                 ))}
               </select>
             </div>
@@ -520,11 +520,11 @@ export default function LeadDetailPage() {
                   setGoNoGo(v);
                   saveField({ go_no_go: v === "go" ? true : v === "nogo" ? false : null });
                 }}
-                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+                className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
               >
-                <option value="">Not set</option>
-                <option value="go">Go</option>
-                <option value="nogo">No-Go</option>
+                <option value="" className="bg-[#0e0f14] text-gray-200">Not set</option>
+                <option value="go" className="bg-[#0e0f14] text-gray-200">Go</option>
+                <option value="nogo" className="bg-[#0e0f14] text-gray-200">No-Go</option>
               </select>
             </div>
 
@@ -537,12 +537,12 @@ export default function LeadDetailPage() {
                   setDiscoveryDepth(e.target.value);
                   saveField({ discovery_depth: e.target.value || null });
                 }}
-                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+                className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
               >
-                <option value="">— Use recommended ({lead.discovery_depth_suggested ?? "core"})</option>
-                <option value="lite">Lite</option>
-                <option value="core">Core</option>
-                <option value="deep">Deep</option>
+                <option value="" className="bg-[#0e0f14] text-gray-200">— Use recommended ({lead.discovery_depth_suggested ?? "core"})</option>
+                <option value="lite" className="bg-[#0e0f14] text-gray-200">Lite</option>
+                <option value="core" className="bg-[#0e0f14] text-gray-200">Core</option>
+                <option value="deep" className="bg-[#0e0f14] text-gray-200">Deep</option>
               </select>
             </div>
 
@@ -555,11 +555,11 @@ export default function LeadDetailPage() {
                   setProposedHosting(e.target.value as "yes" | "no" | "");
                   saveField({ proposed_hosting_required: e.target.value === "yes" ? true : e.target.value === "no" ? false : null });
                 }}
-                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+                className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
               >
-                <option value="">Not set</option>
-                <option value="yes">Yes — hosting included</option>
-                <option value="no">No — client hosts</option>
+                <option value="" className="bg-[#0e0f14] text-gray-200">Not set</option>
+                <option value="yes" className="bg-[#0e0f14] text-gray-200">Yes — hosting included</option>
+                <option value="no" className="bg-[#0e0f14] text-gray-200">No — client hosts</option>
               </select>
             </div>
 
@@ -572,11 +572,11 @@ export default function LeadDetailPage() {
                   setProposedPlan(e.target.value);
                   saveField({ proposed_maintenance_plan: e.target.value || null });
                 }}
-                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+                className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
               >
-                <option value="">Not set</option>
+                <option value="" className="bg-[#0e0f14] text-gray-200">Not set</option>
                 {MAINTENANCE_PLANS.map((p) => (
-                  <option key={p} value={p}>
+                  <option key={p} value={p} className="bg-[#0e0f14] text-gray-200">
                     {p.charAt(0).toUpperCase() + p.slice(1)}
                     {MAINTENANCE_MONTHLY[p] ? ` — €${MAINTENANCE_MONTHLY[p]}/mo` : ""}
                   </option>
@@ -622,10 +622,10 @@ export default function LeadDetailPage() {
                     <select
                       defaultValue={project.project_status ?? ""}
                       onChange={(e) => updateProjectStatus(project.id, e.target.value)}
-                      className="bg-transparent border border-white/10 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60"
+                      className="bg-[#0e0f14] border border-white/10 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60"
                     >
                       {PROJECT_STATUSES.map((s) => (
-                        <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                        <option key={s} value={s} className="bg-[#0e0f14] text-gray-300">{s.replace(/_/g, " ")}</option>
                       ))}
                     </select>
                   } />
