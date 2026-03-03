@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
        go_no_go, discovery_depth, discovery_depth_suggested,
        clarity_score, alignment_score, complexity_score, authority_score, total_score,
        proposed_hosting_required, proposed_maintenance_plan,
-       lead_details (success_definition, internal_notes)`,
+       lead_details (success_definition, internal_notes),
+       projects (id, intake_status, intake_last_saved_at, project_intakes (step1, step2, completed_at))`,
       { count: 'exact' }
     )
     .order('created_at', { ascending: false })
