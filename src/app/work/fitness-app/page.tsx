@@ -520,7 +520,7 @@ export default function FitnessAppDemo() {
               href="/elevate"
               className="rounded-full bg-orange-500 px-8 py-3.5 text-sm font-black text-zinc-950 hover:bg-orange-400 transition shadow-lg shadow-orange-500/25"
             >
-              Start a project →
+              Get started →
             </a>
             <a
               href="/work/fitness"
