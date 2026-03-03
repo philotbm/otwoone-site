@@ -4,42 +4,47 @@ import Image from "next/image";
 
 const PILLARS = [
   {
+    label: "Landing pages",
+    description:
+      "Single page sites built to convert. Hosting from €49 per month.",
+  },
+  {
     label: "Websites",
     description:
-      "Strategic websites designed to convert. Fast, clean and credible.",
+      "Structured multi page websites designed to represent your organisation clearly.",
   },
   {
-    label: "Automation & Systems",
+    label: "Automation and systems",
     description:
-      "Automation, dashboards, booking flows and integrations that remove friction.",
+      "Practical digital systems that reduce manual work.",
   },
   {
-    label: "Strategy & Advisory",
+    label: "Ongoing hosting and maintenance",
     description:
-      "Clear direction for growing teams. From scope to roadmap to execution.",
+      "Monitoring, security, updates and structured improvements from €49 per month.",
   },
 ];
 
 const PROCESS_STEPS = [
   {
     n: "01",
-    title: "Discovery",
-    body: "Every project starts here. A fixed-price planning session where we map what you need, what it will take to build it, and what it will cost. No commitments until you're ready.",
+    title: "Defined scope",
+    body: "We agree exactly what is being delivered before any work begins.",
   },
   {
     n: "02",
-    title: "Proposal",
-    body: "You receive a fixed-price proposal that sets out exactly what we'll build, when we'll deliver it, and what success looks like. No hourly billing, no hidden extras.",
+    title: "Structured delivery",
+    body: "Clear steps and visible progress throughout.",
   },
   {
     n: "03",
-    title: "Delivery",
-    body: "We build in stages, with regular progress updates and reviews along the way. You always know where the project stands, and everything is properly handed over at the end.",
+    title: "Transparent pricing",
+    body: "No hidden extras and no unclear billing.",
   },
   {
     n: "04",
-    title: "Ongoing",
-    body: "After launch, we stay involved. Every site we build can be covered by a monthly support plan. Foundation, Growth, or Accelerator, depending on how actively you want to develop your digital presence.",
+    title: "Ongoing clarity",
+    body: "Support when required, without confusion or lock in.",
   },
 ];
 
@@ -176,21 +181,12 @@ export default function Home() {
 
       {/* ── Hero ── */}
       <section className="mx-auto max-w-6xl px-8 pb-16 pt-14 md:pb-24 md:pt-20">
-        <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white/70">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          Cork-based · Ireland &amp; UK/EU
-        </div>
-
         <h1 className="mt-7 text-5xl font-semibold tracking-[-0.03em] leading-[1.0] md:text-7xl">
-          Websites, systems,
-          <br />
-          <span className="text-white/40">and platforms.</span>
+          We build and manage your digital systems properly, so you can focus on your work.
         </h1>
 
         <p className="mt-7 max-w-2xl text-base leading-relaxed text-white/60 md:text-lg">
-          We help Irish businesses build the right digital solution. Websites,
-          systems and platforms that solve the problem. Properly planned
-          and delivered on time.
+          Clear scope. Transparent pricing. Long term reliability.
         </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -199,7 +195,7 @@ export default function Home() {
             className="inline-flex items-center justify-center rounded-full bg-white
                        px-6 py-3 text-sm font-semibold text-black hover:bg-white/90"
           >
-            Start with Discovery
+            Get started
           </a>
           <a
             href="/services"
@@ -210,28 +206,12 @@ export default function Home() {
             View services →
           </a>
         </div>
-
-        <div className="mt-10 flex flex-wrap gap-2.5 text-xs text-white/50">
-          {["Websites", "Automation &amp; systems", "Platforms", "Design &amp; identity", "AI &amp; automation"].map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full border border-white/10 px-3 py-1"
-              dangerouslySetInnerHTML={{ __html: tag }}
-            />
-          ))}
-        </div>
       </section>
 
       {/* ── Three Pillars ── */}
       <section id="services" className="mx-auto max-w-6xl px-8 py-20 md:py-24">
         <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
           What we do
-        </p>
-        <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
-          Digital foundations for growing companies.
-        </h2>
-        <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
-          Websites, systems and scalable platforms for growing companies. Clear scope, fixed pricing and delivery you can trust.
         </p>
 
         <div className="mt-10 grid gap-5 md:grid-cols-3">
@@ -270,8 +250,7 @@ export default function Home() {
             Scope first. Build second.
           </h2>
           <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
-            Every project starts with a planning session. We agree on exactly
-            what needs to be built, at what price, before any work begins.
+            Built to deliver tangible value, whether that means generating enquiries, improving efficiency or strengthening your digital presence.
           </p>
 
           <div className="mt-10 grid gap-4 md:grid-cols-4">
@@ -285,17 +264,6 @@ export default function Home() {
                 <div className="mt-2.5 text-sm leading-relaxed text-white/55">{s.body}</div>
               </div>
             ))}
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            <a
-              href="/elevate"
-              className="inline-flex items-center justify-center rounded-full border
-                         border-white/15 px-5 py-2.5 text-sm font-semibold text-white/80
-                         hover:border-white/25 hover:text-white"
-            >
-              Start with Discovery →
-            </a>
           </div>
         </div>
       </section>
