@@ -6,7 +6,7 @@ const HOW_IT_WORKS = [
   {
     n: "01",
     title: "Submit a brief",
-    body: "Tell us what you need — your project, challenge, or goal. No pitch deck required. A few sentences is enough to start.",
+    body: "Tell us what you need: your project, challenge, or goal. No pitch deck required. A few sentences is enough to start.",
   },
   {
     n: "02",
@@ -166,6 +166,15 @@ const ENGAGEMENT_TYPES = [
 ];
 
 const SUPPORT_PLANS = [
+  {
+    name: "Starter",
+    tagline: "For landing page sites.",
+    features: [
+      "Hosting & SSL certificate",
+      "Uptime monitoring",
+      "Security updates",
+    ],
+  },
   {
     name: "Foundation",
     tagline: "Peace of mind for live sites.",
@@ -363,7 +372,7 @@ export default function PricingPage() {
           stays fast, secure, and improving.
         </p>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 grid gap-4 md:grid-cols-4">
           {SUPPORT_PLANS.map((plan) => (
             <div
               key={plan.name}

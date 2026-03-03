@@ -48,9 +48,9 @@ const CLARIFIERS: Record<EngagementType, ClarifierQuestion[]> = {
       key: "design_ready",
       question: "Do you have designs or wireframes?",
       options: [
-        { value: "yes",     label: "Yes — designs are ready" },
-        { value: "partial", label: "Partially — some direction" },
-        { value: "no",      label: "No — starting from scratch" },
+        { value: "yes",     label: "Yes - designs are ready" },
+        { value: "partial", label: "Partially - some direction" },
+        { value: "no",      label: "No - starting from scratch" },
       ],
     },
     {
@@ -72,7 +72,7 @@ const CLARIFIERS: Record<EngagementType, ClarifierQuestion[]> = {
         { value: "design_ux",    label: "Design and UX" },
         { value: "new_features", label: "Add new features" },
         { value: "integrations", label: "Integrations or APIs" },
-        { value: "not_sure",     label: "Not sure — need an assessment" },
+        { value: "not_sure",     label: "Not sure - need an assessment" },
       ],
     },
     {
@@ -89,8 +89,8 @@ const CLARIFIERS: Record<EngagementType, ClarifierQuestion[]> = {
       key: "urgency",
       question: "How urgent is this?",
       options: [
-        { value: "critical",     label: "Critical — needs fixing now" },
-        { value: "prioritised",  label: "Enhancement — prioritised" },
+        { value: "critical",     label: "Critical - needs fixing now" },
+        { value: "prioritised",  label: "Enhancement - prioritised" },
         { value: "nice_to_have", label: "Nice-to-have" },
       ],
     },
@@ -104,15 +104,15 @@ const CLARIFIERS: Record<EngagementType, ClarifierQuestion[]> = {
         { value: "ai_automation",   label: "AI or automation opportunities" },
         { value: "team_hiring",     label: "Team structure or hiring" },
         { value: "delivery_review", label: "Delivery process or delivery review" },
-        { value: "not_sure",        label: "Not sure — I need a sounding board" },
+        { value: "not_sure",        label: "Not sure - I need a sounding board" },
       ],
     },
     {
       key: "existing_team",
       question: "Do you have a technical team in place?",
       options: [
-        { value: "yes",         label: "Yes — I have a technical team" },
-        { value: "no",          label: "No — I need guidance on where to start" },
+        { value: "yes",         label: "Yes - I have a technical team" },
+        { value: "no",          label: "No - I need guidance on where to start" },
         { value: "contractors", label: "Mix of internal and contractors" },
       ],
     },
@@ -135,16 +135,16 @@ const CLARIFIERS: Record<EngagementType, ClarifierQuestion[]> = {
         { value: "brand_refresh",   label: "Brand refresh" },
         { value: "design_system",   label: "Design system for a digital product" },
         { value: "website_design",  label: "Website design only (no development)" },
-        { value: "not_sure",        label: "Not sure — open to recommendations" },
+        { value: "not_sure",        label: "Not sure - open to recommendations" },
       ],
     },
     {
       key: "existing_brand",
       question: "Where are you starting from?",
       options: [
-        { value: "nothing",   label: "Nothing yet — starting fresh" },
+        { value: "nothing",   label: "Nothing yet - starting fresh" },
         { value: "some",      label: "Some brand elements (logo, colours)" },
-        { value: "full_rebrand", label: "Full rebrand — replacing existing brand" },
+        { value: "full_rebrand", label: "Full rebrand - replacing existing brand" },
       ],
     },
     {
@@ -173,7 +173,7 @@ const CLARIFIERS: Record<EngagementType, ClarifierQuestion[]> = {
       question: "Have you worked with OTwoOne before?",
       options: [
         { value: "new",       label: "New client" },
-        { value: "returning", label: "Yes — returning client" },
+        { value: "returning", label: "Yes - returning client" },
       ],
     },
     {
@@ -217,9 +217,9 @@ const TIMELINE_OPTIONS = [
 ];
 
 const AUTHORITY_OPTIONS = [
-  { value: "yes",    label: "Yes — I'm the decision maker" },
-  { value: "shared", label: "Shared — need sign-off from others" },
-  { value: "no",     label: "No — I'm gathering information" },
+  { value: "yes",    label: "Yes - I'm the decision maker" },
+  { value: "shared", label: "Shared - need sign-off from others" },
+  { value: "no",     label: "No - I'm gathering information" },
 ];
 
 // ─── Option button ─────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ const SERVICES = [
       "Portfolio and case study sites",
       "Performance and SEO optimisation",
     ],
+    landingPageNote: true,
   },
   {
     label: "Automation & Systems",
@@ -71,6 +72,17 @@ const SERVICES = [
 ];
 
 const SUPPORT_PLANS = [
+  {
+    name: "Starter",
+    price: "€49",
+    period: "/ month",
+    features: [
+      "Hosting & SSL certificate",
+      "Uptime monitoring",
+      "Security updates",
+      "For landing page sites",
+    ],
+  },
   {
     name: "Foundation",
     price: "€99",
@@ -205,6 +217,25 @@ export default function ServicesPage() {
                   >
                     Start a brief →
                   </a>
+
+                  {s.landingPageNote && (
+                    <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-4">
+                      <p className="text-xs font-semibold tracking-widest uppercase text-white/40">
+                        Landing Page
+                      </p>
+                      <p className="mt-1.5 text-sm text-white/55 leading-relaxed">
+                        Single page, built to convert. Ideal for new businesses and campaigns.
+                        Hosting from €49/month.
+                      </p>
+                      <a
+                        href="/elevate"
+                        className="mt-3 inline-flex items-center text-sm font-semibold
+                                   text-white/60 transition-colors hover:text-white/90"
+                      >
+                        Get a landing page →
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 <ul className="space-y-2.5 md:border-l md:border-white/8 md:pl-12">
@@ -233,7 +264,7 @@ export default function ServicesPage() {
           Ideal for sites that need updates, fixes and steady improvement after launch.
         </p>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 grid gap-4 md:grid-cols-4">
           {SUPPORT_PLANS.map((plan) => (
             <div
               key={plan.name}
