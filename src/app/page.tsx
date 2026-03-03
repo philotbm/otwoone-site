@@ -4,21 +4,25 @@ import Image from "next/image";
 
 const PILLARS = [
   {
+    icon: "📄",
     label: "Landing pages",
     description:
       "Single page sites built to convert. Hosting from €49 per month.",
   },
   {
+    icon: "🌐",
     label: "Websites",
     description:
       "Structured multi page websites designed to represent your organisation clearly.",
   },
   {
+    icon: "⚙️",
     label: "Automation and systems",
     description:
       "Practical digital systems that reduce manual work.",
   },
   {
+    icon: "🛡️",
     label: "Ongoing hosting and maintenance",
     description:
       "Monitoring, security, updates and structured improvements from €49 per month.",
@@ -50,14 +54,17 @@ const PROCESS_STEPS = [
 
 const DIFFERENTIATORS = [
   {
+    icon: "📦",
     title: "Package-led, not hourly.",
     body: "We don't bill by the hour. Every project is scoped and priced upfront, so you know exactly what it costs before you say yes.",
   },
   {
+    icon: "🎯",
     title: "Outcome-accountable.",
     body: "We take responsibility for what we build. If something we built doesn't work as agreed, we fix it. That's not an extra charge. It's part of the job.",
   },
   {
+    icon: "📍",
     title: "Cork-based. Ireland-native.",
     body: "We're based in Cork and we understand how Irish businesses work. Experience across Ireland, the UK, the EU and the US.",
   },
@@ -182,10 +189,14 @@ export default function Home() {
       {/* ── Hero ── */}
       <section className="mx-auto max-w-6xl px-8 pb-16 pt-14 md:pb-24 md:pt-20">
         <h1 className="mt-7 text-5xl font-semibold tracking-[-0.03em] leading-[1.0] md:text-7xl">
-          We build and manage your digital systems properly, so you can focus on your work.
+          Digital Solutions
         </h1>
 
-        <p className="mt-7 max-w-2xl text-base leading-relaxed text-white/60 md:text-lg">
+        <p className="mt-5 max-w-2xl text-2xl font-medium leading-snug tracking-tight text-white/70 md:text-3xl">
+          We build and manage your digital systems properly, so you can focus on your work.
+        </p>
+
+        <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/60 md:text-lg">
           Clear scope. Transparent pricing. Long term reliability.
         </p>
 
@@ -222,6 +233,7 @@ export default function Home() {
                          bg-white/[0.03] p-7 transition-all duration-300
                          hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.06]"
             >
+              <span className="mb-3 block text-xl">{p.icon}</span>
               <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
                 {p.label}
               </p>
@@ -301,6 +313,7 @@ export default function Home() {
             className="rounded-2xl border border-white/10 bg-white/[0.03] p-8
                        transition-all duration-300 hover:-translate-y-1 hover:border-white/20"
           >
+            <span className="mb-3 block text-xl">{DIFFERENTIATORS[0].icon}</span>
             <h3 className="font-semibold text-white leading-snug">{DIFFERENTIATORS[0].title}</h3>
             <p className="mt-3 text-sm leading-relaxed text-white/55">{DIFFERENTIATORS[0].body}</p>
           </div>
@@ -313,6 +326,7 @@ export default function Home() {
                 className="flex-1 rounded-2xl border border-white/10 bg-white/[0.03] p-6
                            transition-all duration-300 hover:-translate-y-1 hover:border-white/20"
               >
+                <span className="mb-3 block text-xl">{d.icon}</span>
                 <h3 className="font-semibold text-white leading-snug">{d.title}</h3>
                 <p className="mt-3 text-sm leading-relaxed text-white/55">{d.body}</p>
               </div>
@@ -366,19 +380,25 @@ export default function Home() {
           {/* Right: stat chips */}
           <div className="flex flex-col justify-center gap-4">
             {[
-              { stat: "10+ years", label: "Large-scale delivery experience" },
-              { stat: "EU/UK", label: "Multi-market operations awareness" },
-              { stat: "GDPR", label: "Privacy and compliance mindset" },
+              { icon: "⏱️", stat: "10+ years", label: "Large-scale delivery experience", sub: "EU/UK/US" },
+              { icon: "🌍", stat: "EU/UK", label: "Multi-market operations awareness" },
+              { icon: "🔒", stat: "GDPR", label: "Privacy and compliance mindset" },
             ].map((item) => (
               <div
                 key={item.stat}
-                className="flex items-center gap-5 rounded-2xl border border-white/10
+                className="flex items-center gap-4 rounded-2xl border border-white/10
                            bg-white/[0.03] p-5"
               >
-                <span className="text-2xl font-semibold tracking-tight text-white">
-                  {item.stat}
-                </span>
-                <span className="text-sm text-white/50">{item.label}</span>
+                <span className="text-lg">{item.icon}</span>
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-semibold tracking-tight text-white">
+                      {item.stat}
+                    </span>
+                    {"sub" in item && <span className="text-xs text-white/30">{item.sub}</span>}
+                  </div>
+                  <span className="text-sm text-white/50">{item.label}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -480,12 +500,11 @@ export default function Home() {
         <div className="mx-auto max-w-6xl px-8 flex flex-col gap-8 md:flex-row md:items-start md:justify-between text-sm text-white/50">
           <div className="flex flex-col gap-2">
             <Image
-              src="/branding/otwoone-logo.png"
+              src="/branding/otwoone-logo-wordmark-white.png"
               alt="OTwoOne"
-              width={120}
-              height={32}
-              className="h-[28px] opacity-60"
-              style={{ width: "auto" }}
+              width={601}
+              height={201}
+              className="h-[28px] w-auto opacity-60"
             />
             <p className="max-w-xs leading-relaxed text-white/40">
               Websites · Systems · Advisory<br />
