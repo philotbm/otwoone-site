@@ -59,7 +59,7 @@ const DIFFERENTIATORS = [
   },
   {
     title: "Cork-based. Ireland-native.",
-    body: "We're based in Cork and we understand how Irish businesses work. We know the regulations, the market, and what it takes to grow here and into the UK and EU.",
+    body: "We're based in Cork and we understand how Irish businesses work. Experience across Ireland, the UK, the EU and the US.",
   },
 ];
 
@@ -209,7 +209,7 @@ export default function Home() {
       </section>
 
       {/* ── Three Pillars ── */}
-      <section id="services" className="mx-auto max-w-6xl px-8 py-20 md:py-24">
+      <section id="services" className="mx-auto max-w-6xl px-8 py-16 md:py-20">
         <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
           What we do
         </p>
@@ -241,35 +241,53 @@ export default function Home() {
       </section>
 
       {/* ── How we engage ── */}
-      <section id="process" className="mx-auto max-w-6xl px-8 py-20 md:py-24">
+      <section id="process" className="mx-auto max-w-6xl px-8 py-16 md:py-20">
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 md:p-12">
-          <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
-            How we engage
-          </p>
-          <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
-            Scope first. Build second.
-          </h2>
-          <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
-            Built to deliver tangible value, whether that means generating enquiries, improving efficiency or strengthening your digital presence.
-          </p>
+          <div className="grid gap-10 md:grid-cols-2 md:gap-16">
 
-          <div className="mt-10 grid gap-4 md:grid-cols-4">
-            {PROCESS_STEPS.map((s) => (
-              <div
-                key={s.n}
-                className="rounded-xl border border-white/10 bg-black/40 p-5"
-              >
-                <div className="text-xs font-semibold tracking-widest text-white/35">{s.n}</div>
-                <div className="mt-3 font-semibold text-white">{s.title}</div>
-                <div className="mt-2.5 text-sm leading-relaxed text-white/55">{s.body}</div>
-              </div>
-            ))}
+            {/* Left: heading + outcome line */}
+            <div>
+              <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
+                How we engage
+              </p>
+              <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
+                Scope first. Build second.
+              </h2>
+              <p className="mt-4 text-white/55 leading-relaxed">
+                Built to deliver tangible value, whether that means generating enquiries, improving efficiency or strengthening your digital presence.
+              </p>
+            </div>
+
+            {/* Right: stacked steps with dividers */}
+            <div className="divide-y divide-white/[0.06]">
+              {PROCESS_STEPS.map((s) => (
+                <div key={s.n} className="flex items-start gap-3 py-4 first:pt-0 last:pb-0">
+                  <svg
+                    aria-hidden="true"
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/25"
+                    fill="none"
+                    viewBox="0 0 14 14"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M2 7h10M8 3l4 4-4 4" />
+                  </svg>
+                  <div>
+                    <div className="text-sm font-semibold text-white">{s.title}</div>
+                    <div className="mt-1 text-sm leading-relaxed text-white/50">{s.body}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
           </div>
         </div>
       </section>
 
       {/* ── Differentiators ── */}
-      <section className="mx-auto max-w-6xl px-8 py-16 md:py-20">
+      <section className="mx-auto max-w-6xl px-8 py-12 md:py-16">
         <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
           Why OTwoOne
         </p>
@@ -277,22 +295,34 @@ export default function Home() {
           Built for outcomes, not activity.
         </h2>
 
-        <div className="mt-10 grid gap-5 md:grid-cols-3">
-          {DIFFERENTIATORS.map((d) => (
-            <div
-              key={d.title}
-              className="rounded-2xl border border-white/10 bg-white/[0.03] p-6
-                         transition-all duration-300 hover:-translate-y-1 hover:border-white/20"
-            >
-              <h3 className="font-semibold text-white leading-snug">{d.title}</h3>
-              <p className="mt-3 text-sm leading-relaxed text-white/55">{d.body}</p>
-            </div>
-          ))}
+        <div className="mt-10 grid gap-5 md:grid-cols-2">
+          {/* Left: larger block */}
+          <div
+            className="rounded-2xl border border-white/10 bg-white/[0.03] p-8
+                       transition-all duration-300 hover:-translate-y-1 hover:border-white/20"
+          >
+            <h3 className="font-semibold text-white leading-snug">{DIFFERENTIATORS[0].title}</h3>
+            <p className="mt-3 text-sm leading-relaxed text-white/55">{DIFFERENTIATORS[0].body}</p>
+          </div>
+
+          {/* Right: two stacked blocks */}
+          <div className="flex flex-col gap-5">
+            {DIFFERENTIATORS.slice(1).map((d) => (
+              <div
+                key={d.title}
+                className="flex-1 rounded-2xl border border-white/10 bg-white/[0.03] p-6
+                           transition-all duration-300 hover:-translate-y-1 hover:border-white/20"
+              >
+                <h3 className="font-semibold text-white leading-snug">{d.title}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-white/55">{d.body}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* ── Credentials ── */}
-      <section id="about" className="mx-auto max-w-6xl px-8 py-16 md:py-20">
+      <section id="about" className="mx-auto max-w-6xl px-8 py-12 md:py-16">
         <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
           Why it matters
         </p>
@@ -454,7 +484,8 @@ export default function Home() {
               alt="OTwoOne"
               width={120}
               height={32}
-              className="h-[28px] w-auto opacity-60"
+              className="h-[28px] opacity-60"
+              style={{ width: "auto" }}
             />
             <p className="max-w-xs leading-relaxed text-white/40">
               Websites · Systems · Advisory<br />
