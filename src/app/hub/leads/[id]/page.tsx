@@ -18,7 +18,7 @@ type Project = {
   created_at: string;
   project_status: "project_setup_complete" | "build_active" | "delivered" | null;
   hosting_required: boolean;
-  maintenance_plan: "essential" | "growth" | "accelerator" | "none" | null;
+  maintenance_plan: "starter_49" | "essential" | "growth" | "accelerator" | "none" | null;
   maintenance_status: "pending" | "active" | "suspended" | "cancelled" | null;
   delivery_completed_at: string | null;
   sharepoint_folder_url: string | null;
@@ -103,9 +103,12 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   converted:        "Converted",
 };
 
-const MAINTENANCE_PLANS = ["essential", "growth", "accelerator", "none"] as const;
+const MAINTENANCE_PLANS = ["starter_49", "essential", "growth", "accelerator", "none"] as const;
 const MAINTENANCE_MONTHLY: Record<string, number> = {
-  essential: 99, growth: 199, accelerator: 299,
+  starter_49: 49, essential: 99, growth: 199, accelerator: 299,
+};
+const MAINTENANCE_LABELS: Record<string, string> = {
+  starter_49: "Starter", essential: "Foundation", growth: "Growth", accelerator: "Accelerator", none: "None",
 };
 const PROJECT_STATUSES = ["project_setup_complete", "build_active", "delivered"] as const;
 
@@ -241,7 +244,7 @@ function ConvertModal({
           <div className="mb-5">
             <label className="text-xs text-gray-400 block mb-3">Maintenance plan</label>
             <div className="space-y-2">
-              {(["essential", "growth", "accelerator"] as const).map((plan) => (
+              {(["starter_49", "essential", "growth", "accelerator"] as const).map((plan) => (
                 <button
                   key={plan}
                   type="button"
@@ -253,7 +256,7 @@ function ConvertModal({
                       : "border-white/10 text-gray-400 hover:border-white/20"
                   )}
                 >
-                  <span className="capitalize">{plan}</span>
+                  <span>{MAINTENANCE_LABELS[plan]}</span>
                   <span className="text-xs text-gray-500">€{MAINTENANCE_MONTHLY[plan]}/mo</span>
                 </button>
               ))}
@@ -603,7 +606,7 @@ export default function LeadDetailPage() {
                 <option value="" className="bg-[#0e0f14] text-gray-200">Not set</option>
                 {MAINTENANCE_PLANS.map((p) => (
                   <option key={p} value={p} className="bg-[#0e0f14] text-gray-200">
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                    {MAINTENANCE_LABELS[p]}
                     {MAINTENANCE_MONTHLY[p] ? ` — €${MAINTENANCE_MONTHLY[p]}/mo` : ""}
                   </option>
                 ))}
