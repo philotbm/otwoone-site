@@ -174,7 +174,7 @@ export default function Home() {
             className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black
                        transition-colors hover:bg-white/90"
           >
-            Start a project
+            Get started
           </a>
         </div>
       </header>
@@ -508,7 +508,7 @@ export default function Home() {
               </p>
               {[
                 ["/services",             "Our services"],
-                ["/elevate",              "Start a project"],
+                ["/elevate",              "Get started"],
                 ["mailto:info@otwoone.ie", "Contact"],
               ].map(([href, label]) => (
                 <a key={href} href={href} className="hover:text-white transition-colors">{label}</a>

@@ -164,7 +164,7 @@ export default function ServicesPage() {
             className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black
                        transition-colors hover:bg-white/90"
           >
-            Start a project
+            Get started
           </a>
         </div>
       </header>
@@ -335,7 +335,7 @@ export default function ServicesPage() {
               className="inline-flex items-center justify-center rounded-full bg-white
                          px-6 py-3 text-sm font-semibold text-black hover:bg-white/90"
             >
-              Start a project
+              Get started
             </a>
             <a
               href="mailto:info@otwoone.ie"
@@ -360,7 +360,7 @@ export default function ServicesPage() {
           <div className="flex gap-6">
             <a href="/" className="hover:text-white transition-colors">Home</a>
             <a href="/services" className="hover:text-white transition-colors">Services</a>
-            <a href="/elevate" className="hover:text-white transition-colors">Start a project</a>
+            <a href="/elevate" className="hover:text-white transition-colors">Get started</a>
           </div>
         </div>
       </footer>
