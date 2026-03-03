@@ -289,7 +289,7 @@ export default function ClientPortalPage() {
         {/* ── Step 1: Basics ──────────────────────────────────────────────────── */}
         <div className="mb-4">
           <Card
-            title="Step 1 — Basics"
+            title="Step 1: Basics"
             badge={
               step1Saved ? (
                 <span className="text-xs font-medium text-green-400">Saved ✓</span>
@@ -363,7 +363,7 @@ export default function ClientPortalPage() {
           <div className="mb-4 bg-indigo-500/[0.07] border border-indigo-500/20 rounded-xl px-5 py-5">
             <h2 className="text-sm font-semibold text-white mb-1">Book a call</h2>
             <p className="text-sm text-gray-400 mb-4 leading-relaxed">
-              Optional but recommended — a 30-minute call helps us align on priorities
+              Optional but recommended. A 30-minute call helps us align on priorities
               and answer any questions before we kick off.
             </p>
             <a
@@ -381,7 +381,7 @@ export default function ClientPortalPage() {
         {step1Saved && (
           <div className="mb-4">
             <Card
-              title="Step 2 — Project details"
+              title="Step 2: Project details"
               badge={
                 step2Saved ? (
                   <span className="text-xs font-medium text-green-400">Saved ✓</span>
@@ -406,7 +406,7 @@ export default function ClientPortalPage() {
                     type="text"
                     value={step2.subheadline}
                     onChange={(e) => setStep2Field("subheadline", e.target.value)}
-                    placeholder="e.g. Fast, reliable &amp; fully insured — available 24/7"
+                    placeholder="e.g. Fast, reliable &amp; fully insured, available 24/7"
                     disabled={step2Saved}
                     className={inputCls}
                   />
@@ -437,7 +437,7 @@ export default function ClientPortalPage() {
                   <textarea
                     value={step2.about}
                     onChange={(e) => setStep2Field("about", e.target.value)}
-                    placeholder="Tell us about your business — what you do, who you serve, and what makes you different."
+                    placeholder="Tell us about your business: what you do, who you serve, and what makes you different."
                     rows={4}
                     disabled={step2Saved}
                     className={cx(inputCls, "resize-none")}
@@ -505,7 +505,7 @@ export default function ClientPortalPage() {
         {step2Saved && (
           <div className="mb-4">
             <Card
-              title="Step 3 — Review & submit"
+              title="Step 3: Review & submit"
               badge={
                 submitted ? (
                   <span className="text-xs font-medium text-green-400">Submitted ✓</span>
@@ -585,7 +585,7 @@ export default function ClientPortalPage() {
                   </>
                 ) : (
                   <div className="px-4 py-4 rounded-lg bg-green-500/10 border border-green-500/20 text-sm text-green-400 leading-relaxed">
-                    <p className="font-medium mb-0.5">Thanks — we&apos;ve got everything we need!</p>
+                    <p className="font-medium mb-0.5">Thanks! We&apos;ve got everything we need.</p>
                     <p className="text-green-500/70">We&apos;ll be in touch shortly to kick things off.</p>
                   </div>
                 )}
