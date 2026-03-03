@@ -12,6 +12,19 @@ type LeadStatus =
   | "lost_pre_deposit"
   | "converted";
 
+type ProjectIntakeData = {
+  step1: Record<string, unknown> | null;
+  step2: Record<string, unknown> | null;
+  completed_at: string | null;
+};
+
+type ProjectData = {
+  id: string;
+  intake_status: string | null;
+  intake_last_saved_at: string | null;
+  project_intakes: ProjectIntakeData[] | null;
+};
+
 type Lead = {
   id: string;
   created_at: string;
@@ -27,6 +40,7 @@ type Lead = {
   discovery_depth_suggested: string | null;
   total_score: number | null;
   lead_details: { success_definition: string | null; internal_notes: string | null } | null;
+  projects: ProjectData[] | null;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -41,7 +55,7 @@ function fmt(dateStr: string) {
   });
 }
 
-/** Relative time from a timestamp to now — e.g. "2d ago", "3h ago". */
+/** Relative time from a timestamp to now — e.g. "2d ago", "3h ago", or absolute date if >7d. */
 function relTime(dateStr: string | null): string {
   if (!dateStr) return "—";
   const diff  = Date.now() - new Date(dateStr).getTime();
@@ -51,7 +65,8 @@ function relTime(dateStr: string | null): string {
   if (mins  <  1) return "just now";
   if (mins  < 60) return `${mins}m ago`;
   if (hours < 24) return `${hours}h ago`;
-  return `${days}d ago`;
+  if (days  <  7) return `${days}d ago`;
+  return fmt(dateStr);
 }
 
 /** ISO timestamp formatted for tooltip display. */
@@ -126,6 +141,55 @@ function StalenessTag({ info }: { info: StalenessInfo }) {
     >
       {info.days}d no action
     </span>
+  );
+}
+
+// ─── Intake progress chip ──────────────────────────────────────────────────────
+
+type IntakeStep = "none" | "not_started" | "step2" | "step3" | "complete";
+
+function deriveIntakeStep(projects: ProjectData[] | null): {
+  step: IntakeStep;
+  lastSaved: string | null;
+} {
+  const project = projects?.[0] ?? null;
+  if (!project) return { step: "none", lastSaved: null };
+
+  const intake   = project.project_intakes?.[0] ?? null;
+  const lastSaved = project.intake_last_saved_at ?? null;
+
+  if (intake?.completed_at) return { step: "complete", lastSaved };
+  if (intake?.step2)        return { step: "step3",    lastSaved };
+  if (intake?.step1)        return { step: "step2",    lastSaved };
+  return { step: "not_started", lastSaved };
+}
+
+const INTAKE_CHIP_META: Record<Exclude<IntakeStep, "none">, { label: string; colour: string }> = {
+  not_started: { label: "Not started", colour: "text-gray-400 bg-gray-400/10" },
+  step2:       { label: "Step 2 of 3", colour: "text-amber-400 bg-amber-400/10" },
+  step3:       { label: "Step 3 of 3", colour: "text-indigo-400 bg-indigo-400/10" },
+  complete:    { label: "Complete",    colour: "text-green-400 bg-green-400/10" },
+};
+
+function IntakeChip({ projects }: { projects: ProjectData[] | null }) {
+  const { step, lastSaved } = deriveIntakeStep(projects);
+  if (step === "none") return <span className="text-gray-600 text-xs">—</span>;
+
+  const meta = INTAKE_CHIP_META[step];
+  return (
+    <div>
+      <span className={cx("inline-block px-2 py-0.5 rounded text-xs font-medium", meta.colour)}>
+        {meta.label}
+      </span>
+      {lastSaved && step !== "not_started" && (
+        <div
+          className="text-[10px] text-gray-600 mt-0.5 cursor-default"
+          title={isoFmt(lastSaved)}
+        >
+          {relTime(lastSaved)}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -289,6 +353,7 @@ export default function HubPage() {
                     <th className="px-4 py-3 text-left font-medium">Discovery</th>
                     <th className="px-4 py-3 text-left font-medium">Status</th>
                     <th className="px-4 py-3 text-left font-medium">Go/No-Go</th>
+                    <th className="px-4 py-3 text-left font-medium">Intake</th>
                     <th className="px-4 py-3 text-left font-medium"></th>
                   </tr>
                 </thead>
@@ -392,6 +457,11 @@ export default function HubPage() {
                           <option value="go">Go</option>
                           <option value="nogo">No-Go</option>
                         </select>
+                      </td>
+
+                      {/* Intake */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <IntakeChip projects={lead.projects ?? null} />
                       </td>
 
                       {/* View */}
