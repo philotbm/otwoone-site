@@ -37,11 +37,11 @@ const CLARIFIERS: Record<EngagementType, ClarifierQuestion[]> = {
       key: "what_building",
       question: "What are you building?",
       options: [
-        { value: "web_app",      label: "Web application or SaaS" },
-        { value: "website",      label: "Marketing or informational website" },
-        { value: "internal_tool",label: "Internal tool or portal" },
-        { value: "ecommerce",    label: "E-commerce store" },
-        { value: "not_sure",     label: "Not sure yet" },
+        { value: "landing_page",  label: "Landing page" },
+        { value: "website",       label: "Website" },
+        { value: "internal_tool", label: "Automation or internal system" },
+        { value: "web_app",       label: "Web application or SaaS" },
+        { value: "not_sure",      label: "Not sure yet" },
       ],
     },
     {

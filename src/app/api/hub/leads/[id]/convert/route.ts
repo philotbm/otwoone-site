@@ -14,7 +14,7 @@ type Params = { params: Promise<{ id: string }> };
  *
  * Body:
  *   hosting_required: boolean (required)
- *   maintenance_plan: 'essential' | 'growth' | 'accelerator' | 'none' (required if hosting_required)
+ *   maintenance_plan: 'starter_49' | 'essential' | 'growth' | 'accelerator' | 'none' (required if hosting_required)
  */
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const hosting_required   = Boolean(body.hosting_required);
   const maintenance_plan   = String(body.maintenance_plan ?? 'none') as
-    'essential' | 'growth' | 'accelerator' | 'none';
+    'starter_49' | 'essential' | 'growth' | 'accelerator' | 'none';
 
   // Validation: if hosting required, plan must not be 'none'
   if (hosting_required && maintenance_plan === 'none') {
