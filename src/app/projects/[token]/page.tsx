@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -28,10 +28,10 @@ const EMPTY_STEP2: Step2Form = {
 };
 
 const CTA_OPTIONS: { value: string; label: string }[] = [
-  { value: "call",         label: "Phone call"    },
-  { value: "email",        label: "Email"         },
-  { value: "contact_form", label: "Contact form"  },
-  { value: "whatsapp",     label: "WhatsApp"      },
+  { value: "call",         label: "Phone call"   },
+  { value: "email",        label: "Email"        },
+  { value: "contact_form", label: "Contact form" },
+  { value: "whatsapp",     label: "WhatsApp"     },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -44,10 +44,6 @@ function cx(...classes: Array<string | false | null | undefined>) {
 //
 // NEXT_PUBLIC_BOOKINGS_URL — Microsoft Bookings page URL.
 // Set in .env.local and in Vercel Environment Variables (all scopes).
-//
-// Per-project-type variant pattern (future):
-//   NEXT_PUBLIC_BOOKINGS_URL_LAUNCH | _FOUNDATION | _GROWTH | _ACCELERATOR
-//   resolved via ?type= query param.
 //
 const BOOKINGS_URL = process.env.NEXT_PUBLIC_BOOKINGS_URL ?? "";
 
@@ -103,6 +99,9 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 export default function ClientPortalPage() {
   const { token } = useParams<{ token: string }>();
 
+  // ── Loading / hydration ─────────────────────────────────────────────────────
+  const [loading, setLoading] = useState(true);
+
   // ── Step 1 state ────────────────────────────────────────────────────────────
   const [step1Saved, setStep1Saved] = useState(false);
   const [saving,     setSaving]     = useState(false);
@@ -155,6 +154,63 @@ export default function ClientPortalPage() {
     step2.about.trim().length >= 40 &&
     step2.primary_cta !== "";
 
+  // ── Step 3 state ────────────────────────────────────────────────────────────
+  const [confirmed,   setConfirmed]   = useState(false);
+  const [submitting,  setSubmitting]  = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [submitted,   setSubmitted]   = useState(false);
+
+  // ── Hydrate from server on mount ────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!token) return;
+
+    fetch(`/api/projects/${token}/intake`)
+      .then((r) => r.json() as Promise<{
+        step1: Record<string, unknown> | null;
+        step2: Record<string, unknown> | null;
+        completed_at: string | null;
+      }>)
+      .then((data) => {
+        const s1   = data.step1;
+        const s2   = data.step2;
+        const done = !!data.completed_at;
+
+        if (s1) {
+          setBasics({
+            contact_name: String(s1.contact_name ?? ""),
+            project_name: String(s1.project_name ?? ""),
+            goals:        String(s1.goals        ?? ""),
+          });
+          setStep1Saved(true);
+        }
+
+        if (s2) {
+          const savedServices = Array.isArray(s2.services)
+            ? (s2.services as unknown[]).map((x) => String(x ?? ""))
+            : [];
+          setStep2({
+            headline:    String(s2.headline    ?? ""),
+            subheadline: String(s2.subheadline ?? ""),
+            services:    [...savedServices, "", "", "", "", "", ""].slice(0, 6),
+            about:       String(s2.about       ?? ""),
+            primary_cta: String(s2.primary_cta ?? ""),
+          });
+          setStep2Saved(true);
+        }
+
+        if (done) {
+          setSubmitted(true);
+        }
+      })
+      .catch(() => {
+        // Hydration failure is non-fatal; user can re-fill the form
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [token]);
+
   // ── Save Step 1 ────────────────────────────────────────────────────────────
 
   async function handleSaveBasics() {
@@ -189,12 +245,6 @@ export default function ClientPortalPage() {
       setSaving(false);
     }
   }
-
-  // ── Step 3 state ────────────────────────────────────────────────────────────
-  const [confirmed,    setConfirmed]    = useState(false);
-  const [submitting,   setSubmitting]   = useState(false);
-  const [submitError,  setSubmitError]  = useState("");
-  const [submitted,    setSubmitted]    = useState(false);
 
   // ── Save Step 2 ────────────────────────────────────────────────────────────
 
@@ -263,7 +313,19 @@ export default function ClientPortalPage() {
     }
   }
 
+  // ── Derived ───────────────────────────────────────────────────────────────
+
+  const currentStep = submitted ? null : step2Saved ? 3 : step1Saved ? 2 : 1;
+
   // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#05060a] flex items-center justify-center">
+        <p className="text-sm text-gray-600">Loading…</p>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#05060a] px-4 py-16">
@@ -284,6 +346,9 @@ export default function ClientPortalPage() {
           <p className="text-sm text-gray-500 leading-relaxed">
             Fill in the basics below so we can hit the ground running together.
           </p>
+          {currentStep !== null && (
+            <p className="mt-2 text-xs text-gray-600">Step {currentStep} of 3</p>
+          )}
         </div>
 
         {/* ── Step 1: Basics ──────────────────────────────────────────────────── */}
@@ -518,9 +583,9 @@ export default function ClientPortalPage() {
                 <div>
                   <p className="text-xs font-medium tracking-widest uppercase text-gray-600 mb-2">Basics</p>
                   <dl className="space-y-1.5">
-                    <ReviewRow label="Name"         value={basics.contact_name} />
-                    <ReviewRow label="Project"      value={basics.project_name} />
-                    <ReviewRow label="Goals"        value={basics.goals} />
+                    <ReviewRow label="Name"    value={basics.contact_name} />
+                    <ReviewRow label="Project" value={basics.project_name} />
+                    <ReviewRow label="Goals"   value={basics.goals} />
                   </dl>
                 </div>
 
@@ -530,12 +595,12 @@ export default function ClientPortalPage() {
                 <div>
                   <p className="text-xs font-medium tracking-widest uppercase text-gray-600 mb-2">Project details</p>
                   <dl className="space-y-1.5">
-                    <ReviewRow label="Headline"    value={step2.headline} />
+                    <ReviewRow label="Headline" value={step2.headline} />
                     {step2.subheadline && (
                       <ReviewRow label="Sub-headline" value={step2.subheadline} />
                     )}
-                    <ReviewRow label="Services"    value={validServices.join(", ")} />
-                    <ReviewRow label="About"       value={step2.about} />
+                    <ReviewRow label="Services" value={validServices.join(", ")} />
+                    <ReviewRow label="About"    value={step2.about} />
                     <ReviewRow
                       label="Primary CTA"
                       value={CTA_OPTIONS.find((o) => o.value === step2.primary_cta)?.label ?? step2.primary_cta}
@@ -543,7 +608,7 @@ export default function ClientPortalPage() {
                   </dl>
                 </div>
 
-                {/* ── Confirmation + submit ────────────────────────────────── */}
+                {/* ── Confirmation + submit / post-submit ─────────────────── */}
                 {!submitted ? (
                   <>
                     <div className="border-t border-white/5" />
@@ -584,9 +649,38 @@ export default function ClientPortalPage() {
                     </button>
                   </>
                 ) : (
-                  <div className="px-4 py-4 rounded-lg bg-green-500/10 border border-green-500/20 text-sm text-green-400 leading-relaxed">
-                    <p className="font-medium mb-0.5">Thanks! We&apos;ve got everything we need.</p>
-                    <p className="text-green-500/70">We&apos;ll be in touch shortly to kick things off.</p>
+                  <div className="space-y-4 pt-1">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500/15 flex items-center justify-center">
+                        <svg className="w-4 h-4 text-green-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-white">Submission received</p>
+                        <p className="text-xs text-gray-500">
+                          Thanks, {basics.contact_name.trim().split(" ")[0]}. We&apos;ve got everything we need.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-white/5" />
+
+                    <div>
+                      <p className="text-xs font-medium tracking-widest uppercase text-gray-600 mb-3">What happens next</p>
+                      <ul className="space-y-2">
+                        {[
+                          "We'll review your brief and scope out the project.",
+                          "You'll hear from us within 1–2 business days.",
+                          "We may follow up with a short call to align on details.",
+                        ].map((item) => (
+                          <li key={item} className="flex items-start gap-2.5 text-sm text-gray-400">
+                            <span className="mt-1.5 w-1 h-1 rounded-full bg-indigo-500 flex-shrink-0" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 )}
 

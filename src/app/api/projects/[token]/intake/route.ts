@@ -8,6 +8,45 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * GET /api/projects/[token]/intake
+ *
+ * Public endpoint — the token acts as the auth credential.
+ * Returns existing intake progress so the portal can hydrate on load.
+ *
+ * Returns: 200 { step1, step2, completed_at } | 404
+ * step1/step2/completed_at are null if not yet saved.
+ */
+export async function GET(_req: NextRequest, { params }: Params) {
+  const { token } = await params;
+
+  if (!UUID_RE.test(token)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  const { data: project, error: findErr } = await supabaseServer
+    .from('projects')
+    .select('id')
+    .eq('intake_token', token)
+    .single();
+
+  if (findErr || !project) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  const { data: intake } = await supabaseServer
+    .from('project_intakes')
+    .select('step1, step2, completed_at')
+    .eq('project_id', project.id)
+    .maybeSingle();
+
+  return NextResponse.json({
+    step1:        intake?.step1        ?? null,
+    step2:        intake?.step2        ?? null,
+    completed_at: intake?.completed_at ?? null,
+  });
+}
+
+/**
  * POST /api/projects/[token]/intake
  *
  * Public endpoint — the token acts as the auth credential.
