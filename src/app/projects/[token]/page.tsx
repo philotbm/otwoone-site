@@ -102,6 +102,11 @@ export default function ClientPortalPage() {
   // ── Loading / hydration ─────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
 
+  // ── Navigation — which step is currently active ─────────────────────────────
+  // step1Saved / step2Saved are capability flags (have been saved at least once).
+  // currentStep controls which step is shown as active and editable.
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+
   // ── Step 1 state ────────────────────────────────────────────────────────────
   const [step1Saved, setStep1Saved] = useState(false);
   const [saving,     setSaving]     = useState(false);
@@ -199,9 +204,12 @@ export default function ClientPortalPage() {
           setStep2Saved(true);
         }
 
-        if (done) {
-          setSubmitted(true);
-        }
+        // Advance currentStep to match saved progress
+        if (s2)      setCurrentStep(3);
+        else if (s1) setCurrentStep(2);
+        // else stays at 1
+
+        if (done) setSubmitted(true);
       })
       .catch(() => {
         // Hydration failure is non-fatal; user can re-fill the form
@@ -236,6 +244,8 @@ export default function ClientPortalPage() {
       }
 
       setStep1Saved(true);
+      // If step 2 already saved (edit flow), go straight back to review
+      setCurrentStep(step2Saved ? 3 : 2);
 
     } catch (err) {
       setSaveError(
@@ -273,6 +283,7 @@ export default function ClientPortalPage() {
       }
 
       setStep2Saved(true);
+      setCurrentStep(3);
 
     } catch (err) {
       setSaveError2(
@@ -313,10 +324,6 @@ export default function ClientPortalPage() {
     }
   }
 
-  // ── Derived ───────────────────────────────────────────────────────────────
-
-  const currentStep = submitted ? null : step2Saved ? 3 : step1Saved ? 2 : 1;
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -346,7 +353,7 @@ export default function ClientPortalPage() {
           <p className="text-sm text-gray-500 leading-relaxed">
             Fill in the basics below so we can hit the ground running together.
           </p>
-          {currentStep !== null && (
+          {!submitted && (
             <p className="mt-2 text-xs text-gray-600">Step {currentStep} of 3</p>
           )}
         </div>
@@ -356,7 +363,7 @@ export default function ClientPortalPage() {
           <Card
             title="Step 1: Basics"
             badge={
-              step1Saved ? (
+              step1Saved && currentStep !== 1 ? (
                 <span className="text-xs font-medium text-green-400">Saved ✓</span>
               ) : null
             }
@@ -369,7 +376,7 @@ export default function ClientPortalPage() {
                   value={basics.contact_name}
                   onChange={(e) => setField("contact_name", e.target.value)}
                   placeholder="e.g. Sarah Murphy"
-                  disabled={step1Saved}
+                  disabled={step1Saved && currentStep !== 1}
                   className={inputCls}
                 />
               </Field>
@@ -380,7 +387,7 @@ export default function ClientPortalPage() {
                   value={basics.project_name}
                   onChange={(e) => setField("project_name", e.target.value)}
                   placeholder="e.g. New company website"
-                  disabled={step1Saved}
+                  disabled={step1Saved && currentStep !== 1}
                   className={inputCls}
                 />
               </Field>
@@ -391,7 +398,7 @@ export default function ClientPortalPage() {
                   onChange={(e) => setField("goals", e.target.value)}
                   placeholder="e.g. Launch our new brand online, generate leads, and reduce our reliance on referrals."
                   rows={3}
-                  disabled={step1Saved}
+                  disabled={step1Saved && currentStep !== 1}
                   className={cx(inputCls, "resize-none")}
                 />
               </Field>
@@ -403,7 +410,7 @@ export default function ClientPortalPage() {
                 </div>
               )}
 
-              {!step1Saved && (
+              {currentStep === 1 && (
                 <button
                   type="button"
                   onClick={handleSaveBasics}
@@ -448,7 +455,7 @@ export default function ClientPortalPage() {
             <Card
               title="Step 2: Project details"
               badge={
-                step2Saved ? (
+                step2Saved && currentStep !== 2 ? (
                   <span className="text-xs font-medium text-green-400">Saved ✓</span>
                 ) : null
               }
@@ -461,7 +468,7 @@ export default function ClientPortalPage() {
                     value={step2.headline}
                     onChange={(e) => setStep2Field("headline", e.target.value)}
                     placeholder="e.g. Expert Plumbing Services in Dublin"
-                    disabled={step2Saved}
+                    disabled={step2Saved && currentStep !== 2}
                     className={inputCls}
                   />
                 </Field>
@@ -472,7 +479,7 @@ export default function ClientPortalPage() {
                     value={step2.subheadline}
                     onChange={(e) => setStep2Field("subheadline", e.target.value)}
                     placeholder="e.g. Fast, reliable &amp; fully insured, available 24/7"
-                    disabled={step2Saved}
+                    disabled={step2Saved && currentStep !== 2}
                     className={inputCls}
                   />
                 </Field>
@@ -486,7 +493,7 @@ export default function ClientPortalPage() {
                         value={svc}
                         onChange={(e) => setService(i, e.target.value)}
                         placeholder={`Service ${i + 1}${i < 3 ? " *" : ""}`}
-                        disabled={step2Saved}
+                        disabled={step2Saved && currentStep !== 2}
                         className={inputCls}
                       />
                     ))}
@@ -504,7 +511,7 @@ export default function ClientPortalPage() {
                     onChange={(e) => setStep2Field("about", e.target.value)}
                     placeholder="Tell us about your business: what you do, who you serve, and what makes you different."
                     rows={4}
-                    disabled={step2Saved}
+                    disabled={step2Saved && currentStep !== 2}
                     className={cx(inputCls, "resize-none")}
                   />
                   <p className="mt-1.5 text-xs text-gray-600">
@@ -520,7 +527,7 @@ export default function ClientPortalPage() {
                       <button
                         key={opt.value}
                         type="button"
-                        disabled={step2Saved}
+                        disabled={step2Saved && currentStep !== 2}
                         onClick={() => {
                           setStep2Field("primary_cta", opt.value);
                         }}
@@ -529,7 +536,7 @@ export default function ClientPortalPage() {
                           step2.primary_cta === opt.value
                             ? "bg-indigo-600/20 border-indigo-500/50 text-indigo-300"
                             : "bg-white/[0.03] border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300",
-                          step2Saved ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                          step2Saved && currentStep !== 2 ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
                         )}
                       >
                         {opt.label}
@@ -545,7 +552,7 @@ export default function ClientPortalPage() {
                   </div>
                 )}
 
-                {!step2Saved && (
+                {currentStep === 2 && (
                   <button
                     type="button"
                     onClick={handleSaveStep2}
@@ -566,8 +573,8 @@ export default function ClientPortalPage() {
           </div>
         )}
 
-        {/* ── Step 3: Review & submit — shown after Step 2 saved ───────────────── */}
-        {step2Saved && (
+        {/* ── Step 3: Review & submit — shown only when on step 3 ─────────────── */}
+        {step2Saved && currentStep === 3 && (
           <div className="mb-4">
             <Card
               title="Step 3: Review & submit"
@@ -581,7 +588,18 @@ export default function ClientPortalPage() {
 
                 {/* ── Summary: Step 1 ─────────────────────────────────────── */}
                 <div>
-                  <p className="text-xs font-medium tracking-widest uppercase text-gray-600 mb-2">Basics</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium tracking-widest uppercase text-gray-600">Basics</p>
+                    {!submitted && (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(1)}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
                   <dl className="space-y-1.5">
                     <ReviewRow label="Name"    value={basics.contact_name} />
                     <ReviewRow label="Project" value={basics.project_name} />
@@ -593,7 +611,18 @@ export default function ClientPortalPage() {
 
                 {/* ── Summary: Step 2 ─────────────────────────────────────── */}
                 <div>
-                  <p className="text-xs font-medium tracking-widest uppercase text-gray-600 mb-2">Project details</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium tracking-widest uppercase text-gray-600">Project details</p>
+                    {!submitted && (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(2)}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
                   <dl className="space-y-1.5">
                     <ReviewRow label="Headline" value={step2.headline} />
                     {step2.subheadline && (
