@@ -311,7 +311,7 @@ export async function POST(req: NextRequest) {
             from:    'OTwoOne <noreply@otwoone.ie>',
             to:      [contact_email],
             replyTo: notifyEmail,
-            subject: "We've received your OTwoOne Elevate details",
+            subject: "We've received your details",
             html:    buildClientEmail(contact_name ?? ''),
           }),
         ]);

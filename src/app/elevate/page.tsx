@@ -389,6 +389,27 @@ export default function ElevatePage() {
     <main className="min-h-screen bg-[#05060a] px-4 py-20">
       <div className="max-w-xl mx-auto">
 
+        {/* Page nav */}
+        <div className="flex items-center justify-between mb-10 text-sm">
+          <div className="flex items-center gap-2 text-gray-500">
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) window.history.back();
+                else window.location.href = "/";
+              }}
+              className="hover:text-gray-300 transition-colors"
+            >
+              Home
+            </button>
+            <span className="text-gray-700">/</span>
+            <span className="text-gray-400">Get started</span>
+          </div>
+          <a href="/services" className="text-gray-500 hover:text-gray-300 transition-colors">
+            View services →
+          </a>
+        </div>
+
         {/* Header */}
         <div className="mb-10">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -690,6 +711,12 @@ export default function ElevatePage() {
             </div>
           </form>
         )}
+
+        {/* Credibility */}
+        <p className="mt-16 text-xs text-gray-600 text-center">
+          Experience across Ireland, the UK, the EU and the US.
+        </p>
+
       </div>
     </main>
   );
