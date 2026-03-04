@@ -498,6 +498,7 @@ export default function LeadDetailPage() {
   const [proposedPlan, setProposedPlan]         = useState("");
   const [reviewsIncluded, setReviewsIncluded]   = useState(2);
   const [reviewLimitError, setReviewLimitError] = useState("");
+  const [scopingError, setScopingError]         = useState("");
 
   const fetchLead = useCallback(async () => {
     setLoading(true);
@@ -807,12 +808,34 @@ export default function LeadDetailPage() {
               {/* Quick action */}
               {status === "lead_submitted" && (
                 lead.contact_email ? (
-                  <a
-                    href={`mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — quick scoping questions")}&body=${encodeURIComponent(`Hi ${lead.contact_name ?? "there"},\nThanks for reaching out. To price this properly, can you reply with:\n1) What pages/sections you need\n2) Examples you like\n3) Deadline\n4) Any integrations (booking, payments, etc.)\nThanks,\nPhilip`)}`}
-                    className="mt-3 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                  >
-                    Send scoping template
-                  </a>
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={async () => {
+                        setScopingError("");
+                        setSaving(true);
+                        const res = await fetch(`/api/hub/leads/${id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ status: "scoping_sent" }),
+                        });
+                        setSaving(false);
+                        if (!res.ok) {
+                          const json = await res.json() as { error?: string };
+                          setScopingError(json.error ?? "Failed to update stage.");
+                          return;
+                        }
+                        setStatus("scoping_sent");
+                        fetchLead();
+                        window.location.href = `mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — quick scoping questions")}&body=${encodeURIComponent(`Hi ${lead.contact_name ?? "there"},\nThanks for reaching out. To price this properly, can you reply with:\n1) What pages/sections you need\n2) Examples you like\n3) Deadline\n4) Any integrations (booking, payments, etc.)\nThanks,\nPhilip`)}`;
+                      }}
+                      className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                    >
+                      Send scoping template
+                    </button>
+                    {scopingError && <p className="text-[11px] text-red-400 mt-1">{scopingError}</p>}
+                  </div>
                 ) : (
                   <div className="mt-3">
                     <button disabled className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 opacity-40 text-white cursor-not-allowed">
