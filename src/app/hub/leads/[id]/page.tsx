@@ -150,6 +150,17 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   converted:         "Converted",
 };
 
+const NEXT_ACTION: Record<LeadStatus, string> = {
+  lead_submitted:    "Next: send scoping template",
+  scoping_sent:      "Next: wait for scope",
+  scope_received:    "Next: prepare proposal",
+  proposal_sent:     "Next: request deposit",
+  deposit_requested: "Next: confirm deposit",
+  deposit_received:  "Next: convert to project",
+  lost_pre_deposit:  "Closed",
+  converted:         "Converted",
+};
+
 const CTA_LABELS: Record<string, string> = {
   call:         "Phone call",
   email:        "Email",
@@ -772,12 +783,12 @@ export default function LeadDetailPage() {
           </div>
         </Section>
 
-        {/* Internal controls */}
-        <Section title="Internal controls">
+        {/* Lead stage */}
+        <Section title="Lead stage">
           <div className="space-y-4">
             {/* Status */}
             <div>
-              <label className="text-xs text-gray-500 block mb-1.5">Status</label>
+              <label className="text-xs text-gray-500 block mb-1.5">Stage</label>
               <select
                 value={status}
                 onChange={(e) => {
@@ -791,10 +802,11 @@ export default function LeadDetailPage() {
                   <option key={s} value={s} className="bg-[#0e0f14] text-gray-200">{STATUS_LABELS[s]}</option>
                 ))}
               </select>
+              <p className="mt-1.5 text-xs text-gray-500">{NEXT_ACTION[status]}</p>
             </div>
 
-            {/* Discovery override */}
-            <div>
+            {/* Discovery override — retired v1.17.1 */}
+            {/* <div>
               <label className="text-xs text-gray-500 block mb-1.5">Discovery override</label>
               <select
                 value={discoveryDepth}
@@ -809,10 +821,10 @@ export default function LeadDetailPage() {
                 <option value="core" className="bg-[#0e0f14] text-gray-200">Core</option>
                 <option value="deep" className="bg-[#0e0f14] text-gray-200">Deep</option>
               </select>
-            </div>
+            </div> */}
 
-            {/* Proposed hosting */}
-            <div>
+            {/* Proposed hosting — retired v1.17.1 */}
+            {/* <div>
               <label className="text-xs text-gray-500 block mb-1.5">Hosting proposed</label>
               <select
                 value={proposedHosting}
@@ -826,10 +838,10 @@ export default function LeadDetailPage() {
                 <option value="yes" className="bg-[#0e0f14] text-gray-200">Yes — hosting included</option>
                 <option value="no" className="bg-[#0e0f14] text-gray-200">No — client hosts</option>
               </select>
-            </div>
+            </div> */}
 
-            {/* Proposed maintenance plan */}
-            <div>
+            {/* Proposed maintenance plan — retired v1.17.1 */}
+            {/* <div>
               <label className="text-xs text-gray-500 block mb-1.5">Maintenance plan proposed</label>
               <select
                 value={proposedPlan}
@@ -847,7 +859,7 @@ export default function LeadDetailPage() {
                   </option>
                 ))}
               </select>
-            </div>
+            </div> */}
           </div>
         </Section>
 
