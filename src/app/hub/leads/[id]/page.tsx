@@ -803,6 +803,34 @@ export default function LeadDetailPage() {
                 ))}
               </select>
               <p className="mt-1.5 text-xs text-gray-500">{NEXT_ACTION[status]}</p>
+
+              {/* Quick action */}
+              {status === "lead_submitted" && (
+                lead.contact_email ? (
+                  <a
+                    href={`mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — quick scoping questions")}&body=${encodeURIComponent(`Hi ${lead.contact_name ?? "there"},\nThanks for reaching out. To price this properly, can you reply with:\n1) What pages/sections you need\n2) Examples you like\n3) Deadline\n4) Any integrations (booking, payments, etc.)\nThanks,\nPhilip`)}`}
+                    className="mt-3 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                  >
+                    Send scoping template
+                  </a>
+                ) : (
+                  <div className="mt-3">
+                    <button disabled className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 opacity-40 text-white cursor-not-allowed">
+                      Send scoping template
+                    </button>
+                    <p className="text-[11px] text-gray-600 mt-1">No email on lead.</p>
+                  </div>
+                )
+              )}
+              {status === "deposit_received" && (
+                <button
+                  type="button"
+                  onClick={() => setShowConvert(true)}
+                  className="mt-3 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                >
+                  Convert to project
+                </button>
+              )}
             </div>
 
             {/* Discovery override — retired v1.17.1 */}
