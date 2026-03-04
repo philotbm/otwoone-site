@@ -158,6 +158,19 @@ const MAINTENANCE_LABELS: Record<string, string> = {
   starter_49: "Starter", essential: "Foundation", growth: "Growth", accelerator: "Accelerator", none: "None",
 };
 
+// ─── Lifecycle stages ──────────────────────────────────────────────────────────
+
+const LIFECYCLE_STAGES = [
+  'Enquiry submitted', 'Brief complete', 'Requirements', 'Proposal sent',
+  'Deposit paid', 'In build', 'Client review', 'Revisions', 'Final approval', 'Complete',
+] as const;
+
+const STATUS_STEP: Record<string, number> = {
+  enquiry: 1, brief_complete: 2, requirements: 3, proposal_sent: 4,
+  deposit_paid: 5, in_build: 6, client_review: 7, revisions: 8,
+  final_approval: 9, complete: 10,
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -365,6 +378,40 @@ function ConvertModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Lifecycle stepper ─────────────────────────────────────────────────────────
+
+function LifecycleStepper({ currentStep }: { currentStep: number }) {
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-2">
+      {LIFECYCLE_STAGES.map((label, i) => {
+        const step = i + 1;
+        const done   = step < currentStep;
+        const active = step === currentStep;
+        return (
+          <div key={step} className="flex items-center gap-1.5">
+            <div className={cx(
+              "w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0",
+              done   ? "bg-indigo-600 text-white" :
+              active ? "bg-indigo-500/20 ring-1 ring-inset ring-indigo-500 text-indigo-300" :
+                       "bg-white/5 text-gray-700"
+            )}>
+              {done ? '✓' : step}
+            </div>
+            <span className={cx(
+              "text-xs whitespace-nowrap",
+              active ? "text-indigo-300 font-medium" :
+              done   ? "text-gray-400" :
+                       "text-gray-700"
+            )}>
+              {label}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -597,6 +644,11 @@ export default function LeadDetailPage() {
           </span>
         )}
       </header>
+
+      {/* Lifecycle stepper */}
+      <div className="px-6 pt-5 pb-2 max-w-4xl mx-auto">
+        <LifecycleStepper currentStep={project ? (STATUS_STEP[project.project_status ?? ''] ?? 1) : 1} />
+      </div>
 
       <div className="px-6 py-6 max-w-4xl mx-auto grid grid-cols-1 gap-5 lg:grid-cols-2">
 
