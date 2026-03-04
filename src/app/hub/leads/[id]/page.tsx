@@ -181,6 +181,7 @@ function fmtDateTime(dateStr: string) {
 function eventLabel(ev: { event_type: string; meta: Record<string, unknown> | null }): string {
   if (ev.event_type === 'project_created') return 'Project created';
   if (ev.event_type === 'status_changed') {
+    if (ev.meta?.attempted_to === 'revisions') return 'Review limit reached';
     const from = ev.meta?.from as string | undefined;
     const to   = ev.meta?.to   as string | undefined;
     if (from === 'deposit_paid' && to === 'in_build')  return 'Build started';
@@ -193,6 +194,7 @@ function eventLabel(ev: { event_type: string; meta: Record<string, unknown> | nu
 function eventIcon(ev: { event_type: string; meta: Record<string, unknown> | null }): string {
   if (ev.event_type === 'project_created') return '🟢';
   if (ev.event_type === 'status_changed') {
+    if (ev.meta?.attempted_to === 'revisions') return '⛔';
     const from = ev.meta?.from as string | undefined;
     const to   = ev.meta?.to   as string | undefined;
     if (from === 'deposit_paid' && to === 'in_build') return '🔵';
