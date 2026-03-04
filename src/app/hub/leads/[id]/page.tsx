@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { PROJECT_STATUSES, type ProjectStatus } from "@/lib/projectStatus";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ type LeadStatus =
 type Project = {
   id: string;
   created_at: string;
-  project_status: "enquiry" | "brief_complete" | "requirements" | "proposal_sent" | "deposit_paid" | "in_build" | "client_review" | "revisions" | "final_approval" | "complete" | null;
+  project_status: ProjectStatus | null;
   hosting_required: boolean;
   maintenance_plan: "starter_49" | "essential" | "growth" | "accelerator" | "none" | null;
   maintenance_status: "pending" | "active" | "suspended" | "cancelled" | null;
@@ -147,7 +148,6 @@ const MAINTENANCE_MONTHLY: Record<string, number> = {
 const MAINTENANCE_LABELS: Record<string, string> = {
   starter_49: "Starter", essential: "Foundation", growth: "Growth", accelerator: "Accelerator", none: "None",
 };
-const PROJECT_STATUSES = ["enquiry", "brief_complete", "requirements", "proposal_sent", "deposit_paid", "in_build", "client_review", "revisions", "final_approval", "complete"] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
