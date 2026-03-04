@@ -8,12 +8,16 @@ type Params = { params: Promise<{ id: string }> };
  * PATCH /api/hub/projects/[id]
  *
  * Allowed updates:
- *   project_status: 'project_setup_complete' | 'build_active' | 'delivered'
+ *   project_status: any ProjectStatus value
  *   maintenance_plan, maintenance_status, hosting_required
+ *   reviews_included (hub-editable; reviews_used is NOT directly patchable)
  *
- * Special logic when project_status → 'delivered':
+ * Special logic when project_status → 'complete':
  *   - Sets delivery_completed_at = now()
  *   - If hosting_required: sets maintenance_status = 'active'
+ *
+ * Special logic when project_status transitions INTO 'revisions':
+ *   - Auto-increments reviews_used by 1
  */
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -22,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // Fetch current project state
   const { data: project, error: fetchErr } = await supabaseServer
     .from('projects')
-    .select('id, hosting_required, maintenance_status, project_status')
+    .select('id, hosting_required, maintenance_status, project_status, reviews_used')
     .eq('id', id)
     .single();
 
@@ -34,6 +38,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const allowedFields = [
     'project_status', 'maintenance_plan', 'maintenance_status', 'hosting_required',
+    'reviews_included',
   ] as const;
 
   for (const field of allowedFields) {
@@ -53,6 +58,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (hostingOn) {
       updates.maintenance_status = 'active';
     }
+  }
+
+  // Auto-increment reviews_used when status transitions INTO 'revisions'
+  if (
+    body.project_status === 'revisions' &&
+    project.project_status !== 'revisions'
+  ) {
+    updates.reviews_used = (project.reviews_used ?? 0) + 1;
   }
 
   if (Object.keys(updates).length === 0) {

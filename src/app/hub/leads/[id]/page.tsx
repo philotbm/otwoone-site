@@ -25,6 +25,8 @@ type Project = {
   sharepoint_folder_url: string | null;
   sharepoint_folder_error: string | null;
   intake_status: "not_sent" | "sent" | "in_progress" | "complete" | null;
+  reviews_included: number;
+  reviews_used: number;
 };
 
 type IntakeStep1 = {
@@ -400,6 +402,7 @@ export default function LeadDetailPage() {
   const [discoveryDepth, setDiscoveryDepth]     = useState("");
   const [proposedHosting, setProposedHosting]   = useState<"yes" | "no" | "">("");
   const [proposedPlan, setProposedPlan]         = useState("");
+  const [reviewsIncluded, setReviewsIncluded]   = useState(2);
 
   const fetchLead = useCallback(async () => {
     setLoading(true);
@@ -412,6 +415,7 @@ export default function LeadDetailPage() {
       setDiscoveryDepth(l.discovery_depth ?? "");
       setProposedHosting(l.proposed_hosting_required === true ? "yes" : l.proposed_hosting_required === false ? "no" : "");
       setProposedPlan(l.proposed_maintenance_plan ?? "");
+      setReviewsIncluded(l.projects?.[0]?.reviews_included ?? 2);
       setNotes(l.lead_details?.internal_notes ?? "");
     } finally {
       setLoading(false);
@@ -502,6 +506,18 @@ export default function LeadDetailPage() {
     } finally {
       setIntakeLoading(false);
     }
+  }
+
+  // ── Project field update (generic) ───────────────────────────────────────────
+
+  async function saveProjectField(pId: string, fields: Record<string, unknown>) {
+    setSaving(true);
+    await fetch(`/api/hub/projects/${pId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    setSaving(false);
   }
 
   // ── Project status update ─────────────────────────────────────────────────────
@@ -769,6 +785,24 @@ export default function LeadDetailPage() {
                   <Row label="Hosting"        value={project.hosting_required ? "Yes" : "No"} />
                   <Row label="Maint. plan"    value={project.maintenance_plan ?? "—"} />
                   <Row label="Maint. status"  value={project.maintenance_status ?? "—"} />
+                  <Row label="Reviews" value={
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-200">{project.reviews_used} / {reviewsIncluded} used</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={reviewsIncluded}
+                          onChange={(e) => setReviewsIncluded(Number(e.target.value))}
+                          onBlur={(e) => saveProjectField(project.id, { reviews_included: Number(e.target.value) })}
+                          className="w-12 bg-[#0e0f14] border border-white/10 rounded px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60"
+                        />
+                        <span className="text-xs text-gray-600">incl.</span>
+                      </div>
+                      <p className="text-[10px] text-gray-600 mt-0.5">Landing=1 · 2–5 pages=2 · 6–10 pages=3 · 10+=4</p>
+                    </div>
+                  } />
                   {project.delivery_completed_at && (
                     <Row label="Delivered"    value={fmt(project.delivery_completed_at)} />
                   )}
