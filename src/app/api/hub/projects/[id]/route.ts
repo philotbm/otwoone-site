@@ -68,6 +68,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     project.project_status !== 'revisions'
   ) {
     if ((project.reviews_used ?? 0) >= (project.reviews_included ?? 2)) {
+      await logProjectEvent(
+        id,
+        'status_changed',
+        'Review limit reached — cannot enter revisions',
+        {
+          attempted_to: 'revisions',
+          from: project.project_status,
+          reviews_used: project.reviews_used,
+          reviews_included: project.reviews_included,
+        },
+      );
       return NextResponse.json(
         { error: 'Review limit reached. Increase reviews included to continue.', version: OTWOONE_OS_VERSION },
         { status: 409 },
