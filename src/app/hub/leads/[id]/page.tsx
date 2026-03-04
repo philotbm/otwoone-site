@@ -403,6 +403,7 @@ export default function LeadDetailPage() {
   const [proposedHosting, setProposedHosting]   = useState<"yes" | "no" | "">("");
   const [proposedPlan, setProposedPlan]         = useState("");
   const [reviewsIncluded, setReviewsIncluded]   = useState(2);
+  const [reviewLimitError, setReviewLimitError] = useState("");
 
   const fetchLead = useCallback(async () => {
     setLoading(true);
@@ -524,12 +525,18 @@ export default function LeadDetailPage() {
 
   async function updateProjectStatus(projectId: string, newStatus: string) {
     setSaving(true);
-    await fetch(`/api/hub/projects/${projectId}`, {
+    const res = await fetch(`/api/hub/projects/${projectId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ project_status: newStatus }),
     });
     setSaving(false);
+    if (res.status === 409) {
+      const json = await res.json() as { error?: string };
+      setReviewLimitError(json.error ?? "Review limit reached.");
+      return;
+    }
+    setReviewLimitError("");
     fetchLead();
     fetchEvents(projectId);
   }
@@ -772,15 +779,20 @@ export default function LeadDetailPage() {
                 <div>
                   <Row label="Project ID"     value={<span className="font-mono text-xs text-gray-400">{project.id.slice(0, 8).toUpperCase()}</span>} />
                   <Row label="Status"         value={
-                    <select
-                      defaultValue={project.project_status ?? ""}
-                      onChange={(e) => updateProjectStatus(project.id, e.target.value)}
-                      className="bg-[#0e0f14] border border-white/10 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60"
-                    >
-                      {PROJECT_STATUSES.map((s) => (
-                        <option key={s} value={s} className="bg-[#0e0f14] text-gray-300">{s.replace(/_/g, " ")}</option>
-                      ))}
-                    </select>
+                    <div>
+                      <select
+                        value={project.project_status ?? ""}
+                        onChange={(e) => updateProjectStatus(project.id, e.target.value)}
+                        className="bg-[#0e0f14] border border-white/10 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60"
+                      >
+                        {PROJECT_STATUSES.map((s) => (
+                          <option key={s} value={s} className="bg-[#0e0f14] text-gray-300">{s.replace(/_/g, " ")}</option>
+                        ))}
+                      </select>
+                      {reviewLimitError && (
+                        <p className="text-xs text-red-400 mt-1">{reviewLimitError}</p>
+                      )}
+                    </div>
                   } />
                   <Row label="Hosting"        value={project.hosting_required ? "Yes" : "No"} />
                   <Row label="Maint. plan"    value={project.maintenance_plan ?? "—"} />
@@ -795,7 +807,7 @@ export default function LeadDetailPage() {
                           max={10}
                           value={reviewsIncluded}
                           onChange={(e) => setReviewsIncluded(Number(e.target.value))}
-                          onBlur={(e) => saveProjectField(project.id, { reviews_included: Number(e.target.value) })}
+                          onBlur={(e) => { setReviewLimitError(""); saveProjectField(project.id, { reviews_included: Number(e.target.value) }); }}
                           className="w-12 bg-[#0e0f14] border border-white/10 rounded px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60"
                         />
                         <span className="text-xs text-gray-600">incl.</span>
