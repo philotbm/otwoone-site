@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { createProjectFolder } from '@/lib/sharepoint';
 import { OTWOONE_OS_VERSION } from '@/lib/osVersion';
+import { logProjectEvent } from '@/lib/projectEvents';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -115,6 +116,13 @@ export async function POST(req: NextRequest, { params }: Params) {
       console.error('SharePoint folder creation failed:', result.error);
     }
   })();
+
+  await logProjectEvent(
+    project.id,
+    'project_created',
+    'Project created from lead conversion',
+    { lead_id: id },
+  );
 
   return NextResponse.json({ success: true, project_id: project.id, version: OTWOONE_OS_VERSION });
 }
