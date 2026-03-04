@@ -171,6 +171,12 @@ const STATUS_STEP: Record<string, number> = {
   final_approval: 9, complete: 10,
 };
 
+const STEP_STATUS: Record<number, ProjectStatus> = {
+  1: 'enquiry', 2: 'brief_complete', 3: 'requirements', 4: 'proposal_sent',
+  5: 'deposit_paid', 6: 'in_build', 7: 'client_review', 8: 'revisions',
+  9: 'final_approval', 10: 'complete',
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -384,15 +390,36 @@ function ConvertModal({
 
 // ─── Lifecycle stepper ─────────────────────────────────────────────────────────
 
-function LifecycleStepper({ currentStep }: { currentStep: number }) {
+function LifecycleStepper({
+  currentStep,
+  onStepClick,
+  disabled,
+}: {
+  currentStep: number;
+  onStepClick: (step: number) => void;
+  disabled: boolean;
+}) {
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-2">
       {LIFECYCLE_STAGES.map((label, i) => {
-        const step = i + 1;
-        const done   = step < currentStep;
-        const active = step === currentStep;
+        const step             = i + 1;
+        const done             = step < currentStep;
+        const active           = step === currentStep;
+        const isForwardBlocked = step > currentStep + 1;
+        const isDisabled       = disabled || isForwardBlocked;
         return (
-          <div key={step} className="flex items-center gap-1.5">
+          <button
+            key={step}
+            type="button"
+            disabled={isDisabled}
+            onClick={() => { if (step !== currentStep) onStepClick(step); }}
+            className={cx(
+              "flex items-center gap-1.5",
+              isDisabled ? "cursor-not-allowed opacity-50" :
+              active     ? "cursor-default" :
+                           "cursor-pointer group"
+            )}
+          >
             <div className={cx(
               "w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0",
               done   ? "bg-indigo-600 text-white" :
@@ -404,12 +431,12 @@ function LifecycleStepper({ currentStep }: { currentStep: number }) {
             <span className={cx(
               "text-xs whitespace-nowrap",
               active ? "text-indigo-300 font-medium" :
-              done   ? "text-gray-400" :
-                       "text-gray-700"
+              done   ? "text-gray-400 group-hover:text-gray-200" :
+                       "text-gray-700 group-hover:text-gray-500"
             )}>
               {label}
             </span>
-          </div>
+          </button>
         );
       })}
     </div>
@@ -647,7 +674,11 @@ export default function LeadDetailPage() {
 
       {/* Lifecycle stepper */}
       <div className="px-6 pt-5 pb-2 max-w-4xl mx-auto">
-        <LifecycleStepper currentStep={project ? (STATUS_STEP[project.project_status ?? ''] ?? 1) : 1} />
+        <LifecycleStepper
+          currentStep={project ? (STATUS_STEP[project.project_status ?? ''] ?? 1) : 1}
+          onStepClick={(step) => { if (project) updateProjectStatus(project.id, STEP_STATUS[step]); }}
+          disabled={saving}
+        />
       </div>
 
       <div className="px-6 py-6 max-w-4xl mx-auto grid grid-cols-1 gap-5 lg:grid-cols-2">
