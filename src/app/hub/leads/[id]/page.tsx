@@ -676,7 +676,16 @@ export default function LeadDetailPage() {
       <div className="px-6 pt-5 pb-2 max-w-4xl mx-auto">
         <LifecycleStepper
           currentStep={project ? (STATUS_STEP[project.project_status ?? ''] ?? 1) : 1}
-          onStepClick={(step) => { if (project) updateProjectStatus(project.id, STEP_STATUS[step]); }}
+          onStepClick={(step) => {
+            if (!project) return;
+            const currentStep = STATUS_STEP[project.project_status ?? ''] ?? 1;
+            if (step < currentStep) {
+              const fromLabel = LIFECYCLE_STAGES[currentStep - 1];
+              const toLabel   = LIFECYCLE_STAGES[step - 1];
+              if (!window.confirm(`Move status back from "${fromLabel}" to "${toLabel}"?`)) return;
+            }
+            updateProjectStatus(project.id, STEP_STATUS[step]);
+          }}
           disabled={saving}
         />
       </div>
