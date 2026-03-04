@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { logProjectEvent } from '@/lib/projectEvents';
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -214,6 +215,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
     console.error('[intake/submit] projects update error:', projectUpdateErr);
     // Non-fatal: intake is marked complete; just log and continue
   }
+
+  await logProjectEvent(project.id, 'scope_saved', 'Scope submitted', { step: 'submitted' });
 
   // ── Internal notification email (first submission only) ───────────────────
   // Uses ELEVATE_NOTIFY_EMAIL — same inbox, no new env var needed.

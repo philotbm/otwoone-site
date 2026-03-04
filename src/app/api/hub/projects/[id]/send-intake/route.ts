@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { logProjectEvent } from '@/lib/projectEvents';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -189,6 +190,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
       // Non-fatal: email was sent successfully; just log and continue
     }
   }
+
+  await logProjectEvent(project.id, 'portal_link_sent', 'Portal link sent', { to: contactEmail });
 
   return NextResponse.json({ ok: true, intake_url });
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { logProjectEvent } from '@/lib/projectEvents';
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -132,6 +133,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Non-fatal: intake data is saved; just log and continue
     // (don't fail the client request over a status field)
   }
+
+  await logProjectEvent(project.id, 'scope_saved', 'Scope saved', { step: 1 });
 
   return NextResponse.json({ ok: true });
 }
