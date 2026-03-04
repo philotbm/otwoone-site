@@ -72,10 +72,23 @@ export async function POST(req: NextRequest, { params }: Params) {
     .select('id')
     .single();
 
-  if (projectErr || !project) {
-    // Rollback lead status update
-    await supabaseServer.from('leads').update({ status: lead.status }).eq('id', id);
-    return NextResponse.json({ error: 'Failed to create project' }, { status: 500 });
+  if (projectErr) {
+    console.error("Project creation failed:", projectErr);
+    await supabaseServer
+      .from('leads')
+      .update({ status: lead.status })
+      .eq('id', id);
+    return NextResponse.json(
+      { error: projectErr.message, details: projectErr },
+      { status: 500 }
+    );
+  }
+
+  if (!project) {
+    return NextResponse.json(
+      { error: "Project insert returned no row" },
+      { status: 500 }
+    );
   }
 
   // 3. SharePoint folder creation (non-blocking — best effort)
