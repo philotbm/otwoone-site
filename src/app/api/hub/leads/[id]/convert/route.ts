@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { createProjectFolder } from '@/lib/sharepoint';
+import { OTWOONE_OS_VERSION } from '@/lib/osVersion';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Validation: if hosting required, plan must not be 'none'
   if (hosting_required && maintenance_plan === 'none') {
     return NextResponse.json(
-      { error: 'A maintenance plan is required when hosting is included.' },
+      { error: 'A maintenance plan is required when hosting is included.', version: OTWOONE_OS_VERSION },
       { status: 400 }
     );
   }
@@ -40,11 +41,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single();
 
   if (leadFetchErr || !lead) {
-    return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Lead not found', version: OTWOONE_OS_VERSION }, { status: 404 });
   }
 
   if (lead.status === 'converted') {
-    return NextResponse.json({ error: 'Lead is already converted' }, { status: 409 });
+    return NextResponse.json({ error: 'Lead is already converted', version: OTWOONE_OS_VERSION }, { status: 409 });
   }
 
   // 1. Update lead status
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('id', id);
 
   if (statusErr) {
-    return NextResponse.json({ error: statusErr.message }, { status: 500 });
+    return NextResponse.json({ error: statusErr.message, version: OTWOONE_OS_VERSION }, { status: 500 });
   }
 
   // 2. Create project
@@ -79,14 +80,14 @@ export async function POST(req: NextRequest, { params }: Params) {
       .update({ status: lead.status })
       .eq('id', id);
     return NextResponse.json(
-      { error: projectErr.message, details: projectErr },
+      { error: projectErr.message, details: projectErr, version: OTWOONE_OS_VERSION },
       { status: 500 }
     );
   }
 
   if (!project) {
     return NextResponse.json(
-      { error: "Project insert returned no row" },
+      { error: "Project insert returned no row", version: OTWOONE_OS_VERSION },
       { status: 500 }
     );
   }
@@ -115,5 +116,5 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   })();
 
-  return NextResponse.json({ success: true, project_id: project.id });
+  return NextResponse.json({ success: true, project_id: project.id, version: OTWOONE_OS_VERSION });
 }
