@@ -177,6 +177,18 @@ function fmtDateTime(dateStr: string) {
   });
 }
 
+function eventLabel(ev: { event_type: string; meta: Record<string, unknown> | null }): string {
+  if (ev.event_type === 'project_created') return 'Project created';
+  if (ev.event_type === 'status_changed') {
+    const from = ev.meta?.from as string | undefined;
+    const to   = ev.meta?.to   as string | undefined;
+    if (from === 'deposit_paid' && to === 'in_build')  return 'Build started';
+    if (from === 'in_build'     && to === 'complete')  return 'Project delivered';
+    return 'Status updated';
+  }
+  return ev.event_type.replace(/_/g, ' ');
+}
+
 // ─── Section wrapper ───────────────────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -962,7 +974,7 @@ export default function LeadDetailPage() {
                   {events.map((ev) => (
                     <li key={ev.id} className="flex items-start gap-3">
                       <span className="mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-white/5 text-gray-500 shrink-0">
-                        {ev.event_type.replace(/_/g, " ")}
+                        {eventLabel(ev)}
                       </span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-300 leading-snug">{ev.message}</p>
