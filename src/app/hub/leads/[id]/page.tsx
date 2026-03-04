@@ -9,8 +9,11 @@ import { PROJECT_STATUSES, type ProjectStatus } from "@/lib/projectStatus";
 
 type LeadStatus =
   | "lead_submitted"
-  | "discovery_active"
+  | "scoping_sent"
+  | "scope_received"
   | "proposal_sent"
+  | "deposit_requested"
+  | "deposit_received"
   | "lost_pre_deposit"
   | "converted";
 
@@ -132,15 +135,19 @@ const AUTHORITY_LABELS: Record<string, string> = {
 };
 
 const STATUS_OPTIONS: LeadStatus[] = [
-  "lead_submitted", "discovery_active", "proposal_sent", "lost_pre_deposit", "converted",
+  "lead_submitted", "scoping_sent", "scope_received", "proposal_sent",
+  "deposit_requested", "deposit_received", "lost_pre_deposit", "converted",
 ];
 
 const STATUS_LABELS: Record<LeadStatus, string> = {
-  lead_submitted:   "Submitted",
-  discovery_active: "Discovery",
-  proposal_sent:    "Proposal Sent",
-  lost_pre_deposit: "Lost",
-  converted:        "Converted",
+  lead_submitted:    "Enquiry submitted",
+  scoping_sent:      "Scoping sent",
+  scope_received:    "Scope received",
+  proposal_sent:     "Proposal sent",
+  deposit_requested: "Deposit requested",
+  deposit_received:  "Deposit received",
+  lost_pre_deposit:  "Lost",
+  converted:         "Converted",
 };
 
 const CTA_LABELS: Record<string, string> = {
@@ -635,8 +642,9 @@ export default function LeadDetailPage() {
     );
   }
 
-  const project = lead.projects?.[0] ?? null;
+  const project     = lead.projects?.[0] ?? null;
   const isConverted = lead.status === "converted";
+  const canConvert  = lead.status === "deposit_received";
 
   return (
     <div className="min-h-screen bg-[#05060a] text-gray-200">
@@ -657,13 +665,16 @@ export default function LeadDetailPage() {
         </div>
 
         {/* Convert button */}
-        {!isConverted && (
+        {!isConverted && canConvert && (
           <button
             onClick={() => setShowConvert(true)}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
           >
             Convert (Deposit Paid)
           </button>
+        )}
+        {!isConverted && !canConvert && (
+          <span className="text-xs text-gray-600">Convert available after Deposit received.</span>
         )}
         {isConverted && (
           <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">

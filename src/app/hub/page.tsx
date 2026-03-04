@@ -8,8 +8,11 @@ import { OTWOONE_OS_VERSION } from "@/lib/osVersion";
 
 type LeadStatus =
   | "lead_submitted"
-  | "discovery_active"
+  | "scoping_sent"
+  | "scope_received"
   | "proposal_sent"
+  | "deposit_requested"
+  | "deposit_received"
   | "lost_pre_deposit"
   | "converted";
 
@@ -93,15 +96,19 @@ const BUDGET_LABELS: Record<string, string> = {
 };
 
 const STATUS_META: Record<LeadStatus, { label: string; colour: string }> = {
-  lead_submitted:   { label: "Submitted",  colour: "text-blue-400 bg-blue-400/10" },
-  discovery_active: { label: "Discovery",  colour: "text-yellow-400 bg-yellow-400/10" },
-  proposal_sent:    { label: "Proposal",   colour: "text-purple-400 bg-purple-400/10" },
-  lost_pre_deposit: { label: "Lost",       colour: "text-red-400 bg-red-400/10" },
-  converted:        { label: "Converted",  colour: "text-green-400 bg-green-400/10" },
+  lead_submitted:    { label: "Enquiry",    colour: "text-blue-400 bg-blue-400/10" },
+  scoping_sent:      { label: "Scoping",    colour: "text-cyan-400 bg-cyan-400/10" },
+  scope_received:    { label: "Scoped",     colour: "text-indigo-400 bg-indigo-400/10" },
+  proposal_sent:     { label: "Proposal",   colour: "text-purple-400 bg-purple-400/10" },
+  deposit_requested: { label: "Dep. Req.",  colour: "text-orange-400 bg-orange-400/10" },
+  deposit_received:  { label: "Dep. Rcvd", colour: "text-emerald-400 bg-emerald-400/10" },
+  lost_pre_deposit:  { label: "Lost",       colour: "text-red-400 bg-red-400/10" },
+  converted:         { label: "Converted",  colour: "text-green-400 bg-green-400/10" },
 };
 
 const LEAD_STATUSES: LeadStatus[] = [
-  "lead_submitted", "discovery_active", "proposal_sent", "lost_pre_deposit", "converted",
+  "lead_submitted", "scoping_sent", "scope_received", "proposal_sent",
+  "deposit_requested", "deposit_received", "lost_pre_deposit", "converted",
 ];
 
 // ─── Staleness ─────────────────────────────────────────────────────────────────
@@ -111,9 +118,14 @@ const LEAD_STATUSES: LeadStatus[] = [
 // Terminal statuses (lost, converted) are never stale.
 
 const STALE_DAYS: Partial<Record<LeadStatus, number>> = {
-  lead_submitted:   3,   // should have been responded to
-  discovery_active: 7,   // should be progressing
-  proposal_sent:    14,  // proposal has been out a while
+  lead_submitted:    3,
+  scoping_sent:      3,
+  scope_received:    5,
+  proposal_sent:     7,
+  deposit_requested: 7,
+  deposit_received:  2,   // should convert quickly
+  lost_pre_deposit:  14,
+  converted:         30,
 };
 
 type StalenessInfo = { days: number; level: "warn" | "overdue" };
@@ -293,8 +305,8 @@ export default function HubPage() {
       <div className="px-6 py-6 max-w-7xl mx-auto">
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 mb-8">
-          {(["lead_submitted","discovery_active","proposal_sent","lost_pre_deposit","converted"] as LeadStatus[]).map((s) => (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-8">
+          {(["lead_submitted","scoping_sent","scope_received","proposal_sent","deposit_requested","deposit_received","lost_pre_deposit","converted"] as LeadStatus[]).map((s) => (
             <div key={s} className="bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3">
               <p className="text-2xl font-semibold text-white">{counts[s] ?? 0}</p>
               <p className="text-xs text-gray-500 mt-0.5">{STATUS_META[s].label}</p>
