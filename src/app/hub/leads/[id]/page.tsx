@@ -90,6 +90,14 @@ type Lead = {
   projects: Project[] | null;
 };
 
+type ProjectEvent = {
+  id: string;
+  event_type: string;
+  message: string;
+  meta: Record<string, unknown> | null;
+  created_at: string;
+};
+
 // ─── Labels ───────────────────────────────────────────────────────────────────
 
 const ENGAGEMENT_LABELS: Record<string, string> = {
@@ -159,6 +167,13 @@ function fmt(dateStr: string | null) {
   if (!dateStr) return "—";
   return new Date(dateStr).toLocaleDateString("en-IE", {
     day: "numeric", month: "short", year: "numeric",
+  });
+}
+
+function fmtDateTime(dateStr: string) {
+  return new Date(dateStr).toLocaleString("en-IE", {
+    day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
   });
 }
 
@@ -352,6 +367,11 @@ export default function LeadDetailPage() {
   const [intakeData,    setIntakeData]    = useState<IntakeApiResponse | null>(null);
   const [intakeError,   setIntakeError]   = useState("");
 
+  // Timeline event state
+  const [events,        setEvents]        = useState<ProjectEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError,   setEventsError]   = useState("");
+
   // Local edit state
   const [status, setStatus]                     = useState<LeadStatus>("lead_submitted");
   const [goNoGo, setGoNoGo]                     = useState<"go" | "nogo" | "">("");
@@ -378,6 +398,24 @@ export default function LeadDetailPage() {
   }, [id]);
 
   useEffect(() => { fetchLead(); }, [fetchLead]);
+
+  const fetchEvents = useCallback(async (projectId: string) => {
+    setEventsLoading(true);
+    setEventsError("");
+    try {
+      const res  = await fetch(`/api/hub/projects/${projectId}/events`);
+      const json = await res.json() as { events?: ProjectEvent[]; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to load events.");
+      setEvents(json.events ?? []);
+    } catch (err) {
+      setEventsError(err instanceof Error ? err.message : "Failed to load events.");
+    } finally {
+      setEventsLoading(false);
+    }
+  }, []);
+
+  const projectId = lead?.projects?.[0]?.id;
+  useEffect(() => { if (projectId) fetchEvents(projectId); }, [projectId, fetchEvents]);
 
   // ── Save lead fields ──────────────────────────────────────────────────────────
 
@@ -891,6 +929,38 @@ export default function LeadDetailPage() {
                 )}
               </div>
 
+            </Section>
+          </div>
+        )}
+
+        {/* Timeline (only when project exists) */}
+        {project && (
+          <div className="lg:col-span-2">
+            <Section title="Timeline">
+              {eventsLoading && (
+                <p className="text-xs text-gray-600 py-1">Loading…</p>
+              )}
+              {eventsError && (
+                <p className="text-xs text-red-400 py-1">{eventsError}</p>
+              )}
+              {!eventsLoading && !eventsError && events.length === 0 && (
+                <p className="text-xs text-gray-600 py-1">No events yet.</p>
+              )}
+              {!eventsLoading && events.length > 0 && (
+                <ol className="space-y-3">
+                  {events.map((ev) => (
+                    <li key={ev.id} className="flex items-start gap-3">
+                      <span className="mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-white/5 text-gray-500 shrink-0">
+                        {ev.event_type.replace(/_/g, " ")}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-300 leading-snug">{ev.message}</p>
+                        <p className="text-[11px] text-gray-600 mt-0.5">{fmtDateTime(ev.created_at)}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </Section>
           </div>
         )}
