@@ -494,6 +494,7 @@ export default function LeadDetailPage() {
     });
     setSaving(false);
     fetchLead();
+    fetchEvents(projectId);
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -937,6 +938,16 @@ export default function LeadDetailPage() {
         {project && (
           <div className="lg:col-span-2">
             <Section title="Timeline">
+              <div className="flex justify-end -mt-1 mb-3">
+                <button
+                  type="button"
+                  onClick={() => fetchEvents(project.id)}
+                  disabled={eventsLoading}
+                  className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors disabled:opacity-40"
+                >
+                  {eventsLoading ? "Refreshing…" : "↺ Refresh"}
+                </button>
+              </div>
               {eventsLoading && (
                 <p className="text-xs text-gray-600 py-1">Loading…</p>
               )}
