@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { logProjectEvent } from '@/lib/projectEvents';
+import { OTWOONE_OS_VERSION } from '@/lib/osVersion';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -17,7 +18,8 @@ type Params = { params: Promise<{ id: string }> };
  *   - If hosting_required: sets maintenance_status = 'active'
  *
  * Special logic when project_status transitions INTO 'revisions':
- *   - Auto-increments reviews_used by 1
+ *   - Blocks with 409 if reviews_used >= reviews_included (review limit reached)
+ *   - Otherwise auto-increments reviews_used by 1
  */
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -26,7 +28,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // Fetch current project state
   const { data: project, error: fetchErr } = await supabaseServer
     .from('projects')
-    .select('id, hosting_required, maintenance_status, project_status, reviews_used')
+    .select('id, hosting_required, maintenance_status, project_status, reviews_used, reviews_included')
     .eq('id', id)
     .single();
 
@@ -60,11 +62,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
-  // Auto-increment reviews_used when status transitions INTO 'revisions'
+  // Gate + auto-increment reviews_used when status transitions INTO 'revisions'
   if (
     body.project_status === 'revisions' &&
     project.project_status !== 'revisions'
   ) {
+    if ((project.reviews_used ?? 0) >= (project.reviews_included ?? 2)) {
+      return NextResponse.json(
+        { error: 'Review limit reached. Increase reviews included to continue.', version: OTWOONE_OS_VERSION },
+        { status: 409 },
+      );
+    }
     updates.reviews_used = (project.reviews_used ?? 0) + 1;
   }
 
