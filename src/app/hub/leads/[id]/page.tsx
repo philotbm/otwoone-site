@@ -71,7 +71,6 @@ type Lead = {
   engagement_type: string | null;
   budget: string | null;
   timeline: string | null;
-  go_no_go: boolean | null;
   discovery_depth: string | null;
   discovery_depth_suggested: string | null;
   clarity_score: number | null;
@@ -398,7 +397,6 @@ export default function LeadDetailPage() {
 
   // Local edit state
   const [status, setStatus]                     = useState<LeadStatus>("lead_submitted");
-  const [goNoGo, setGoNoGo]                     = useState<"go" | "nogo" | "">("");
   const [discoveryDepth, setDiscoveryDepth]     = useState("");
   const [proposedHosting, setProposedHosting]   = useState<"yes" | "no" | "">("");
   const [proposedPlan, setProposedPlan]         = useState("");
@@ -411,7 +409,6 @@ export default function LeadDetailPage() {
       const l: Lead = json.data;
       setLead(l);
       setStatus(l.status);
-      setGoNoGo(l.go_no_go === true ? "go" : l.go_no_go === false ? "nogo" : "");
       setDiscoveryDepth(l.discovery_depth ?? "");
       setProposedHosting(l.proposed_hosting_required === true ? "yes" : l.proposed_hosting_required === false ? "no" : "");
       setProposedPlan(l.proposed_maintenance_plan ?? "");
@@ -665,24 +662,6 @@ export default function LeadDetailPage() {
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s} className="bg-[#0e0f14] text-gray-200">{STATUS_LABELS[s]}</option>
                 ))}
-              </select>
-            </div>
-
-            {/* Go / No-Go */}
-            <div>
-              <label className="text-xs text-gray-500 block mb-1.5">Go / No-Go</label>
-              <select
-                value={goNoGo}
-                onChange={(e) => {
-                  const v = e.target.value as "go" | "nogo" | "";
-                  setGoNoGo(v);
-                  saveField({ go_no_go: v === "go" ? true : v === "nogo" ? false : null });
-                }}
-                className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
-              >
-                <option value="" className="bg-[#0e0f14] text-gray-200">Not set</option>
-                <option value="go" className="bg-[#0e0f14] text-gray-200">Go</option>
-                <option value="nogo" className="bg-[#0e0f14] text-gray-200">No-Go</option>
               </select>
             </div>
 

@@ -36,7 +36,6 @@ type Lead = {
   company_name: string | null;
   engagement_type: string | null;
   budget: string | null;
-  go_no_go: boolean | null;
   discovery_depth: string | null;
   discovery_depth_suggested: string | null;
   total_score: number | null;
@@ -272,22 +271,6 @@ export default function HubPage() {
     }
   }
 
-  async function updateGoNoGo(leadId: string, value: boolean | null) {
-    setSaving(leadId);
-    try {
-      await fetch(`/api/hub/leads/${leadId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ go_no_go: value }),
-      });
-      setLeads((prev) =>
-        prev.map((l) => l.id === leadId ? { ...l, go_no_go: value } : l)
-      );
-    } finally {
-      setSaving(null);
-    }
-  }
-
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -353,7 +336,6 @@ export default function HubPage() {
                     <th className="px-4 py-3 text-left font-medium">Score</th>
                     <th className="px-4 py-3 text-left font-medium">Discovery</th>
                     <th className="px-4 py-3 text-left font-medium">Status</th>
-                    <th className="px-4 py-3 text-left font-medium">Go/No-Go</th>
                     <th className="px-4 py-3 text-left font-medium">Intake</th>
                     <th className="px-4 py-3 text-left font-medium"></th>
                   </tr>
@@ -437,26 +419,6 @@ export default function HubPage() {
                           {LEAD_STATUSES.map((s) => (
                             <option key={s} value={s}>{STATUS_META[s].label}</option>
                           ))}
-                        </select>
-                      </td>
-
-                      {/* Go/No-Go */}
-                      <td className="px-4 py-3">
-                        <select
-                          value={lead.go_no_go === null ? "" : lead.go_no_go ? "go" : "nogo"}
-                          disabled={saving === lead.id}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            updateGoNoGo(
-                              lead.id,
-                              v === "go" ? true : v === "nogo" ? false : null
-                            );
-                          }}
-                          className="bg-transparent border border-white/10 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60 cursor-pointer"
-                        >
-                          <option value="">—</option>
-                          <option value="go">Go</option>
-                          <option value="nogo">No-Go</option>
                         </select>
                       </td>
 

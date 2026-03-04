@@ -275,35 +275,34 @@ export async function POST() {
     }
   }
 
-  // ── STEP GROUP 4: PATCH Scenario A — status + go/no-go + discovery ────────
+  // ── STEP GROUP 4: PATCH Scenario A — status + discovery ────────────────────
   const leadAId = scenarioLeadIds['A'];
 
   if (leadAId) {
     const { error: patchErr } = await supabase
       .from('leads')
-      .update({ status: 'discovery_active', go_no_go: true, discovery_depth: 'core' })
+      .update({ status: 'discovery_active', discovery_depth: 'core' })
       .eq('id', leadAId);
 
     if (patchErr) {
-      steps.push(fail('PATCH Scenario A: status + go_no_go + discovery_depth', patchErr.message));
+      steps.push(fail('PATCH Scenario A: status + discovery_depth', patchErr.message));
     } else {
       const { data: updated, error: readErr } = await supabase
         .from('leads')
-        .select('status, go_no_go, discovery_depth')
+        .select('status, discovery_depth')
         .eq('id', leadAId)
         .single();
 
       if (readErr || !updated) {
-        steps.push(fail('PATCH Scenario A: status + go_no_go + discovery_depth', readErr?.message ?? 'Row not found after PATCH'));
+        steps.push(fail('PATCH Scenario A: status + discovery_depth', readErr?.message ?? 'Row not found after PATCH'));
       } else if (
-        updated.status        === 'discovery_active' &&
-        updated.go_no_go      === true &&
+        updated.status          === 'discovery_active' &&
         updated.discovery_depth === 'core'
       ) {
-        steps.push(pass('PATCH Scenario A: status + go_no_go + discovery_depth', updated));
+        steps.push(pass('PATCH Scenario A: status + discovery_depth', updated));
       } else {
         steps.push(fail(
-          'PATCH Scenario A: status + go_no_go + discovery_depth',
+          'PATCH Scenario A: status + discovery_depth',
           'Values not persisted correctly',
           updated
         ));

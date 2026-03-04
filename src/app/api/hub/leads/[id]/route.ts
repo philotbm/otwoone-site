@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 /**
  * PATCH /api/hub/leads/[id]
- * Editable fields: status, go_no_go, discovery_depth,
+ * Editable fields: status, discovery_depth,
  *                  proposed_hosting_required, proposed_maintenance_plan
  * Also allows updating lead_details.internal_notes.
  */
@@ -38,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // Fields allowed on leads table
   const leadUpdates: Record<string, unknown> = {};
   const allowedLeadFields = [
-    'status', 'go_no_go', 'discovery_depth',
+    'status', 'discovery_depth',
     'proposed_hosting_required', 'proposed_maintenance_plan',
   ] as const;
 

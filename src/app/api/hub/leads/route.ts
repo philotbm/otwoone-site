@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     .select(
       `id, created_at, updated_at, source, status, contact_name, contact_email,
        company_name, engagement_type, budget, timeline,
-       go_no_go, discovery_depth, discovery_depth_suggested,
+       discovery_depth, discovery_depth_suggested,
        clarity_score, alignment_score, complexity_score, authority_score, total_score,
        proposed_hosting_required, proposed_maintenance_plan,
        lead_details (success_definition, internal_notes),
