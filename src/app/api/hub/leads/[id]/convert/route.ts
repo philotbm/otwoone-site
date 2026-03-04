@@ -108,12 +108,14 @@ export async function POST(req: NextRequest, { params }: Params) {
         .from('projects')
         .update({ sharepoint_folder_url: result.folderUrl })
         .eq('id', project.id);
+      await logProjectEvent(project.id, 'sharepoint_folder_created', 'SharePoint folder created', { folderUrl: result.folderUrl });
     } else {
       await supabaseServer
         .from('projects')
         .update({ sharepoint_folder_error: result.error })
         .eq('id', project.id);
       console.error('SharePoint folder creation failed:', result.error);
+      await logProjectEvent(project.id, 'sharepoint_folder_failed', 'SharePoint folder creation failed', { error: result.error });
     }
   })();
 
