@@ -329,7 +329,7 @@ export async function POST() {
         .from('projects')
         .insert({
           lead_id:           leadAId,
-          project_status:    'project_setup_complete',
+          project_status:    'deposit_paid',
           hosting_required:  true,
           maintenance_plan:  'essential',
           maintenance_status: 'pending',
@@ -353,7 +353,7 @@ export async function POST() {
         if (pFetchErr || !pRow) {
           steps.push(fail('Convert Scenario A: verify project row', pFetchErr?.message ?? 'Project row not found'));
         } else if (
-          pRow.project_status    === 'project_setup_complete' &&
+          pRow.project_status    === 'deposit_paid' &&
           pRow.maintenance_status === 'pending' &&
           pRow.maintenance_plan   === 'essential' &&
           pRow.hosting_required   === true
@@ -393,7 +393,7 @@ export async function POST() {
   if (projectAId) {
     const { error: baErr } = await supabase
       .from('projects')
-      .update({ project_status: 'build_active' })
+      .update({ project_status: 'in_build' })
       .eq('id', projectAId);
 
     if (baErr) {
@@ -405,7 +405,7 @@ export async function POST() {
         .eq('id', projectAId)
         .single();
 
-      if (pRow?.project_status === 'build_active') {
+      if (pRow?.project_status === 'in_build') {
         steps.push(pass('Project status → build_active', pRow));
       } else {
         steps.push(fail('Project status → build_active', `Got '${pRow?.project_status}'`));
@@ -420,7 +420,7 @@ export async function POST() {
     const { error: delErr } = await supabase
       .from('projects')
       .update({
-        project_status:        'delivered',
+        project_status:        'complete',
         delivery_completed_at: deliveredAt,
         maintenance_status:    'active',   // hosting_required=true → activate
       })
@@ -436,7 +436,7 @@ export async function POST() {
         .single();
 
       if (
-        pRow?.project_status         === 'delivered' &&
+        pRow?.project_status         === 'complete' &&
         pRow?.delivery_completed_at  != null &&
         pRow?.maintenance_status     === 'active'
       ) {

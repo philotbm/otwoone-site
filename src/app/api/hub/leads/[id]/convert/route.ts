@@ -62,7 +62,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .from('projects')
     .insert({
       lead_id:              id,
-      project_status:       'project_setup_complete',
+      project_status:       'deposit_paid',
       hosting_required,
       maintenance_plan:     hosting_required ? maintenance_plan : 'none',
       maintenance_status:   'pending',

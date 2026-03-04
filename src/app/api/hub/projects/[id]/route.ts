@@ -40,7 +40,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   // Delivery logic
-  if (body.project_status === 'delivered') {
+  if (body.project_status === 'complete') {
     updates.delivery_completed_at = new Date().toISOString();
 
     // Activate maintenance if hosting is on

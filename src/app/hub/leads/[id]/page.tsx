@@ -26,6 +26,36 @@ type Project = {
   intake_status: "not_sent" | "sent" | "in_progress" | "complete" | null;
 };
 
+type IntakeStep1 = {
+  contact_name?: string;
+  project_name?: string;
+  goals?: string;
+};
+
+type IntakeStep2 = {
+  headline?: string;
+  subheadline?: string;
+  services?: string[];
+  about?: string;
+  primary_cta?: string;
+};
+
+type IntakeApiResponse = {
+  project: {
+    id: string;
+    intake_status: string | null;
+    intake_last_saved_at: string | null;
+    client_contact_name: string | null;
+    client_contact_email: string | null;
+  };
+  intake: {
+    step1: IntakeStep1 | null;
+    step2: IntakeStep2 | null;
+    step3: Record<string, unknown> | null;
+    completed_at: string | null;
+  } | null;
+};
+
 type Lead = {
   id: string;
   created_at: string;
@@ -101,6 +131,13 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   proposal_sent:    "Proposal Sent",
   lost_pre_deposit: "Lost",
   converted:        "Converted",
+};
+
+const CTA_LABELS: Record<string, string> = {
+  call:         "Phone call",
+  email:        "Email",
+  contact_form: "Contact form",
+  whatsapp:     "WhatsApp",
 };
 
 const MAINTENANCE_PLANS = ["starter_49", "essential", "growth", "accelerator", "none"] as const;
@@ -309,6 +346,12 @@ export default function LeadDetailPage() {
   const [portalUrl,     setPortalUrl]     = useState("");
   const [portalError,   setPortalError]   = useState("");
 
+  // Intake viewer state
+  const [intakeOpen,    setIntakeOpen]    = useState(false);
+  const [intakeLoading, setIntakeLoading] = useState(false);
+  const [intakeData,    setIntakeData]    = useState<IntakeApiResponse | null>(null);
+  const [intakeError,   setIntakeError]   = useState("");
+
   // Local edit state
   const [status, setStatus]                     = useState<LeadStatus>("lead_submitted");
   const [goNoGo, setGoNoGo]                     = useState<"go" | "nogo" | "">("");
@@ -376,6 +419,29 @@ export default function LeadDetailPage() {
       setPortalError(err instanceof Error ? err.message : "Failed to send portal link.");
     } finally {
       setPortalSending(false);
+    }
+  }
+
+  // ── View intake ──────────────────────────────────────────────────────────────
+
+  async function toggleIntake(projectId: string) {
+    if (intakeOpen) {
+      setIntakeOpen(false);
+      return;
+    }
+    setIntakeOpen(true);
+    if (intakeData) return; // already loaded — show cached
+    setIntakeLoading(true);
+    setIntakeError("");
+    try {
+      const res  = await fetch(`/api/hub/projects/${projectId}/intake`);
+      const json = await res.json() as IntakeApiResponse & { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to load intake.");
+      setIntakeData(json);
+    } catch (err) {
+      setIntakeError(err instanceof Error ? err.message : "Failed to load intake.");
+    } finally {
+      setIntakeLoading(false);
     }
   }
 
@@ -727,6 +793,102 @@ export default function LeadDetailPage() {
                     </>
                   )}
                 </div>
+              </div>
+
+              {/* ── View intake ───────────────────────────────────── */}
+              <div className="pt-4 mt-1 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => toggleIntake(project.id)}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                >
+                  {intakeOpen ? "Hide intake ↑" : "View intake ↓"}
+                </button>
+
+                {intakeOpen && (
+                  <div className="mt-4">
+                    {intakeLoading && (
+                      <p className="text-xs text-gray-500 py-2">Loading…</p>
+                    )}
+                    {intakeError && (
+                      <p className="text-xs text-red-400 py-2">{intakeError}</p>
+                    )}
+                    {intakeData && !intakeLoading && (
+                      <div className="space-y-4">
+
+                        {/* Submitted timestamp */}
+                        {intakeData.intake?.completed_at && (
+                          <p className="text-xs text-green-400 font-medium">
+                            Submitted {fmt(intakeData.intake.completed_at)}
+                          </p>
+                        )}
+
+                        {/* Step 1 — Basics */}
+                        {intakeData.intake?.step1 && (
+                          <div>
+                            <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">
+                              Step 1 — Basics
+                            </p>
+                            <Row label="Contact name" value={intakeData.intake.step1.contact_name ?? ""} />
+                            <Row label="Project name" value={intakeData.intake.step1.project_name ?? ""} />
+                            {intakeData.intake.step1.goals && (
+                              <div className="flex items-start gap-4 py-1.5">
+                                <span className="text-xs text-gray-500 w-36 shrink-0 mt-0.5">Goals</span>
+                                <span className="text-sm text-gray-200 flex-1 whitespace-pre-wrap leading-relaxed">
+                                  {intakeData.intake.step1.goals}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Step 2 — Brand */}
+                        {intakeData.intake?.step2 && (
+                          <div className="pt-3 border-t border-white/5">
+                            <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">
+                              Step 2 — Brand
+                            </p>
+                            <Row label="Headline"    value={intakeData.intake.step2.headline    ?? ""} />
+                            {intakeData.intake.step2.subheadline && (
+                              <Row label="Subheadline" value={intakeData.intake.step2.subheadline} />
+                            )}
+                            {intakeData.intake.step2.services && intakeData.intake.step2.services.length > 0 && (
+                              <div className="flex items-start gap-4 py-1.5">
+                                <span className="text-xs text-gray-500 w-36 shrink-0 mt-0.5">Services</span>
+                                <ul className="text-sm text-gray-200 flex-1 space-y-0.5 list-none p-0 m-0">
+                                  {intakeData.intake.step2.services.map((s, i) => (
+                                    <li key={i}>· {s}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {intakeData.intake.step2.about && (
+                              <div className="flex items-start gap-4 py-1.5">
+                                <span className="text-xs text-gray-500 w-36 shrink-0 mt-0.5">About</span>
+                                <span className="text-sm text-gray-200 flex-1 whitespace-pre-wrap leading-relaxed">
+                                  {intakeData.intake.step2.about}
+                                </span>
+                              </div>
+                            )}
+                            <Row
+                              label="Primary CTA"
+                              value={
+                                CTA_LABELS[intakeData.intake.step2.primary_cta ?? ""] ??
+                                intakeData.intake.step2.primary_cta ?? ""
+                              }
+                            />
+                          </div>
+                        )}
+
+                        {/* Empty state — intake row exists but no steps saved */}
+                        {!intakeData.intake && (
+                          <p className="text-xs text-gray-600">No intake data yet.</p>
+                        )}
+
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
             </Section>
