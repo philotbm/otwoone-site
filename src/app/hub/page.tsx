@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { OTWOONE_OS_VERSION } from "@/lib/osVersion";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -482,6 +483,9 @@ export default function HubPage() {
           )}
         </div>
       </div>
+      <footer className="px-6 py-4 text-center">
+        <p className="text-[11px] text-gray-600">OTwoOne OS {OTWOONE_OS_VERSION}</p>
+      </footer>
     </div>
   );
 }
