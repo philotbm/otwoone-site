@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { logProjectEvent } from '@/lib/projectEvents';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -65,6 +66,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Log status change event if project_status was updated and actually changed
+  if (
+    typeof body.project_status === 'string' &&
+    body.project_status !== project.project_status
+  ) {
+    const fromStatus = project.project_status;
+    await logProjectEvent(
+      id,
+      'status_changed',
+      `Status changed: ${fromStatus ?? 'null'} → ${body.project_status}`,
+      { from: fromStatus, to: body.project_status },
+    );
   }
 
   return NextResponse.json({ success: true });
