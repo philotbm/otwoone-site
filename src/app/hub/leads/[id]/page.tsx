@@ -189,6 +189,18 @@ function eventLabel(ev: { event_type: string; meta: Record<string, unknown> | nu
   return ev.event_type.replace(/_/g, ' ');
 }
 
+function eventIcon(ev: { event_type: string; meta: Record<string, unknown> | null }): string {
+  if (ev.event_type === 'project_created') return '🟢';
+  if (ev.event_type === 'status_changed') {
+    const from = ev.meta?.from as string | undefined;
+    const to   = ev.meta?.to   as string | undefined;
+    if (from === 'deposit_paid' && to === 'in_build') return '🔵';
+    if (from === 'in_build'     && to === 'complete') return '✅';
+    return '⚙️';
+  }
+  return '•';
+}
+
 // ─── Section wrapper ───────────────────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -972,13 +984,11 @@ export default function LeadDetailPage() {
               {!eventsLoading && events.length > 0 && (
                 <ol className="space-y-3">
                   {events.map((ev) => (
-                    <li key={ev.id} className="flex items-start gap-3">
-                      <span className="mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-white/5 text-gray-500 shrink-0">
-                        {eventLabel(ev)}
-                      </span>
+                    <li key={ev.id} className="flex items-start gap-2">
+                      <span className="shrink-0 mt-0.5">{eventIcon(ev)}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-300 leading-snug">{ev.message}</p>
-                        <p className="text-[11px] text-gray-600 mt-0.5">{fmtDateTime(ev.created_at)}</p>
+                        <p className="text-sm font-medium text-gray-300 leading-snug">{eventLabel(ev)}</p>
+                        <p className="text-xs text-gray-600 mt-0.5">{fmtDateTime(ev.created_at)}</p>
                       </div>
                     </li>
                   ))}
