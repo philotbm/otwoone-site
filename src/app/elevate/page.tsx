@@ -371,7 +371,7 @@ export default function ElevatePage() {
           </div>
           <h1 className="text-2xl font-semibold text-white mb-3">We've received your details</h1>
           <p className="text-gray-400 leading-relaxed">
-            Thanks for getting in touch. We'll review your submission and be in touch within 1–2 business days.
+            Thanks for getting in touch. We'll review everything and be in touch within 1–2 business days.
           </p>
         </div>
       </main>
@@ -414,9 +414,9 @@ export default function ElevatePage() {
         <div className="mb-10">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/branding/otwoone-logo-wordmark-white.png" alt="OTwoOne" width={120} className="mb-5 h-auto" />
-          <h1 className="text-3xl font-semibold text-white mb-3">Tell us about your project</h1>
+          <h1 className="text-3xl font-semibold text-white mb-3">Tell us what you need</h1>
           <p className="text-gray-400 text-sm leading-relaxed">
-            We'll use this to understand what you need and come back to you with a clear way forward.
+            We'll use this to understand your requirements and come back with a clear next step.
           </p>
         </div>
 
@@ -567,9 +567,9 @@ export default function ElevatePage() {
 
             {/* Success definition */}
             <div>
-              <SectionLabel>Success definition</SectionLabel>
+              <SectionLabel>What does success look like?</SectionLabel>
               <p className="text-xs text-gray-500 mb-3">
-                How will you know this has been a success? Be specific.
+                How will you measure whether this worked? The more specific, the better.
               </p>
               <textarea
                 value={successDefinition}
