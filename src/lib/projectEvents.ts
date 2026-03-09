@@ -9,7 +9,13 @@ export type ProjectEventType =
   | 'portal_link_sent'
   | 'scope_saved'
   | 'scope_pack_generated'
-  | 'scope_pack_failed';
+  | 'scope_pack_failed'
+  | 'client_review_approved'
+  | 'client_revision_requested'
+  | 'client_meeting_requested'
+  | 'revision_created'
+  | 'revision_updated'
+  | 'execution_batch_generated';
 
 /**
  * Append an event to the project_events audit trail.

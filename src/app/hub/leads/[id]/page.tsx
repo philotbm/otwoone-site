@@ -102,6 +102,46 @@ type ProjectEvent = {
   created_at: string;
 };
 
+type RevisionItem = {
+  id: string;
+  project_id: string;
+  feedback_event_id: string | null;
+  revision_type: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  batch_label: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+};
+
+type ExecutionBatch = {
+  project_id: string;
+  project_name: string | null;
+  batch_label: string | null;
+  generated_at: string;
+  total_items: number;
+  summary: {
+    by_type: Record<string, number>;
+    by_priority: Record<string, number>;
+  };
+  revisions_by_type: Array<{
+    type: string;
+    count: number;
+    items: Array<{
+      id: string;
+      title: string;
+      description: string;
+      priority: string;
+      status: string;
+      source: string;
+    }>;
+  }>;
+};
+
 // ─── Labels ───────────────────────────────────────────────────────────────────
 
 const ENGAGEMENT_LABELS: Record<string, string> = {
@@ -166,6 +206,23 @@ const CTA_LABELS: Record<string, string> = {
   email:        "Email",
   contact_form: "Contact form",
   whatsapp:     "WhatsApp",
+};
+
+const REVISION_TYPES = ['copy', 'design', 'feature', 'bug', 'other'] as const;
+const REVISION_TYPE_LABELS: Record<string, string> = {
+  copy: 'Copy', design: 'Design', feature: 'Feature', bug: 'Bug', other: 'Other',
+};
+const REVISION_STATUSES = ['queued', 'in_progress', 'complete'] as const;
+const REVISION_STATUS_LABELS: Record<string, string> = {
+  queued: 'Queued', in_progress: 'In progress', complete: 'Complete',
+};
+const REVISION_PRIORITIES = ['high', 'medium', 'low'] as const;
+const REVISION_PRIORITY_LABELS: Record<string, string> = {
+  high: 'High', medium: 'Medium', low: 'Low',
+};
+const REVISION_SOURCES = ['portal', 'email', 'internal'] as const;
+const REVISION_SOURCE_LABELS: Record<string, string> = {
+  portal: 'Portal', email: 'Email', internal: 'Internal',
 };
 
 const MAINTENANCE_PLANS = ["starter_49", "essential", "growth", "accelerator", "none"] as const;
@@ -491,6 +548,21 @@ export default function LeadDetailPage() {
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError,   setEventsError]   = useState("");
 
+  // Revision workspace state
+  const [revisions,        setRevisions]        = useState<RevisionItem[]>([]);
+  const [revisionsLoading, setRevisionsLoading] = useState(false);
+  const [revisionsError,   setRevisionsError]   = useState("");
+  const [revAddOpen,       setRevAddOpen]       = useState(false);
+  const [revAddTitle,      setRevAddTitle]      = useState("");
+  const [revAddDesc,       setRevAddDesc]       = useState("");
+  const [revAddType,       setRevAddType]       = useState("other");
+  const [revAddPriority,   setRevAddPriority]   = useState("medium");
+  const [revAddSource,     setRevAddSource]     = useState("internal");
+  const [revAddFeedbackId, setRevAddFeedbackId] = useState<string | null>(null);
+  const [revSaving,        setRevSaving]        = useState(false);
+  const [batchOutput,      setBatchOutput]      = useState("");
+  const [batchLoading,     setBatchLoading]     = useState(false);
+
   // Local edit state
   const [status, setStatus]                     = useState<LeadStatus>("lead_submitted");
   const [discoveryDepth, setDiscoveryDepth]     = useState("");
@@ -537,6 +609,110 @@ export default function LeadDetailPage() {
 
   const projectId = lead?.projects?.[0]?.id;
   useEffect(() => { if (projectId) fetchEvents(projectId); }, [projectId, fetchEvents]);
+
+  // ── Fetch revisions ────────────────────────────────────────────────────────────
+
+  const fetchRevisions = useCallback(async (pId: string) => {
+    setRevisionsLoading(true);
+    setRevisionsError("");
+    try {
+      const res  = await fetch(`/api/hub/projects/${pId}/revisions`);
+      const json = await res.json() as { revisions?: RevisionItem[]; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to load revisions.");
+      setRevisions(json.revisions ?? []);
+    } catch (err) {
+      setRevisionsError(err instanceof Error ? err.message : "Failed to load revisions.");
+    } finally {
+      setRevisionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (projectId) fetchRevisions(projectId); }, [projectId, fetchRevisions]);
+
+  // ── Create revision ────────────────────────────────────────────────────────────
+
+  async function createRevision(pId: string) {
+    if (!revAddTitle.trim()) return;
+    setRevSaving(true);
+    try {
+      const res = await fetch(`/api/hub/projects/${pId}/revisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: revAddTitle.trim(),
+          description: revAddDesc.trim(),
+          revision_type: revAddType,
+          priority: revAddPriority,
+          source: revAddSource,
+          feedback_event_id: revAddFeedbackId,
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json() as { error?: string };
+        throw new Error(json.error ?? "Failed to create revision.");
+      }
+      setRevAddTitle("");
+      setRevAddDesc("");
+      setRevAddType("other");
+      setRevAddPriority("medium");
+      setRevAddSource("internal");
+      setRevAddFeedbackId(null);
+      setRevAddOpen(false);
+      fetchRevisions(pId);
+    } catch (err) {
+      setRevisionsError(err instanceof Error ? err.message : "Failed to create revision.");
+    } finally {
+      setRevSaving(false);
+    }
+  }
+
+  // ── Update revision field ──────────────────────────────────────────────────────
+
+  async function updateRevision(pId: string, revId: string, fields: Record<string, unknown>) {
+    await fetch(`/api/hub/projects/${pId}/revisions/${revId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    fetchRevisions(pId);
+  }
+
+  // ── Feedback → revision prefill ────────────────────────────────────────────────
+
+  function prefillRevisionFromFeedback(ev: ProjectEvent) {
+    const message = ev.meta?.message as string ?? '';
+    const category = ev.meta?.category as string ?? '';
+    const title = category
+      ? `[${category}] ${message.slice(0, 60)}${message.length > 60 ? '…' : ''}`
+      : message.slice(0, 80) + (message.length > 80 ? '…' : '');
+    setRevAddTitle(title);
+    setRevAddDesc(message);
+    setRevAddSource("portal");
+    setRevAddType(category === 'bug' ? 'bug' : category === 'design' ? 'design' : category === 'copy' ? 'copy' : 'other');
+    setRevAddPriority(ev.meta?.priority as string ?? 'medium');
+    setRevAddFeedbackId(ev.id);
+    setRevAddOpen(true);
+  }
+
+  // ── Generate execution batch ──────────────────────────────────────────────────
+
+  async function generateBatch(pId: string) {
+    setBatchLoading(true);
+    try {
+      const res  = await fetch(`/api/hub/projects/${pId}/revisions/batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json() as { batch?: ExecutionBatch; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to generate batch.");
+      setBatchOutput(JSON.stringify(json.batch, null, 2));
+    } catch (err) {
+      setBatchOutput(`Error: ${err instanceof Error ? err.message : "Failed to generate batch."}`);
+    } finally {
+      setBatchLoading(false);
+    }
+  }
 
   // ── Save lead fields ──────────────────────────────────────────────────────────
 
@@ -1151,6 +1327,261 @@ export default function LeadDetailPage() {
           </div>
         )}
 
+        {/* ── Revisions workspace (only when project exists) ───────────── */}
+        {project && (
+          <div className="lg:col-span-2">
+            <Section title="Revisions">
+              {/* Header row */}
+              <div className="flex items-center justify-between -mt-1 mb-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500">
+                    {revisions.length} item{revisions.length !== 1 ? 's' : ''}
+                    {revisions.filter(r => r.status === 'queued').length > 0 && (
+                      <span className="ml-1.5 text-yellow-400">
+                        ({revisions.filter(r => r.status === 'queued').length} queued)
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fetchRevisions(project.id)}
+                    disabled={revisionsLoading}
+                    className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors disabled:opacity-40"
+                  >
+                    {revisionsLoading ? "Refreshing…" : "↺ Refresh"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setRevAddFeedbackId(null); setRevAddOpen(!revAddOpen); }}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                  >
+                    + Add revision
+                  </button>
+                </div>
+              </div>
+
+              {revisionsError && (
+                <p className="text-xs text-red-400 py-1 mb-2">{revisionsError}</p>
+              )}
+
+              {/* ── Quick add form ───────────────────────────────────── */}
+              {revAddOpen && (
+                <div className="mb-4 p-3 rounded-lg bg-white/[0.03] border border-white/5 space-y-3">
+                  <input
+                    type="text"
+                    value={revAddTitle}
+                    onChange={(e) => setRevAddTitle(e.target.value)}
+                    placeholder="Revision title…"
+                    className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
+                  />
+                  <textarea
+                    value={revAddDesc}
+                    onChange={(e) => setRevAddDesc(e.target.value)}
+                    placeholder="Description…"
+                    rows={3}
+                    className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] text-gray-600 block mb-1">Type</label>
+                      <select
+                        value={revAddType}
+                        onChange={(e) => setRevAddType(e.target.value)}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60"
+                      >
+                        {REVISION_TYPES.map((t) => (
+                          <option key={t} value={t} className="bg-[#0e0f14]">{REVISION_TYPE_LABELS[t]}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-600 block mb-1">Priority</label>
+                      <select
+                        value={revAddPriority}
+                        onChange={(e) => setRevAddPriority(e.target.value)}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60"
+                      >
+                        {REVISION_PRIORITIES.map((p) => (
+                          <option key={p} value={p} className="bg-[#0e0f14]">{REVISION_PRIORITY_LABELS[p]}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-600 block mb-1">Source</label>
+                      <select
+                        value={revAddSource}
+                        onChange={(e) => setRevAddSource(e.target.value)}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60"
+                      >
+                        {REVISION_SOURCES.map((s) => (
+                          <option key={s} value={s} className="bg-[#0e0f14]">{REVISION_SOURCE_LABELS[s]}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {revAddFeedbackId && (
+                    <p className="text-[10px] text-indigo-400">Linked to feedback event</p>
+                  )}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => createRevision(project.id)}
+                      disabled={revSaving || !revAddTitle.trim()}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                    >
+                      {revSaving ? "Creating…" : "Create"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRevAddOpen(false)}
+                      className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Revisions list ───────────────────────────────────── */}
+              {revisionsLoading && revisions.length === 0 && (
+                <p className="text-xs text-gray-600 py-2">Loading…</p>
+              )}
+              {!revisionsLoading && revisions.length === 0 && (
+                <p className="text-xs text-gray-600 py-2">No revisions yet.</p>
+              )}
+              {revisions.length > 0 && (
+                <div className="space-y-2">
+                  {revisions.map((rev) => (
+                    <div key={rev.id} className="p-3 rounded-lg bg-white/[0.02] border border-white/5 hover:border-white/10 transition-colors">
+                      <div className="flex items-start gap-3">
+                        {/* Status control */}
+                        <select
+                          value={rev.status}
+                          onChange={(e) => updateRevision(project.id, rev.id, { status: e.target.value })}
+                          className={cx(
+                            "shrink-0 mt-0.5 bg-transparent border rounded px-1.5 py-0.5 text-[10px] font-medium focus:outline-none",
+                            rev.status === 'complete'    ? "border-green-500/30 text-green-400" :
+                            rev.status === 'in_progress' ? "border-yellow-500/30 text-yellow-400" :
+                            "border-white/10 text-gray-500"
+                          )}
+                        >
+                          {REVISION_STATUSES.map((s) => (
+                            <option key={s} value={s} className="bg-[#0e0f14]">{REVISION_STATUS_LABELS[s]}</option>
+                          ))}
+                        </select>
+
+                        {/* Main content */}
+                        <div className="flex-1 min-w-0">
+                          <p className={cx(
+                            "text-sm font-medium leading-snug",
+                            rev.status === 'complete' ? "text-gray-500 line-through" : "text-gray-200"
+                          )}>
+                            {rev.title}
+                          </p>
+                          {rev.description && (
+                            <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{rev.description}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/5 text-gray-400">
+                              {REVISION_TYPE_LABELS[rev.revision_type] ?? rev.revision_type}
+                            </span>
+                            <select
+                              value={rev.priority}
+                              onChange={(e) => updateRevision(project.id, rev.id, { priority: e.target.value })}
+                              className={cx(
+                                "bg-transparent border rounded px-1 py-0.5 text-[10px] font-medium focus:outline-none cursor-pointer",
+                                rev.priority === 'high'   ? "border-red-500/30 text-red-400" :
+                                rev.priority === 'medium' ? "border-yellow-500/30 text-yellow-400" :
+                                "border-white/10 text-gray-500"
+                              )}
+                            >
+                              {REVISION_PRIORITIES.map((p) => (
+                                <option key={p} value={p} className="bg-[#0e0f14]">{REVISION_PRIORITY_LABELS[p]}</option>
+                              ))}
+                            </select>
+                            <span className="text-[10px] text-gray-600">
+                              {REVISION_SOURCE_LABELS[rev.source] ?? rev.source}
+                            </span>
+                            {rev.batch_label && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                {rev.batch_label}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-gray-700">{fmt(rev.created_at)}</span>
+                          </div>
+                        </div>
+
+                        {/* Type control */}
+                        <select
+                          value={rev.revision_type}
+                          onChange={(e) => updateRevision(project.id, rev.id, { revision_type: e.target.value })}
+                          className="shrink-0 bg-transparent border border-white/5 rounded px-1 py-0.5 text-[10px] text-gray-500 focus:outline-none"
+                        >
+                          {REVISION_TYPES.map((t) => (
+                            <option key={t} value={t} className="bg-[#0e0f14]">{REVISION_TYPE_LABELS[t]}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Batch label inline edit */}
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[10px] text-gray-600">Batch:</span>
+                        <input
+                          type="text"
+                          defaultValue={rev.batch_label ?? ""}
+                          placeholder="—"
+                          onBlur={(e) => {
+                            const v = e.target.value.trim() || null;
+                            if (v !== rev.batch_label) updateRevision(project.id, rev.id, { batch_label: v });
+                          }}
+                          className="flex-1 max-w-[200px] bg-transparent border-b border-white/5 text-[10px] text-gray-400 placeholder:text-gray-700 focus:outline-none focus:border-indigo-500/60 py-0.5"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── Execution batch output ────────────────────────────── */}
+              <div className="mt-4 pt-4 border-t border-white/5">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] text-gray-500 uppercase tracking-wide font-medium">Execution batch</span>
+                  <button
+                    type="button"
+                    onClick={() => generateBatch(project.id)}
+                    disabled={batchLoading || revisions.filter(r => r.status !== 'complete').length === 0}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-white/5 hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors disabled:opacity-40"
+                  >
+                    {batchLoading ? "Generating…" : "Generate batch"}
+                  </button>
+                </div>
+                {batchOutput && (
+                  <div className="relative">
+                    <textarea
+                      readOnly
+                      value={batchOutput}
+                      rows={12}
+                      className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard.writeText(batchOutput)}
+                      className="absolute top-2 right-2 px-2 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
+                {!batchOutput && (
+                  <p className="text-xs text-gray-700">Click Generate to build an execution-ready payload from queued/in-progress revisions.</p>
+                )}
+              </div>
+            </Section>
+          </div>
+        )}
+
         {/* Timeline (only when project exists) */}
         {project && (
           <div className="lg:col-span-2">
@@ -1181,8 +1612,20 @@ export default function LeadDetailPage() {
                       <span className="shrink-0 mt-0.5">{eventIcon(ev)}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-300 leading-snug">{eventLabel(ev)}</p>
+                        {ev.event_type === 'client_revision_requested' && typeof ev.meta?.message === 'string' && (
+                          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{ev.meta.message}</p>
+                        )}
                         <p className="text-xs text-gray-600 mt-0.5">{fmtDateTime(ev.created_at)}</p>
                       </div>
+                      {ev.event_type === 'client_revision_requested' && (
+                        <button
+                          type="button"
+                          onClick={() => prefillRevisionFromFeedback(ev)}
+                          className="shrink-0 px-2 py-1 rounded text-[10px] font-medium text-indigo-400 hover:text-indigo-300 border border-indigo-500/20 hover:border-indigo-500/40 transition-colors"
+                        >
+                          + Revision
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ol>
