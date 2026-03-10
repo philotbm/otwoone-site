@@ -189,6 +189,53 @@ type ExecutionBatch = {
   }>;
 };
 
+type ProjectContext = {
+  id: string;
+  project_id: string;
+  business_summary: string | null;
+  project_summary: string | null;
+  current_stack: string | null;
+  key_urls: string | null;
+  constraints: string | null;
+  ai_notes: string | null;
+  acceptance_notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ExecutionPack = {
+  project_id: string;
+  project_name: string | null;
+  generated_at: string;
+  batch_label: string | null;
+  context: {
+    business_summary: string | null;
+    project_summary: string | null;
+    current_stack: string | null;
+    key_urls: string | null;
+    constraints: string | null;
+    ai_notes: string | null;
+    acceptance_notes: string | null;
+  };
+  summary: {
+    total_items: number;
+    by_type: Record<string, number>;
+    by_priority: Record<string, number>;
+  };
+  revisions_by_type: Array<{
+    type: string;
+    count: number;
+    items: Array<{
+      id: string;
+      title: string;
+      description: string;
+      priority: string;
+      status: string;
+      source: string;
+    }>;
+  }>;
+};
+
 // ─── Labels ───────────────────────────────────────────────────────────────────
 
 const ENGAGEMENT_LABELS: Record<string, string> = {
@@ -609,6 +656,24 @@ export default function LeadDetailPage() {
   const [batchOutput,      setBatchOutput]      = useState("");
   const [batchLoading,     setBatchLoading]     = useState(false);
 
+  // Project context state
+  const [context,         setContext]         = useState<ProjectContext | null>(null);
+  const [contextLoading,  setContextLoading]  = useState(false);
+  const [contextSaving,   setContextSaving]   = useState(false);
+  const [contextSaved,    setContextSaved]    = useState(false);
+  const [ctxBusiness,     setCtxBusiness]     = useState("");
+  const [ctxProject,      setCtxProject]      = useState("");
+  const [ctxStack,        setCtxStack]        = useState("");
+  const [ctxUrls,         setCtxUrls]         = useState("");
+  const [ctxConstraints,  setCtxConstraints]  = useState("");
+  const [ctxAiNotes,      setCtxAiNotes]      = useState("");
+  const [ctxAcceptance,   setCtxAcceptance]   = useState("");
+
+  // Execution pack state
+  const [execPack,        setExecPack]        = useState<ExecutionPack | null>(null);
+  const [execPackLoading, setExecPackLoading] = useState(false);
+  const [execPackTab,     setExecPackTab]     = useState<'chatgpt' | 'claude' | 'json'>('chatgpt');
+
   // Local edit state
   const [status, setStatus]                     = useState<LeadStatus>("lead_submitted");
   const [discoveryDepth, setDiscoveryDepth]     = useState("");
@@ -683,6 +748,183 @@ export default function LeadDetailPage() {
   }, []);
 
   useEffect(() => { if (projectId) fetchRevisions(projectId); }, [projectId, fetchRevisions]);
+
+  // ── Fetch project context ─────────────────────────────────────────────────────
+
+  const fetchContext = useCallback(async (pId: string) => {
+    setContextLoading(true);
+    try {
+      const result = await safeFetch<{ context: ProjectContext | null }>(`/api/hub/projects/${pId}/context`);
+      if (!result.ok) return;
+      const ctx = result.data.context;
+      setContext(ctx);
+      if (ctx) {
+        setCtxBusiness(ctx.business_summary ?? "");
+        setCtxProject(ctx.project_summary ?? "");
+        setCtxStack(ctx.current_stack ?? "");
+        setCtxUrls(ctx.key_urls ?? "");
+        setCtxConstraints(ctx.constraints ?? "");
+        setCtxAiNotes(ctx.ai_notes ?? "");
+        setCtxAcceptance(ctx.acceptance_notes ?? "");
+      }
+    } finally {
+      setContextLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (projectId) fetchContext(projectId); }, [projectId, fetchContext]);
+
+  // ── Save project context ──────────────────────────────────────────────────────
+
+  async function saveContext(pId: string) {
+    setContextSaving(true);
+    setContextSaved(false);
+    const result = await safeFetch<{ context: ProjectContext }>(`/api/hub/projects/${pId}/context`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        business_summary: ctxBusiness,
+        project_summary: ctxProject,
+        current_stack: ctxStack,
+        key_urls: ctxUrls,
+        constraints: ctxConstraints,
+        ai_notes: ctxAiNotes,
+        acceptance_notes: ctxAcceptance,
+      }),
+    });
+    setContextSaving(false);
+    if (result.ok) {
+      setContext(result.data.context);
+      setContextSaved(true);
+      setTimeout(() => setContextSaved(false), 2000);
+    }
+  }
+
+  // ── Generate execution pack ──────────────────────────────────────────────────
+
+  async function generateExecutionPack(pId: string) {
+    setExecPackLoading(true);
+    try {
+      const result = await safeFetch<{ pack: ExecutionPack }>(`/api/hub/projects/${pId}/execution-pack`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!result.ok) {
+        setExecPack(null);
+        return;
+      }
+      setExecPack(result.data.pack);
+    } finally {
+      setExecPackLoading(false);
+    }
+  }
+
+  // ── Build ChatGPT Architect Prompt ────────────────────────────────────────────
+
+  function buildChatGptPrompt(pack: ExecutionPack): string {
+    const lines: string[] = [];
+    lines.push("You are an implementation architect for a web project. Review the following execution pack and produce a structured implementation plan that can be handed directly to Claude Code for execution.");
+    lines.push("");
+    lines.push("## Project");
+    lines.push(`Name: ${pack.project_name ?? "Unnamed project"}`);
+    lines.push(`ID: ${pack.project_id}`);
+    lines.push(`Generated: ${new Date(pack.generated_at).toLocaleString()}`);
+    if (pack.batch_label) lines.push(`Batch: ${pack.batch_label}`);
+    lines.push("");
+
+    if (pack.context.business_summary || pack.context.project_summary || pack.context.current_stack) {
+      lines.push("## Project Context");
+      if (pack.context.business_summary) lines.push(`Business: ${pack.context.business_summary}`);
+      if (pack.context.project_summary) lines.push(`Project: ${pack.context.project_summary}`);
+      if (pack.context.current_stack) lines.push(`Stack: ${pack.context.current_stack}`);
+      if (pack.context.key_urls) lines.push(`Key URLs: ${pack.context.key_urls}`);
+      if (pack.context.constraints) lines.push(`Constraints: ${pack.context.constraints}`);
+      if (pack.context.ai_notes) lines.push(`AI Notes: ${pack.context.ai_notes}`);
+      lines.push("");
+    }
+
+    lines.push(`## Revision Items (${pack.summary.total_items} total)`);
+    for (const group of pack.revisions_by_type) {
+      lines.push(`### ${group.type} (${group.count})`);
+      for (const item of group.items) {
+        lines.push(`- [${item.priority.toUpperCase()}] ${item.title}`);
+        if (item.description) lines.push(`  ${item.description}`);
+      }
+      lines.push("");
+    }
+
+    if (pack.context.acceptance_notes) {
+      lines.push("## Acceptance Criteria");
+      lines.push(pack.context.acceptance_notes);
+      lines.push("");
+    }
+
+    lines.push("## Your Task");
+    lines.push("1. Analyse each revision item");
+    lines.push("2. Group related changes into logical implementation steps");
+    lines.push("3. Identify dependencies between steps");
+    lines.push("4. For each step, describe:");
+    lines.push("   - What files need to change");
+    lines.push("   - What the change involves");
+    lines.push("   - Any risk or consideration");
+    lines.push("5. Output a numbered implementation plan in the format Claude Code can execute directly");
+    lines.push("");
+    lines.push("Keep the plan concrete, scoped, and actionable. Do not add features not listed in the revision items.");
+
+    return lines.join("\n");
+  }
+
+  // ── Build Claude Code Execution Prompt ────────────────────────────────────────
+
+  function buildClaudePrompt(pack: ExecutionPack): string {
+    const lines: string[] = [];
+    lines.push(`You are working on the production codebase for ${pack.project_name ?? "this project"}.`);
+    lines.push("");
+
+    if (pack.context.business_summary || pack.context.project_summary || pack.context.current_stack) {
+      lines.push("## Project Context");
+      if (pack.context.business_summary) lines.push(`Business: ${pack.context.business_summary}`);
+      if (pack.context.project_summary) lines.push(`Project: ${pack.context.project_summary}`);
+      if (pack.context.current_stack) lines.push(`Stack: ${pack.context.current_stack}`);
+      if (pack.context.key_urls) lines.push(`Key URLs: ${pack.context.key_urls}`);
+      if (pack.context.ai_notes) lines.push(`AI Notes: ${pack.context.ai_notes}`);
+      lines.push("");
+    }
+
+    lines.push("## Implementation Task");
+    lines.push("Execute the following revision items as a single coordinated change:");
+    lines.push("");
+
+    for (const group of pack.revisions_by_type) {
+      lines.push(`### ${group.type} (${group.count} item${group.count !== 1 ? 's' : ''})`);
+      for (const item of group.items) {
+        lines.push(`- **${item.title}** [${item.priority}]`);
+        if (item.description) lines.push(`  ${item.description}`);
+      }
+      lines.push("");
+    }
+
+    if (pack.context.constraints) {
+      lines.push("## Technical Constraints");
+      lines.push(pack.context.constraints);
+      lines.push("");
+    }
+
+    if (pack.context.acceptance_notes) {
+      lines.push("## Acceptance Criteria");
+      lines.push(pack.context.acceptance_notes);
+      lines.push("");
+    }
+
+    lines.push("## Instructions");
+    lines.push("- Implement each item completely");
+    lines.push("- Maintain existing code patterns and architecture");
+    lines.push("- Run TypeScript check and build when done");
+    lines.push("- Report any issues encountered");
+
+    return lines.join("\n");
+  }
 
   // ── Create revision ────────────────────────────────────────────────────────────
 
@@ -1390,6 +1632,125 @@ export default function LeadDetailPage() {
           </div>
         )}
 
+        {/* ── Project Context (only when project exists) ────────────────── */}
+        {project && (
+          <div className="lg:col-span-2">
+            <Section title="Project Context">
+              <p className="text-xs text-gray-600 -mt-1 mb-3">
+                Canonical internal context for this project. Used to generate execution packs and AI-ready prompts without re-explaining the project each time.
+              </p>
+
+              {contextLoading ? (
+                <div className="py-4 text-center">
+                  <p className="text-xs text-gray-600">Loading context…</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Business summary</label>
+                      <textarea
+                        value={ctxBusiness}
+                        onChange={(e) => setCtxBusiness(e.target.value)}
+                        placeholder="What the client's business does…"
+                        rows={3}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project summary</label>
+                      <textarea
+                        value={ctxProject}
+                        onChange={(e) => setCtxProject(e.target.value)}
+                        placeholder="What we are building / delivering…"
+                        rows={3}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Current stack</label>
+                      <textarea
+                        value={ctxStack}
+                        onChange={(e) => setCtxStack(e.target.value)}
+                        placeholder="Next.js, Supabase, Tailwind…"
+                        rows={2}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Key URLs</label>
+                      <textarea
+                        value={ctxUrls}
+                        onChange={(e) => setCtxUrls(e.target.value)}
+                        placeholder="Live site, staging, repo, docs…"
+                        rows={2}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Constraints</label>
+                    <textarea
+                      value={ctxConstraints}
+                      onChange={(e) => setCtxConstraints(e.target.value)}
+                      placeholder="Budget limits, deadlines, technical restrictions…"
+                      rows={2}
+                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">AI notes</label>
+                      <textarea
+                        value={ctxAiNotes}
+                        onChange={(e) => setCtxAiNotes(e.target.value)}
+                        placeholder="Notes for AI tools: patterns, conventions, gotchas…"
+                        rows={3}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Acceptance notes</label>
+                      <textarea
+                        value={ctxAcceptance}
+                        onChange={(e) => setCtxAcceptance(e.target.value)}
+                        placeholder="What 'done' looks like for this project…"
+                        rows={3}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                    <div className="flex items-center gap-3">
+                      <span className={cx("text-xs transition-opacity", contextSaved ? "text-green-400 opacity-100" : "opacity-0")}>
+                        Saved
+                      </span>
+                      {context && (
+                        <span className="text-[10px] text-gray-700">
+                          Last updated {fmtDateTime(context.updated_at)}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => saveContext(project.id)}
+                      disabled={contextSaving}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                    >
+                      {contextSaving ? "Saving…" : "Save context"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </Section>
+          </div>
+        )}
+
         {/* ── Revisions workspace (only when project exists) ───────────── */}
         {project && (
           <div className="lg:col-span-2">
@@ -1637,11 +1998,11 @@ export default function LeadDetailPage() {
                 </div>
               )}
 
-              {/* ── Execution batch output ────────────────────────────── */}
+              {/* ── Execution pack + prompt outputs ────────────────────── */}
               {revisions.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-white/5">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] text-gray-500 uppercase tracking-wide font-medium">Execution batch</span>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[11px] text-gray-500 uppercase tracking-wide font-medium">Execution pack</span>
                     {(() => {
                       const eligible = revisions.filter(r => r.status !== 'complete').length;
                       return (
@@ -1653,34 +2014,110 @@ export default function LeadDetailPage() {
                             type="button"
                             onClick={() => generateBatch(project.id)}
                             disabled={batchLoading || eligible === 0}
-                            title={eligible === 0 ? "No queued or in-progress revisions to batch" : `Generate batch from ${eligible} active revision${eligible !== 1 ? 's' : ''}`}
+                            title={eligible === 0 ? "No active revisions" : `Raw batch from ${eligible} item${eligible !== 1 ? 's' : ''}`}
+                            className="px-2.5 py-1 rounded-lg text-[10px] font-medium border border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            {batchLoading ? "…" : "Raw batch"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => generateExecutionPack(project.id)}
+                            disabled={execPackLoading || eligible === 0}
+                            title={eligible === 0 ? "No queued or in-progress revisions" : `Generate execution pack from ${eligible} active revision${eligible !== 1 ? 's' : ''} + project context`}
                             className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                           >
-                            {batchLoading ? "Generating…" : `Generate batch${eligible > 0 ? ` (${eligible})` : ''}`}
+                            {execPackLoading ? "Generating…" : `Generate pack${eligible > 0 ? ` (${eligible})` : ''}`}
                           </button>
                         </div>
                       );
                     })()}
                   </div>
+
+                  {/* Raw batch output (legacy, collapsed) */}
                   {batchOutput && (
-                    <div className="relative">
-                      <textarea
-                        readOnly
-                        value={batchOutput}
-                        rows={12}
-                        className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => navigator.clipboard.writeText(batchOutput)}
-                        className="absolute top-2 right-2 px-2 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
-                      >
-                        Copy
-                      </button>
+                    <details className="mb-3">
+                      <summary className="text-[10px] text-gray-600 cursor-pointer hover:text-gray-400 mb-1">Raw batch JSON</summary>
+                      <div className="relative">
+                        <textarea
+                          readOnly
+                          value={batchOutput}
+                          rows={8}
+                          className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => navigator.clipboard.writeText(batchOutput)}
+                          className="absolute top-2 right-2 px-2 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </details>
+                  )}
+
+                  {/* Execution pack prompt outputs */}
+                  {execPack && (
+                    <div>
+                      {/* Tab bar */}
+                      <div className="flex items-center gap-1 mb-2 border-b border-white/5 pb-2">
+                        {([
+                          { key: 'chatgpt' as const, label: 'ChatGPT Architect' },
+                          { key: 'claude' as const,  label: 'Claude Code' },
+                          { key: 'json' as const,    label: 'Pack JSON' },
+                        ]).map((tab) => (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setExecPackTab(tab.key)}
+                            className={cx(
+                              "px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors",
+                              execPackTab === tab.key
+                                ? "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
+                                : "text-gray-500 hover:text-gray-300 border border-transparent"
+                            )}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                        <span className="flex-1" />
+                        <span className="text-[10px] text-gray-700">
+                          {execPack.summary.total_items} items · {new Date(execPack.generated_at).toLocaleTimeString()}
+                        </span>
+                      </div>
+
+                      {/* Prompt content */}
+                      <div className="relative">
+                        <textarea
+                          readOnly
+                          value={
+                            execPackTab === 'chatgpt' ? buildChatGptPrompt(execPack) :
+                            execPackTab === 'claude'  ? buildClaudePrompt(execPack) :
+                            JSON.stringify(execPack, null, 2)
+                          }
+                          rows={16}
+                          className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none leading-relaxed"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const text =
+                              execPackTab === 'chatgpt' ? buildChatGptPrompt(execPack) :
+                              execPackTab === 'claude'  ? buildClaudePrompt(execPack) :
+                              JSON.stringify(execPack, null, 2);
+                            navigator.clipboard.writeText(text);
+                          }}
+                          className="absolute top-2 right-2 px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                        >
+                          Copy
+                        </button>
+                      </div>
                     </div>
                   )}
-                  {!batchOutput && (
-                    <p className="text-xs text-gray-700">Generates a structured execution payload from all queued and in-progress revision items.</p>
+
+                  {!execPack && !batchOutput && (
+                    <p className="text-xs text-gray-700">
+                      Generate an execution pack to get copy-ready ChatGPT and Claude Code prompts with full project context.
+                    </p>
                   )}
                 </div>
               )}

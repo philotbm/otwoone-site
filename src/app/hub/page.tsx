@@ -294,12 +294,20 @@ export default function HubPage() {
           <p className="text-xs font-medium tracking-widest uppercase text-indigo-400">OTwoOne</p>
           <h1 className="text-lg font-semibold text-white">Hub</h1>
         </div>
-        <button
-          onClick={fetchLeads}
-          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/hub/sop"
+            className="text-xs text-gray-500 hover:text-indigo-300 transition-colors"
+          >
+            SOP
+          </Link>
+          <button
+            onClick={fetchLeads}
+            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            Refresh
+          </button>
+        </div>
       </header>
 
       <div className="px-6 py-6 max-w-7xl mx-auto">

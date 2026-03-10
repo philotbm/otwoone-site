@@ -15,7 +15,10 @@ export type ProjectEventType =
   | 'client_meeting_requested'
   | 'revision_created'
   | 'revision_updated'
-  | 'execution_batch_generated';
+  | 'execution_batch_generated'
+  | 'project_context_created'
+  | 'project_context_updated'
+  | 'execution_pack_generated';
 
 /**
  * Append an event to the project_events audit trail.
