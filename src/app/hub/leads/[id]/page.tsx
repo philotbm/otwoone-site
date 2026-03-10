@@ -189,6 +189,25 @@ type ExecutionBatch = {
   }>;
 };
 
+type LeadBrief = {
+  id: string;
+  lead_id: string;
+  scoping_reply: string | null;
+  project_summary: string | null;
+  project_type: string | null;
+  recommended_solution: string | null;
+  suggested_pages: string | null;
+  suggested_features: string | null;
+  suggested_integrations: string | null;
+  timeline_estimate: string | null;
+  budget_positioning: string | null;
+  risks_and_unknowns: string | null;
+  follow_up_questions: string | null;
+  proposal_draft: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type ProjectContext = {
   id: string;
   project_id: string;
@@ -287,7 +306,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 const NEXT_ACTION: Record<LeadStatus, string> = {
   lead_submitted:    "Next: send scoping template",
   scoping_sent:      "Next: wait for scope",
-  scope_received:    "Next: prepare proposal",
+  scope_received:    "Next: paste scoping reply → generate brief → draft proposal",
   proposal_sent:     "Next: request deposit",
   deposit_requested: "Next: confirm deposit",
   deposit_received:  "Next: convert to project",
@@ -683,6 +702,27 @@ export default function LeadDetailPage() {
   const [reviewLimitError, setReviewLimitError] = useState("");
   const [scopingError, setScopingError]         = useState("");
 
+  // Project brief state
+  const [brief,            setBrief]            = useState<LeadBrief | null>(null);
+  const [briefLoading,     setBriefLoading]     = useState(false);
+  const [briefSaving,      setBriefSaving]      = useState(false);
+  const [briefSaved,       setBriefSaved]       = useState(false);
+  const [briefReply,       setBriefReply]       = useState("");
+  const [briefSummary,     setBriefSummary]     = useState("");
+  const [briefType,        setBriefType]        = useState("");
+  const [briefSolution,    setBriefSolution]    = useState("");
+  const [briefPages,       setBriefPages]       = useState("");
+  const [briefFeatures,    setBriefFeatures]    = useState("");
+  const [briefIntegrations,setBriefIntegrations]= useState("");
+  const [briefTimeline,    setBriefTimeline]    = useState("");
+  const [briefBudget,      setBriefBudget]      = useState("");
+  const [briefRisks,       setBriefRisks]       = useState("");
+  const [briefFollowUp,    setBriefFollowUp]    = useState("");
+  const [briefProposal,    setBriefProposal]    = useState("");
+  const [briefPromptOutput,setBriefPromptOutput]= useState("");
+  const [briefPromptCopied,setBriefPromptCopied]= useState(false);
+  const [proposalCopied,   setProposalCopied]   = useState(false);
+
   const fetchLead = useCallback(async () => {
     setLoading(true);
     try {
@@ -773,6 +813,138 @@ export default function LeadDetailPage() {
   }, []);
 
   useEffect(() => { if (projectId) fetchContext(projectId); }, [projectId, fetchContext]);
+
+  // ── Fetch lead brief ──────────────────────────────────────────────────────────
+
+  const fetchBrief = useCallback(async (leadId: string) => {
+    setBriefLoading(true);
+    try {
+      const result = await safeFetch<{ brief: LeadBrief | null }>(`/api/hub/leads/${leadId}/brief`);
+      if (!result.ok) return;
+      const b = result.data.brief;
+      setBrief(b);
+      if (b) {
+        setBriefReply(b.scoping_reply ?? "");
+        setBriefSummary(b.project_summary ?? "");
+        setBriefType(b.project_type ?? "");
+        setBriefSolution(b.recommended_solution ?? "");
+        setBriefPages(b.suggested_pages ?? "");
+        setBriefFeatures(b.suggested_features ?? "");
+        setBriefIntegrations(b.suggested_integrations ?? "");
+        setBriefTimeline(b.timeline_estimate ?? "");
+        setBriefBudget(b.budget_positioning ?? "");
+        setBriefRisks(b.risks_and_unknowns ?? "");
+        setBriefFollowUp(b.follow_up_questions ?? "");
+        setBriefProposal(b.proposal_draft ?? "");
+      }
+    } finally {
+      setBriefLoading(false);
+    }
+  }, []);
+
+  // Load brief when lead reaches scope_received or later
+  const briefEligible = ['scope_received', 'proposal_sent', 'deposit_requested', 'deposit_received', 'converted'].includes(status);
+  useEffect(() => { if (briefEligible && id) fetchBrief(id); }, [briefEligible, id, fetchBrief]);
+
+  // ── Save lead brief ───────────────────────────────────────────────────────────
+
+  async function saveBrief() {
+    setBriefSaving(true);
+    setBriefSaved(false);
+    const result = await safeFetch<{ brief: LeadBrief }>(`/api/hub/leads/${id}/brief`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scoping_reply: briefReply,
+        project_summary: briefSummary,
+        project_type: briefType,
+        recommended_solution: briefSolution,
+        suggested_pages: briefPages,
+        suggested_features: briefFeatures,
+        suggested_integrations: briefIntegrations,
+        timeline_estimate: briefTimeline,
+        budget_positioning: briefBudget,
+        risks_and_unknowns: briefRisks,
+        follow_up_questions: briefFollowUp,
+        proposal_draft: briefProposal,
+      }),
+    });
+    setBriefSaving(false);
+    if (result.ok) {
+      setBrief(result.data.brief);
+      setBriefSaved(true);
+      setTimeout(() => setBriefSaved(false), 2000);
+    }
+  }
+
+  // ── Build ChatGPT brief prompt ────────────────────────────────────────────────
+
+  function buildBriefPrompt(): string {
+    if (!lead) return "";
+    const lines: string[] = [];
+
+    lines.push("You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You are analysing a client's scoping reply to produce a structured project brief.");
+    lines.push("");
+    lines.push("## Client details");
+    lines.push(`Name: ${lead.contact_name ?? "Unknown"}`);
+    if (lead.company_name) lines.push(`Company: ${lead.company_name}`);
+    if (lead.company_website) lines.push(`Website: ${lead.company_website}`);
+    if (lead.engagement_type) lines.push(`Engagement type: ${ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type}`);
+    if (lead.budget) lines.push(`Budget range: ${BUDGET_LABELS[lead.budget] ?? lead.budget}`);
+    if (lead.timeline) lines.push(`Timeline: ${TIMELINE_LABELS[lead.timeline] ?? lead.timeline}`);
+    lines.push("");
+
+    // Clarifiers
+    if (lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0) {
+      lines.push("## Intake clarifiers");
+      for (const [k, v] of Object.entries(lead.lead_details.clarifier_answers)) {
+        lines.push(`- ${k.replace(/_/g, " ")}: ${v}`);
+      }
+      lines.push("");
+    }
+
+    // Success definition
+    if (lead.lead_details?.success_definition) {
+      lines.push("## Success definition");
+      lines.push(lead.lead_details.success_definition);
+      lines.push("");
+    }
+
+    // Scoring summary
+    if (lead.total_score != null) {
+      lines.push("## Internal scoring");
+      lines.push(`Total: ${lead.total_score.toFixed(1)}/5`);
+      if (lead.clarity_score != null) lines.push(`Clarity: ${lead.clarity_score}/5`);
+      if (lead.alignment_score != null) lines.push(`Alignment: ${lead.alignment_score}/5`);
+      if (lead.complexity_score != null) lines.push(`Complexity: ${lead.complexity_score}/5`);
+      if (lead.authority_score != null) lines.push(`Authority: ${lead.authority_score}/5`);
+      lines.push("");
+    }
+
+    // Scoping reply
+    lines.push("## Client's scoping reply");
+    lines.push(briefReply.trim() || "(No scoping reply pasted yet)");
+    lines.push("");
+
+    // Required output
+    lines.push("## Required output");
+    lines.push("Analyse the above and produce a structured project brief with exactly these sections:");
+    lines.push("");
+    lines.push("1. **Project summary** — 2–3 sentence overview of what the client needs");
+    lines.push("2. **Project type** — e.g. brochure site, web app, e-commerce, landing page, redesign");
+    lines.push("3. **Recommended solution** — what OTwoOne should build and how");
+    lines.push("4. **Suggested pages** — list of pages/sections to include");
+    lines.push("5. **Suggested features** — key features and functionality");
+    lines.push("6. **Suggested integrations** — third-party tools, APIs, or services to integrate");
+    lines.push("7. **Timeline estimate** — realistic delivery window");
+    lines.push("8. **Budget positioning** — where this project sits relative to the client's stated budget and what's achievable");
+    lines.push("9. **Risks and unknowns** — anything unclear, missing, or risky");
+    lines.push("10. **Follow-up questions** — specific questions to ask the client before proceeding");
+    lines.push("");
+    lines.push("Keep each section concise and actionable. Write for an internal operator who will use this to build a proposal.");
+
+    return lines.join("\n");
+  }
 
   // ── Save project context ──────────────────────────────────────────────────────
 
@@ -1437,6 +1609,253 @@ export default function LeadDetailPage() {
             </div>
           </Section>
         </div>
+
+        {/* ── Project Brief (scope_received or later, pre-project workflow) ── */}
+        {briefEligible && (
+          <div className="lg:col-span-2">
+            <Section title="Project Brief">
+              <p className="text-xs text-gray-600 -mt-1 mb-1">
+                Pre-project scoping analysis. Paste the client&apos;s scoping reply, generate a ChatGPT brief prompt, save the structured brief, and draft the proposal.
+              </p>
+              <div className="flex items-center gap-3 mb-4 px-3 py-2 rounded-lg bg-indigo-500/5 border border-indigo-500/10">
+                <span className="text-xs text-indigo-300/80">
+                  {!briefReply.trim() ? "① Paste scoping reply" :
+                   !briefSummary.trim() ? "② Generate ChatGPT brief → paste results into fields below" :
+                   !briefProposal.trim() ? "③ Draft or paste proposal" :
+                   "④ Review brief and send proposal"}
+                </span>
+              </div>
+
+              {briefLoading ? (
+                <div className="py-4 text-center">
+                  <p className="text-xs text-gray-600">Loading brief…</p>
+                </div>
+              ) : (
+                <div className="space-y-5">
+
+                  {/* ── A. Scoping reply input ────────────────────────── */}
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Client&apos;s scoping reply</label>
+                    <textarea
+                      value={briefReply}
+                      onChange={(e) => setBriefReply(e.target.value)}
+                      placeholder="Paste the client's reply to your scoping email here…"
+                      rows={6}
+                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
+                    />
+                  </div>
+
+                  {/* ── B. AI prompt generation ────────────────────────── */}
+                  <div className="pt-3 border-t border-white/5">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">ChatGPT brief prompt</span>
+                      <button
+                        type="button"
+                        disabled={!briefReply.trim()}
+                        onClick={() => {
+                          setBriefPromptOutput(buildBriefPrompt());
+                          setBriefPromptCopied(false);
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        Generate prompt
+                      </button>
+                    </div>
+                    {!briefReply.trim() && !briefPromptOutput && (
+                      <p className="text-xs text-gray-700">Paste the scoping reply above to generate a ChatGPT analysis prompt.</p>
+                    )}
+                    {briefPromptOutput && (
+                      <div className="relative">
+                        <textarea
+                          readOnly
+                          value={briefPromptOutput}
+                          rows={14}
+                          className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none leading-relaxed"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(briefPromptOutput);
+                            setBriefPromptCopied(true);
+                            setTimeout(() => setBriefPromptCopied(false), 2000);
+                          }}
+                          className="absolute top-2 right-2 px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                        >
+                          {briefPromptCopied ? "Copied ✓" : "Copy"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── C. Structured brief fields ────────────────────── */}
+                  <div className="pt-3 border-t border-white/5">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-3">Structured brief</p>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project summary</label>
+                        <textarea
+                          value={briefSummary}
+                          onChange={(e) => setBriefSummary(e.target.value)}
+                          placeholder="2–3 sentence overview of what the client needs…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project type</label>
+                        <textarea
+                          value={briefType}
+                          onChange={(e) => setBriefType(e.target.value)}
+                          placeholder="e.g. brochure site, web app, e-commerce, redesign…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Recommended solution</label>
+                      <textarea
+                        value={briefSolution}
+                        onChange={(e) => setBriefSolution(e.target.value)}
+                        placeholder="What OTwoOne should build and how…"
+                        rows={3}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mt-4">
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested pages</label>
+                        <textarea
+                          value={briefPages}
+                          onChange={(e) => setBriefPages(e.target.value)}
+                          placeholder="Homepage, About, Services, Contact…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested features</label>
+                        <textarea
+                          value={briefFeatures}
+                          onChange={(e) => setBriefFeatures(e.target.value)}
+                          placeholder="Contact form, blog, booking…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested integrations</label>
+                        <textarea
+                          value={briefIntegrations}
+                          onChange={(e) => setBriefIntegrations(e.target.value)}
+                          placeholder="Stripe, Google Analytics, CRM…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-4">
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Timeline estimate</label>
+                        <textarea
+                          value={briefTimeline}
+                          onChange={(e) => setBriefTimeline(e.target.value)}
+                          placeholder="Realistic delivery window…"
+                          rows={2}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Budget positioning</label>
+                        <textarea
+                          value={briefBudget}
+                          onChange={(e) => setBriefBudget(e.target.value)}
+                          placeholder="Where this sits vs stated budget…"
+                          rows={2}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-4">
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Risks &amp; unknowns</label>
+                        <textarea
+                          value={briefRisks}
+                          onChange={(e) => setBriefRisks(e.target.value)}
+                          placeholder="Anything unclear, missing, or risky…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Follow-up questions</label>
+                        <textarea
+                          value={briefFollowUp}
+                          onChange={(e) => setBriefFollowUp(e.target.value)}
+                          placeholder="Questions to ask the client before proceeding…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── D. Proposal draft ─────────────────────────────── */}
+                  <div className="pt-3 border-t border-white/5">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal draft</span>
+                      {briefProposal.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(briefProposal);
+                            setProposalCopied(true);
+                            setTimeout(() => setProposalCopied(false), 2000);
+                          }}
+                          className="px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                        >
+                          {proposalCopied ? "Copied ✓" : "Copy proposal"}
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      value={briefProposal}
+                      onChange={(e) => setBriefProposal(e.target.value)}
+                      placeholder="Paste or write the proposal email draft here. This can be AI-generated, manually written, or a combination."
+                      rows={8}
+                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
+                    />
+                  </div>
+
+                  {/* ── Save bar ──────────────────────────────────────── */}
+                  <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                    <div className="flex items-center gap-3">
+                      <span className={cx("text-xs transition-opacity", briefSaved ? "text-green-400 opacity-100" : "opacity-0")}>
+                        Saved
+                      </span>
+                      {brief && (
+                        <span className="text-[10px] text-gray-700">
+                          Last updated {fmtDateTime(brief.updated_at)}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={saveBrief}
+                      disabled={briefSaving}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                    >
+                      {briefSaving ? "Saving…" : "Save brief"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </Section>
+          </div>
+        )}
 
         {/* Project (if converted) */}
         {project && (
