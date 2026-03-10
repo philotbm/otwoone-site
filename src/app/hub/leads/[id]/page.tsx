@@ -1309,7 +1309,30 @@ export default function LeadDetailPage() {
                         }
                         setStatus("scoping_sent");
                         fetchLead();
-                        window.location.href = `mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — quick scoping questions")}&body=${encodeURIComponent(`Hi ${lead.contact_name ?? "there"},\nThanks for reaching out. To price this properly, can you reply with:\n1) What pages/sections you need\n2) Examples you like\n3) Deadline\n4) Any integrations (booking, payments, etc.)\nThanks,\nPhilip`)}`;
+                        const scopingBody = [
+                          `Hi ${lead.contact_name ?? "there"},`,
+                          ``,
+                          `Thanks for getting in touch with OTwoOne — great to hear from you.`,
+                          ``,
+                          `To put together the right approach and an accurate quote, it would be helpful to know a bit more about what you have in mind. If you could reply with answers to the following, that would be perfect:`,
+                          ``,
+                          `1. What pages or sections do you need? (e.g. homepage, about, services, contact, blog)`,
+                          `2. Are there any websites or designs you like as references?`,
+                          `3. Do you have a target launch date or deadline?`,
+                          `4. Any specific functionality or integrations? (e.g. booking, payments, forms, CRM)`,
+                          `5. Do you already have content, branding, or imagery — or will that need to be created?`,
+                          `6. Do you have an approximate budget range in mind? (completely optional, but helps us tailor the proposal)`,
+                          ``,
+                          `Once I have this, I'll come back with a clear recommendation and next steps.`,
+                          ``,
+                          `Looking forward to it.`,
+                          ``,
+                          `Philip Holland`,
+                          `OTwoOne`,
+                          `Websites · Systems · Automation`,
+                          `otwoone.ie · phil@otwoone.ie`,
+                        ].join('\n');
+                        window.location.href = `mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — Scoping your project")}&body=${encodeURIComponent(scopingBody)}`;
                       }}
                       className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
                     >
