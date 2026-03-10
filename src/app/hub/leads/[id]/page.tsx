@@ -5,6 +5,53 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { PROJECT_STATUSES, type ProjectStatus } from "@/lib/projectStatus";
 
+// ─── Safe JSON fetch ─────────────────────────────────────────────────────────
+// Defensively fetches JSON from an API route. Checks res.ok and content-type
+// before parsing. Never throws raw JSON parse errors into the UI.
+
+async function safeFetch<T = unknown>(
+  url: string,
+  init?: RequestInit,
+): Promise<{ ok: true; status: number; data: T } | { ok: false; status: number; error: string }> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    return { ok: false, status: 0, error: "Network error. Please check your connection and try again." };
+  }
+
+  const ct = res.headers.get("content-type") ?? "";
+
+  if (!res.ok) {
+    // Try to extract a JSON error message if the response is JSON
+    if (ct.includes("application/json")) {
+      try {
+        const body = await res.json() as { error?: string };
+        return { ok: false, status: res.status, error: body.error ?? `Request failed (${res.status}).` };
+      } catch {
+        // JSON parse failed even though content-type says JSON
+      }
+    }
+    // Non-JSON error (HTML redirect, error page, etc.)
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, status: res.status, error: "Session expired. Please refresh the page and log in again." };
+    }
+    return { ok: false, status: res.status, error: `Request failed (${res.status}). Please refresh and try again.` };
+  }
+
+  // Response is ok — parse JSON safely
+  if (!ct.includes("application/json")) {
+    return { ok: false, status: res.status, error: "Unexpected response format. Please refresh and try again." };
+  }
+
+  try {
+    const data = await res.json() as T;
+    return { ok: true, status: res.status, data };
+  } catch {
+    return { ok: false, status: res.status, error: "Could not parse response. Please refresh and try again." };
+  }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type LeadStatus =
@@ -366,7 +413,7 @@ function ConvertModal({
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(`/api/hub/leads/${lead.id}/convert`, {
+      const result = await safeFetch<{ ok: boolean }>(`/api/hub/leads/${lead.id}/convert`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -374,8 +421,7 @@ function ConvertModal({
           maintenance_plan: hostingRequired ? maintenancePlan : "none",
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Conversion failed");
+      if (!result.ok) throw new Error(result.error);
       onConverted();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Conversion failed");
@@ -575,9 +621,12 @@ export default function LeadDetailPage() {
   const fetchLead = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`/api/hub/leads/${id}`);
-      const json = await res.json();
-      const l: Lead = json.data;
+      const result = await safeFetch<{ data: Lead }>(`/api/hub/leads/${id}`);
+      if (!result.ok) {
+        console.error("[fetchLead]", result.error);
+        return;
+      }
+      const l = result.data.data;
       setLead(l);
       setStatus(l.status);
       setDiscoveryDepth(l.discovery_depth ?? "");
@@ -585,6 +634,8 @@ export default function LeadDetailPage() {
       setProposedPlan(l.proposed_maintenance_plan ?? "");
       setReviewsIncluded(l.projects?.[0]?.reviews_included ?? 2);
       setNotes(l.lead_details?.internal_notes ?? "");
+    } catch (err) {
+      console.error("[fetchLead] unexpected:", err);
     } finally {
       setLoading(false);
     }
@@ -596,12 +647,14 @@ export default function LeadDetailPage() {
     setEventsLoading(true);
     setEventsError("");
     try {
-      const res  = await fetch(`/api/hub/projects/${projectId}/events`);
-      const json = await res.json() as { events?: ProjectEvent[]; error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Failed to load events.");
-      setEvents(json.events ?? []);
-    } catch (err) {
-      setEventsError(err instanceof Error ? err.message : "Failed to load events.");
+      const result = await safeFetch<{ events?: ProjectEvent[] }>(`/api/hub/projects/${projectId}/events`);
+      if (!result.ok) {
+        setEventsError("Could not load timeline. Please refresh and try again.");
+        return;
+      }
+      setEvents(result.data.events ?? []);
+    } catch {
+      setEventsError("Could not load timeline. Please refresh and try again.");
     } finally {
       setEventsLoading(false);
     }
@@ -616,12 +669,14 @@ export default function LeadDetailPage() {
     setRevisionsLoading(true);
     setRevisionsError("");
     try {
-      const res  = await fetch(`/api/hub/projects/${pId}/revisions`);
-      const json = await res.json() as { revisions?: RevisionItem[]; error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Failed to load revisions.");
-      setRevisions(json.revisions ?? []);
-    } catch (err) {
-      setRevisionsError(err instanceof Error ? err.message : "Failed to load revisions.");
+      const result = await safeFetch<{ revisions?: RevisionItem[] }>(`/api/hub/projects/${pId}/revisions`);
+      if (!result.ok) {
+        setRevisionsError("Could not load revisions. Please refresh and try again.");
+        return;
+      }
+      setRevisions(result.data.revisions ?? []);
+    } catch {
+      setRevisionsError("Could not load revisions. Please refresh and try again.");
     } finally {
       setRevisionsLoading(false);
     }
@@ -634,8 +689,9 @@ export default function LeadDetailPage() {
   async function createRevision(pId: string) {
     if (!revAddTitle.trim()) return;
     setRevSaving(true);
+    setRevisionsError("");
     try {
-      const res = await fetch(`/api/hub/projects/${pId}/revisions`, {
+      const result = await safeFetch<{ revision: RevisionItem }>(`/api/hub/projects/${pId}/revisions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -647,9 +703,9 @@ export default function LeadDetailPage() {
           feedback_event_id: revAddFeedbackId,
         }),
       });
-      if (!res.ok) {
-        const json = await res.json() as { error?: string };
-        throw new Error(json.error ?? "Failed to create revision.");
+      if (!result.ok) {
+        setRevisionsError(result.error);
+        return;
       }
       setRevAddTitle("");
       setRevAddDesc("");
@@ -659,8 +715,8 @@ export default function LeadDetailPage() {
       setRevAddFeedbackId(null);
       setRevAddOpen(false);
       fetchRevisions(pId);
-    } catch (err) {
-      setRevisionsError(err instanceof Error ? err.message : "Failed to create revision.");
+    } catch {
+      setRevisionsError("Could not create revision. Please try again.");
     } finally {
       setRevSaving(false);
     }
@@ -669,11 +725,14 @@ export default function LeadDetailPage() {
   // ── Update revision field ──────────────────────────────────────────────────────
 
   async function updateRevision(pId: string, revId: string, fields: Record<string, unknown>) {
-    await fetch(`/api/hub/projects/${pId}/revisions/${revId}`, {
+    const result = await safeFetch(`/api/hub/projects/${pId}/revisions/${revId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fields),
     });
+    if (!result.ok) {
+      setRevisionsError("Could not update revision. Please refresh and try again.");
+    }
     fetchRevisions(pId);
   }
 
@@ -699,16 +758,18 @@ export default function LeadDetailPage() {
   async function generateBatch(pId: string) {
     setBatchLoading(true);
     try {
-      const res  = await fetch(`/api/hub/projects/${pId}/revisions/batch`, {
+      const result = await safeFetch<{ batch?: ExecutionBatch }>(`/api/hub/projects/${pId}/revisions/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      const json = await res.json() as { batch?: ExecutionBatch; error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Failed to generate batch.");
-      setBatchOutput(JSON.stringify(json.batch, null, 2));
-    } catch (err) {
-      setBatchOutput(`Error: ${err instanceof Error ? err.message : "Failed to generate batch."}`);
+      if (!result.ok) {
+        setBatchOutput(`Error: ${result.error}`);
+        return;
+      }
+      setBatchOutput(JSON.stringify(result.data.batch, null, 2));
+    } catch {
+      setBatchOutput("Error: Could not generate batch. Please refresh and try again.");
     } finally {
       setBatchLoading(false);
     }
@@ -718,7 +779,7 @@ export default function LeadDetailPage() {
 
   async function saveField(fields: Record<string, unknown>) {
     setSaving(true);
-    await fetch(`/api/hub/leads/${id}`, {
+    await safeFetch(`/api/hub/leads/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fields),
@@ -728,7 +789,7 @@ export default function LeadDetailPage() {
 
   async function saveNotes() {
     setSaving(true);
-    await fetch(`/api/hub/leads/${id}`, {
+    await safeFetch(`/api/hub/leads/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ internal_notes: notes }),
@@ -745,13 +806,15 @@ export default function LeadDetailPage() {
     setPortalSending(true);
     setPortalError("");
     try {
-      const res  = await fetch(`/api/hub/projects/${projectId}/send-intake`, { method: "POST" });
-      const json = await res.json() as { ok?: boolean; intake_url?: string; error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Failed to send portal link.");
-      setPortalUrl(json.intake_url ?? "");
+      const result = await safeFetch<{ ok?: boolean; intake_url?: string }>(`/api/hub/projects/${projectId}/send-intake`, { method: "POST" });
+      if (!result.ok) {
+        setPortalError(result.error);
+        return;
+      }
+      setPortalUrl(result.data.intake_url ?? "");
       setPortalSent(true);
-    } catch (err) {
-      setPortalError(err instanceof Error ? err.message : "Failed to send portal link.");
+    } catch {
+      setPortalError("Could not send portal link. Please refresh and try again.");
     } finally {
       setPortalSending(false);
     }
@@ -769,12 +832,14 @@ export default function LeadDetailPage() {
     setIntakeLoading(true);
     setIntakeError("");
     try {
-      const res  = await fetch(`/api/hub/projects/${projectId}/intake`);
-      const json = await res.json() as IntakeApiResponse & { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Failed to load intake.");
-      setIntakeData(json);
-    } catch (err) {
-      setIntakeError(err instanceof Error ? err.message : "Failed to load intake.");
+      const result = await safeFetch<IntakeApiResponse>(`/api/hub/projects/${projectId}/intake`);
+      if (!result.ok) {
+        setIntakeError("Could not load intake data. Please refresh and try again.");
+        return;
+      }
+      setIntakeData(result.data);
+    } catch {
+      setIntakeError("Could not load intake data. Please refresh and try again.");
     } finally {
       setIntakeLoading(false);
     }
@@ -784,7 +849,7 @@ export default function LeadDetailPage() {
 
   async function saveProjectField(pId: string, fields: Record<string, unknown>) {
     setSaving(true);
-    await fetch(`/api/hub/projects/${pId}`, {
+    await safeFetch(`/api/hub/projects/${pId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fields),
@@ -796,15 +861,14 @@ export default function LeadDetailPage() {
 
   async function updateProjectStatus(projectId: string, newStatus: string) {
     setSaving(true);
-    const res = await fetch(`/api/hub/projects/${projectId}`, {
+    const result = await safeFetch<{ error?: string }>(`/api/hub/projects/${projectId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ project_status: newStatus }),
     });
     setSaving(false);
-    if (res.status === 409) {
-      const json = await res.json() as { error?: string };
-      setReviewLimitError(json.error ?? "Review limit reached.");
+    if (!result.ok && result.status === 409) {
+      setReviewLimitError(result.error);
       return;
     }
     setReviewLimitError("");
@@ -991,15 +1055,14 @@ export default function LeadDetailPage() {
                       onClick={async () => {
                         setScopingError("");
                         setSaving(true);
-                        const res = await fetch(`/api/hub/leads/${id}`, {
+                        const result = await safeFetch(`/api/hub/leads/${id}`, {
                           method: "PATCH",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ status: "scoping_sent" }),
                         });
                         setSaving(false);
-                        if (!res.ok) {
-                          const json = await res.json() as { error?: string };
-                          setScopingError(json.error ?? "Failed to update stage.");
+                        if (!result.ok) {
+                          setScopingError(result.error);
                           return;
                         }
                         setStatus("scoping_sent");
@@ -1331,17 +1394,24 @@ export default function LeadDetailPage() {
         {project && (
           <div className="lg:col-span-2">
             <Section title="Revisions">
+              {/* Section explainer */}
+              <p className="text-xs text-gray-600 -mt-1 mb-3">
+                Track revision items from client feedback, emails, or internal notes. Add items, manage priorities, and generate execution batches.
+              </p>
+
               {/* Header row */}
-              <div className="flex items-center justify-between -mt-1 mb-3">
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500">
-                    {revisions.length} item{revisions.length !== 1 ? 's' : ''}
-                    {revisions.filter(r => r.status === 'queued').length > 0 && (
-                      <span className="ml-1.5 text-yellow-400">
-                        ({revisions.filter(r => r.status === 'queued').length} queued)
-                      </span>
-                    )}
-                  </span>
+                  {revisions.length > 0 && (
+                    <span className="text-xs text-gray-500">
+                      {revisions.length} item{revisions.length !== 1 ? 's' : ''}
+                      {revisions.filter(r => r.status === 'queued').length > 0 && (
+                        <span className="ml-1.5 text-yellow-400">
+                          ({revisions.filter(r => r.status === 'queued').length} queued)
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -1355,7 +1425,7 @@ export default function LeadDetailPage() {
                   <button
                     type="button"
                     onClick={() => { setRevAddFeedbackId(null); setRevAddOpen(!revAddOpen); }}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                    className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
                   >
                     + Add revision
                   </button>
@@ -1363,7 +1433,16 @@ export default function LeadDetailPage() {
               </div>
 
               {revisionsError && (
-                <p className="text-xs text-red-400 py-1 mb-2">{revisionsError}</p>
+                <div className="flex items-center gap-2 py-2 px-3 mb-3 rounded-lg bg-red-500/5 border border-red-500/10">
+                  <span className="text-xs text-red-400">{revisionsError}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setRevisionsError(""); fetchRevisions(project.id); }}
+                    className="text-[10px] text-red-400 underline hover:text-red-300"
+                  >
+                    Retry
+                  </button>
+                </div>
               )}
 
               {/* ── Quick add form ───────────────────────────────────── */}
@@ -1446,10 +1525,24 @@ export default function LeadDetailPage() {
 
               {/* ── Revisions list ───────────────────────────────────── */}
               {revisionsLoading && revisions.length === 0 && (
-                <p className="text-xs text-gray-600 py-2">Loading…</p>
+                <div className="py-6 text-center">
+                  <p className="text-xs text-gray-600">Loading revisions…</p>
+                </div>
               )}
-              {!revisionsLoading && revisions.length === 0 && (
-                <p className="text-xs text-gray-600 py-2">No revisions yet.</p>
+              {!revisionsLoading && !revisionsError && revisions.length === 0 && !revAddOpen && (
+                <div className="py-6 text-center border border-dashed border-white/5 rounded-lg">
+                  <p className="text-sm text-gray-500 mb-1">No revisions yet</p>
+                  <p className="text-xs text-gray-600 mb-3">
+                    Add revision items manually, or create them from client feedback in the timeline below.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => { setRevAddFeedbackId(null); setRevAddOpen(true); }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                  >
+                    + Add first revision
+                  </button>
+                </div>
               )}
               {revisions.length > 0 && (
                 <div className="space-y-2">
@@ -1545,39 +1638,52 @@ export default function LeadDetailPage() {
               )}
 
               {/* ── Execution batch output ────────────────────────────── */}
-              <div className="mt-4 pt-4 border-t border-white/5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] text-gray-500 uppercase tracking-wide font-medium">Execution batch</span>
-                  <button
-                    type="button"
-                    onClick={() => generateBatch(project.id)}
-                    disabled={batchLoading || revisions.filter(r => r.status !== 'complete').length === 0}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-white/5 hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors disabled:opacity-40"
-                  >
-                    {batchLoading ? "Generating…" : "Generate batch"}
-                  </button>
-                </div>
-                {batchOutput && (
-                  <div className="relative">
-                    <textarea
-                      readOnly
-                      value={batchOutput}
-                      rows={12}
-                      className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => navigator.clipboard.writeText(batchOutput)}
-                      className="absolute top-2 right-2 px-2 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
-                    >
-                      Copy
-                    </button>
+              {revisions.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-white/5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] text-gray-500 uppercase tracking-wide font-medium">Execution batch</span>
+                    {(() => {
+                      const eligible = revisions.filter(r => r.status !== 'complete').length;
+                      return (
+                        <div className="flex items-center gap-2">
+                          {eligible === 0 && (
+                            <span className="text-[10px] text-gray-600">All items complete</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => generateBatch(project.id)}
+                            disabled={batchLoading || eligible === 0}
+                            title={eligible === 0 ? "No queued or in-progress revisions to batch" : `Generate batch from ${eligible} active revision${eligible !== 1 ? 's' : ''}`}
+                            className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            {batchLoading ? "Generating…" : `Generate batch${eligible > 0 ? ` (${eligible})` : ''}`}
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
-                )}
-                {!batchOutput && (
-                  <p className="text-xs text-gray-700">Click Generate to build an execution-ready payload from queued/in-progress revisions.</p>
-                )}
-              </div>
+                  {batchOutput && (
+                    <div className="relative">
+                      <textarea
+                        readOnly
+                        value={batchOutput}
+                        rows={12}
+                        className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => navigator.clipboard.writeText(batchOutput)}
+                        className="absolute top-2 right-2 px-2 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  )}
+                  {!batchOutput && (
+                    <p className="text-xs text-gray-700">Generates a structured execution payload from all queued and in-progress revision items.</p>
+                  )}
+                </div>
+              )}
             </Section>
           </div>
         )}
@@ -1621,10 +1727,16 @@ export default function LeadDetailPage() {
                         <button
                           type="button"
                           onClick={() => prefillRevisionFromFeedback(ev)}
-                          className="shrink-0 px-2 py-1 rounded text-[10px] font-medium text-indigo-400 hover:text-indigo-300 border border-indigo-500/20 hover:border-indigo-500/40 transition-colors"
+                          title="Create a revision item from this client feedback"
+                          className="shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 border border-indigo-500/20 hover:border-indigo-500/40 transition-colors"
                         >
-                          + Revision
+                          Create revision →
                         </button>
+                      )}
+                      {(ev.event_type === 'client_review_approved' || ev.event_type === 'client_meeting_requested') && (
+                        <span className="shrink-0 px-2 py-1 rounded text-[10px] font-medium text-emerald-400/60 border border-emerald-500/10">
+                          {ev.event_type === 'client_review_approved' ? '✓ Approved' : '📅 Meeting'}
+                        </span>
                       )}
                     </li>
                   ))}
