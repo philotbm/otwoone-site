@@ -1326,11 +1326,6 @@ export default function LeadDetailPage() {
                           `Once I have this, I'll come back with a clear recommendation and next steps.`,
                           ``,
                           `Looking forward to it.`,
-                          ``,
-                          `Philip Holland`,
-                          `OTwoOne`,
-                          `Websites · Systems · Automation`,
-                          `otwoone.ie · phil@otwoone.ie`,
                         ].join('\n');
                         window.location.href = `mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — Scoping your project")}&body=${encodeURIComponent(scopingBody)}`;
                       }}
