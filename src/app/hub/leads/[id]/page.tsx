@@ -94,6 +94,18 @@ type Lead = {
   projects: Project[] | null;
 };
 
+type ClarificationRound = {
+  id: string;
+  lead_id: string;
+  round_number: number;
+  status: "draft" | "sent" | "replied" | "closed";
+  questions: string | null;
+  client_reply: string | null;
+  generated_email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type ProjectEvent = {
   id: string;
   event_type: string;
@@ -166,6 +178,20 @@ const CTA_LABELS: Record<string, string> = {
   email:        "Email",
   contact_form: "Contact form",
   whatsapp:     "WhatsApp",
+};
+
+const ROUND_STATUS_LABELS: Record<string, string> = {
+  draft:   "Draft",
+  sent:    "Sent",
+  replied: "Replied",
+  closed:  "Closed",
+};
+
+const ROUND_STATUS_COLOUR: Record<string, string> = {
+  draft:   "bg-gray-500/15 text-gray-400",
+  sent:    "bg-indigo-500/15 text-indigo-400",
+  replied: "bg-yellow-500/15 text-yellow-400",
+  closed:  "bg-green-500/15 text-green-400",
 };
 
 const MAINTENANCE_PLANS = ["starter_49", "essential", "growth", "accelerator", "none"] as const;
@@ -491,6 +517,14 @@ export default function LeadDetailPage() {
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError,   setEventsError]   = useState("");
 
+  // Clarification rounds state
+  const [rounds, setRounds]                     = useState<ClarificationRound[]>([]);
+  const [roundsLoading, setRoundsLoading]       = useState(false);
+  const [roundSaving, setRoundSaving]           = useState<string | null>(null);
+  const [expandedRound, setExpandedRound]       = useState<string | null>(null);
+  const [draftQuestions, setDraftQuestions]      = useState<Record<string, string>>({});
+  const [draftReplies, setDraftReplies]         = useState<Record<string, string>>({});
+
   // Local edit state
   const [status, setStatus]                     = useState<LeadStatus>("lead_submitted");
   const [discoveryDepth, setDiscoveryDepth]     = useState("");
@@ -537,6 +571,80 @@ export default function LeadDetailPage() {
 
   const projectId = lead?.projects?.[0]?.id;
   useEffect(() => { if (projectId) fetchEvents(projectId); }, [projectId, fetchEvents]);
+
+  // ── Clarification rounds ───────────────────────────────────────────────────
+
+  const fetchRounds = useCallback(async () => {
+    setRoundsLoading(true);
+    try {
+      const res  = await fetch(`/api/hub/leads/${id}/clarifications`);
+      const json = await res.json() as { data?: ClarificationRound[] };
+      const list = json.data ?? [];
+      setRounds(list);
+      // seed draft buffers from server state
+      const qBuf: Record<string, string> = {};
+      const rBuf: Record<string, string> = {};
+      for (const r of list) {
+        qBuf[r.id] = r.questions ?? "";
+        rBuf[r.id] = r.client_reply ?? "";
+      }
+      setDraftQuestions(qBuf);
+      setDraftReplies(rBuf);
+    } finally {
+      setRoundsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => { fetchRounds(); }, [fetchRounds]);
+
+  async function createRound() {
+    setRoundSaving("new");
+    try {
+      const res  = await fetch(`/api/hub/leads/${id}/clarifications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json() as { data?: ClarificationRound };
+      if (json.data) {
+        setExpandedRound(json.data.id);
+      }
+      await fetchRounds();
+    } finally {
+      setRoundSaving(null);
+    }
+  }
+
+  async function saveRound(roundId: string, fields: Record<string, unknown>) {
+    setRoundSaving(roundId);
+    try {
+      await fetch(`/api/hub/leads/${id}/clarifications/${roundId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      await fetchRounds();
+    } finally {
+      setRoundSaving(null);
+    }
+  }
+
+  async function deleteRound(roundId: string) {
+    if (!window.confirm("Delete this draft round?")) return;
+    setRoundSaving(roundId);
+    try {
+      await fetch(`/api/hub/leads/${id}/clarifications/${roundId}`, { method: "DELETE" });
+      await fetchRounds();
+    } finally {
+      setRoundSaving(null);
+    }
+  }
+
+  function buildClarificationEmail(round: ClarificationRound): string {
+    const name = lead?.contact_name ?? "there";
+    const qs   = round.questions?.trim() ?? "";
+    return `Hi ${name},\n\nThanks for the details so far. Before I put the proposal together, I just need to clarify a few things:\n\n${qs}\n\nNo rush — a quick reply whenever suits.\n\nThanks,\nPhilip`;
+  }
 
   // ── Save lead fields ──────────────────────────────────────────────────────────
 
@@ -913,6 +1021,256 @@ export default function LeadDetailPage() {
             </div> */}
           </div>
         </Section>
+
+        {/* ── Clarifications ──────────────────────────────────────────────── */}
+        <div className="lg:col-span-2">
+          <Section title="Clarifications">
+            {/* Scope confidence signal */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Scope confidence</span>
+                {(() => {
+                  const hasRepliedAll = rounds.length > 0 && rounds.every((r) => r.status === "replied" || r.status === "closed");
+                  const hasPending    = rounds.some((r) => r.status === "draft" || r.status === "sent");
+                  const noRounds      = rounds.length === 0;
+
+                  if (noRounds && ["scope_received", "proposal_sent", "deposit_requested", "deposit_received", "converted"].includes(status)) {
+                    return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-green-500/15 text-green-400">Clear</span>;
+                  }
+                  if (noRounds) {
+                    return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-gray-500/15 text-gray-400">Not assessed</span>;
+                  }
+                  if (hasPending) {
+                    return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-yellow-500/15 text-yellow-400">Pending</span>;
+                  }
+                  if (hasRepliedAll) {
+                    return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-green-500/15 text-green-400">Clear</span>;
+                  }
+                  return null;
+                })()}
+              </div>
+              <button
+                type="button"
+                onClick={createRound}
+                disabled={roundSaving === "new"}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+              >
+                {roundSaving === "new" ? "Creating…" : "+ New round"}
+              </button>
+            </div>
+
+            {roundsLoading && <p className="text-xs text-gray-600 py-2">Loading…</p>}
+
+            {!roundsLoading && rounds.length === 0 && (
+              <p className="text-xs text-gray-600 py-2">No clarification rounds yet. Scope may already be clear — or start a round if you need to ask follow-ups.</p>
+            )}
+
+            {!roundsLoading && rounds.length > 0 && (
+              <div className="space-y-3">
+                {rounds.map((round) => {
+                  const isExpanded = expandedRound === round.id;
+                  const isSaving   = roundSaving === round.id;
+                  return (
+                    <div
+                      key={round.id}
+                      className="border border-white/5 rounded-lg overflow-hidden"
+                    >
+                      {/* Round header */}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRound(isExpanded ? null : round.id)}
+                        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-medium text-gray-300">Round {round.round_number}</span>
+                          <span className={cx(
+                            "px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
+                            ROUND_STATUS_COLOUR[round.status]
+                          )}>
+                            {ROUND_STATUS_LABELS[round.status]}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] text-gray-600">{fmt(round.created_at)}</span>
+                          <span className="text-xs text-gray-600">{isExpanded ? "▲" : "▼"}</span>
+                        </div>
+                      </button>
+
+                      {/* Round body */}
+                      {isExpanded && (
+                        <div className="px-4 pb-4 space-y-4 border-t border-white/5">
+                          {/* Questions */}
+                          <div className="pt-3">
+                            <label className="text-xs text-gray-500 block mb-1.5">Questions for client</label>
+                            <textarea
+                              value={draftQuestions[round.id] ?? ""}
+                              onChange={(e) => setDraftQuestions((prev) => ({ ...prev, [round.id]: e.target.value }))}
+                              placeholder="Type your clarification questions here…"
+                              rows={4}
+                              className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none leading-relaxed"
+                            />
+                            <div className="flex items-center gap-2 mt-2">
+                              <button
+                                type="button"
+                                onClick={() => saveRound(round.id, { questions: draftQuestions[round.id] ?? "" })}
+                                disabled={isSaving}
+                                className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
+                              >
+                                Save questions
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Client reply */}
+                          <div>
+                            <label className="text-xs text-gray-500 block mb-1.5">Client reply</label>
+                            <textarea
+                              value={draftReplies[round.id] ?? ""}
+                              onChange={(e) => setDraftReplies((prev) => ({ ...prev, [round.id]: e.target.value }))}
+                              placeholder="Paste client reply here…"
+                              rows={4}
+                              className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none leading-relaxed"
+                            />
+                            <div className="flex items-center gap-2 mt-2">
+                              <button
+                                type="button"
+                                onClick={() => saveRound(round.id, { client_reply: draftReplies[round.id] ?? "", status: "replied" })}
+                                disabled={isSaving}
+                                className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
+                              >
+                                Save reply
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Actions row */}
+                          <div className="flex items-center justify-between pt-3 border-t border-white/5 flex-wrap gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {/* Generate email */}
+                              {(draftQuestions[round.id] ?? "").trim() && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const email = buildClarificationEmail({ ...round, questions: draftQuestions[round.id] ?? "" });
+                                    saveRound(round.id, { questions: draftQuestions[round.id], generated_email: email });
+                                  }}
+                                  disabled={isSaving}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors disabled:opacity-50"
+                                >
+                                  Generate email
+                                </button>
+                              )}
+
+                              {/* Copy email */}
+                              {round.generated_email && (
+                                <button
+                                  type="button"
+                                  onClick={() => navigator.clipboard.writeText(round.generated_email!)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors"
+                                >
+                                  Copy email
+                                </button>
+                              )}
+
+                              {/* Open mailto */}
+                              {round.generated_email && lead?.contact_email && (
+                                <a
+                                  href={`mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — a few follow-up questions")}&body=${encodeURIComponent(round.generated_email)}`}
+                                  onClick={() => {
+                                    if (round.status === "draft") saveRound(round.id, { status: "sent" });
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors inline-block"
+                                >
+                                  Send via email
+                                </a>
+                              )}
+
+                              {/* Mark sent manually */}
+                              {round.status === "draft" && (
+                                <button
+                                  type="button"
+                                  onClick={() => saveRound(round.id, { status: "sent" })}
+                                  disabled={isSaving}
+                                  className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
+                                >
+                                  Mark sent
+                                </button>
+                              )}
+
+                              {/* Close round */}
+                              {(round.status === "replied" || round.status === "sent") && (
+                                <button
+                                  type="button"
+                                  onClick={() => saveRound(round.id, { status: "closed" })}
+                                  disabled={isSaving}
+                                  className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
+                                >
+                                  Close round
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Delete (draft only) */}
+                            {round.status === "draft" && (
+                              <button
+                                type="button"
+                                onClick={() => deleteRound(round.id)}
+                                disabled={isSaving}
+                                className="text-xs text-red-400/60 hover:text-red-400 disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Generated email preview */}
+                          {round.generated_email && (
+                            <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
+                              <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5">Email preview</p>
+                              <pre className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed font-sans">{round.generated_email}</pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── Proposal handoff ────────────────────────────────────────── */}
+            <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className="text-xs text-gray-500">Ready for proposal?</p>
+                <p className="text-[10px] text-gray-600 mt-0.5">
+                  {rounds.length === 0
+                    ? "No clarification rounds — scope may already be clear."
+                    : rounds.every((r) => r.status === "replied" || r.status === "closed")
+                      ? "All rounds resolved. Ready to proceed."
+                      : "Some rounds still open. Resolve or close them first."}
+                </p>
+              </div>
+              {["scope_received", "scoping_sent", "lead_submitted"].includes(status) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    saveField({ status: "proposal_sent" });
+                    setStatus("proposal_sent");
+                  }}
+                  disabled={saving}
+                  className="px-4 py-2 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                >
+                  Advance to Proposal
+                </button>
+              )}
+              {status === "proposal_sent" && (
+                <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                  Proposal stage reached
+                </span>
+              )}
+            </div>
+          </Section>
+        </div>
 
         {/* Internal notes (full width) */}
         <div className="lg:col-span-2">
