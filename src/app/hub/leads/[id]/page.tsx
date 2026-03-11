@@ -756,6 +756,10 @@ export default function LeadDetailPage() {
   const [briefPromptOutput,setBriefPromptOutput]= useState("");
   const [briefPromptCopied,setBriefPromptCopied]= useState(false);
   const [proposalCopied,   setProposalCopied]   = useState(false);
+  const [autofillLoading,  setAutofillLoading]  = useState(false);
+  const [autofillError,    setAutofillError]    = useState("");
+  const [scopeReady,       setScopeReady]       = useState<boolean | null>(null);
+  const [readinessReason,  setReadinessReason]  = useState("");
 
   const fetchLead = useCallback(async () => {
     setLoading(true);
@@ -911,13 +915,92 @@ export default function LeadDetailPage() {
     }
   }
 
-  // ── Build ChatGPT brief prompt ────────────────────────────────────────────────
+  // ── Auto-fill brief from AI ──────────────────────────────────────────────────
+
+  async function autofillBrief(includeRounds = false) {
+    // Confirm if fields already populated
+    const hasContent = briefSummary.trim() || briefType.trim() || briefSolution.trim();
+    if (hasContent && !window.confirm("This will overwrite the current brief fields. Continue?")) return;
+
+    setAutofillLoading(true);
+    setAutofillError("");
+
+    const body: Record<string, unknown> = { scoping_reply: briefReply };
+
+    if (includeRounds && rounds.length > 0) {
+      body.clarification_rounds = rounds
+        .filter((r) => r.status === "replied" || r.status === "closed")
+        .map((r) => ({
+          round_number: r.round_number,
+          questions: r.questions,
+          client_reply: r.client_reply,
+        }));
+    }
+
+    const result = await safeFetch<{
+      fields: Record<string, string>;
+      ready: boolean;
+      readiness_reason: string;
+    }>(`/api/hub/leads/${id}/brief/autofill`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    setAutofillLoading(false);
+
+    if (!result.ok) {
+      setAutofillError(result.error);
+      return;
+    }
+
+    const { fields, ready, readiness_reason } = result.data;
+    setBriefSummary(fields.project_summary ?? "");
+    setBriefType(fields.project_type ?? "");
+    setBriefSolution(fields.recommended_solution ?? "");
+    setBriefPages(fields.suggested_pages ?? "");
+    setBriefFeatures(fields.suggested_features ?? "");
+    setBriefIntegrations(fields.suggested_integrations ?? "");
+    setBriefTimeline(fields.timeline_estimate ?? "");
+    setBriefBudget(fields.budget_positioning ?? "");
+    setBriefRisks(fields.risks_and_unknowns ?? "");
+    setBriefFollowUp(fields.follow_up_questions ?? "");
+    setScopeReady(ready);
+    setReadinessReason(readiness_reason);
+  }
+
+  async function startClarificationFromAutofill() {
+    if (!briefFollowUp.trim()) return;
+    setRoundSaving("new");
+    try {
+      const res = await fetch(`/api/hub/leads/${id}/clarifications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questions: briefFollowUp }),
+      });
+      const json = await res.json() as { data?: ClarificationRound };
+      if (json.data) {
+        // Save the questions to the new round
+        await fetch(`/api/hub/leads/${id}/clarifications/${json.data.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questions: briefFollowUp }),
+        });
+        setExpandedRound(json.data.id);
+      }
+      await fetchRounds();
+    } finally {
+      setRoundSaving(null);
+    }
+  }
+
+  // ── Build proposal prompt (from structured brief) ──────────────────────────
 
   function buildBriefPrompt(): string {
     if (!lead) return "";
     const lines: string[] = [];
 
-    lines.push("You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You are analysing a client's scoping reply to produce a structured project brief.");
+    lines.push("You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You are drafting a professional proposal based on a reviewed project brief.");
     lines.push("");
     lines.push("## Client details");
     lines.push(`Name: ${lead.contact_name ?? "Unknown"}`);
@@ -928,54 +1011,36 @@ export default function LeadDetailPage() {
     if (lead.timeline) lines.push(`Timeline: ${TIMELINE_LABELS[lead.timeline] ?? lead.timeline}`);
     lines.push("");
 
-    // Clarifiers
-    if (lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0) {
-      lines.push("## Intake clarifiers");
-      for (const [k, v] of Object.entries(lead.lead_details.clarifier_answers)) {
-        lines.push(`- ${k.replace(/_/g, " ")}: ${v}`);
-      }
-      lines.push("");
-    }
-
-    // Success definition
-    if (lead.lead_details?.success_definition) {
-      lines.push("## Success definition");
-      lines.push(lead.lead_details.success_definition);
-      lines.push("");
-    }
-
-    // Scoring summary
-    if (lead.total_score != null) {
-      lines.push("## Internal scoring");
-      lines.push(`Total: ${lead.total_score.toFixed(1)}/5`);
-      if (lead.clarity_score != null) lines.push(`Clarity: ${lead.clarity_score}/5`);
-      if (lead.alignment_score != null) lines.push(`Alignment: ${lead.alignment_score}/5`);
-      if (lead.complexity_score != null) lines.push(`Complexity: ${lead.complexity_score}/5`);
-      if (lead.authority_score != null) lines.push(`Authority: ${lead.authority_score}/5`);
-      lines.push("");
-    }
-
-    // Scoping reply
-    lines.push("## Client's scoping reply");
-    lines.push(briefReply.trim() || "(No scoping reply pasted yet)");
+    // Structured brief
+    lines.push("## Reviewed project brief");
+    if (briefSummary.trim()) lines.push(`**Project summary:** ${briefSummary.trim()}`);
+    if (briefType.trim()) lines.push(`**Project type:** ${briefType.trim()}`);
+    if (briefSolution.trim()) lines.push(`**Recommended solution:** ${briefSolution.trim()}`);
+    if (briefPages.trim()) lines.push(`**Suggested pages:** ${briefPages.trim()}`);
+    if (briefFeatures.trim()) lines.push(`**Suggested features:** ${briefFeatures.trim()}`);
+    if (briefIntegrations.trim()) lines.push(`**Suggested integrations:** ${briefIntegrations.trim()}`);
+    if (briefTimeline.trim()) lines.push(`**Timeline estimate:** ${briefTimeline.trim()}`);
+    if (briefBudget.trim()) lines.push(`**Budget positioning:** ${briefBudget.trim()}`);
+    if (briefRisks.trim()) lines.push(`**Risks & unknowns:** ${briefRisks.trim()}`);
     lines.push("");
+
+    // Original scoping reply for context
+    if (briefReply.trim()) {
+      lines.push("## Original client scoping reply (for context)");
+      lines.push(briefReply.trim());
+      lines.push("");
+    }
 
     // Required output
     lines.push("## Required output");
-    lines.push("Analyse the above and produce a structured project brief with exactly these sections:");
+    lines.push("Draft a professional proposal email that:");
+    lines.push("1. Acknowledges the client's requirements");
+    lines.push("2. Outlines the proposed solution and deliverables");
+    lines.push("3. States the timeline and budget positioning");
+    lines.push("4. Highlights any key assumptions or caveats");
+    lines.push("5. Ends with a clear next step (e.g. deposit to proceed)");
     lines.push("");
-    lines.push("1. **Project summary** — 2–3 sentence overview of what the client needs");
-    lines.push("2. **Project type** — e.g. brochure site, web app, e-commerce, landing page, redesign");
-    lines.push("3. **Recommended solution** — what OTwoOne should build and how");
-    lines.push("4. **Suggested pages** — list of pages/sections to include");
-    lines.push("5. **Suggested features** — key features and functionality");
-    lines.push("6. **Suggested integrations** — third-party tools, APIs, or services to integrate");
-    lines.push("7. **Timeline estimate** — realistic delivery window");
-    lines.push("8. **Budget positioning** — where this project sits relative to the client's stated budget and what's achievable");
-    lines.push("9. **Risks and unknowns** — anything unclear, missing, or risky");
-    lines.push("10. **Follow-up questions** — specific questions to ask the client before proceeding");
-    lines.push("");
-    lines.push("Keep each section concise and actionable. Write for an internal operator who will use this to build a proposal.");
+    lines.push("Write in a professional but approachable tone. Keep it concise — aim for a single-page email. Address the client by first name.");
 
     return lines.join("\n");
   }
@@ -1973,14 +2038,15 @@ export default function LeadDetailPage() {
           <div className="lg:col-span-2">
             <Section title="Project Brief">
               <p className="text-xs text-gray-600 -mt-1 mb-1">
-                Pre-project scoping analysis. Paste the client&apos;s scoping reply, generate a ChatGPT brief prompt, save the structured brief, and draft the proposal.
+                Paste the client&apos;s scoping reply, auto-fill the structured brief, review scope readiness, then draft or clarify.
               </p>
               <div className="flex items-center gap-3 mb-4 px-3 py-2 rounded-lg bg-indigo-500/5 border border-indigo-500/10">
                 <span className="text-xs text-indigo-300/80">
                   {!briefReply.trim() ? "① Paste scoping reply" :
-                   !briefSummary.trim() ? "② Generate ChatGPT brief → paste results into fields below" :
-                   !briefProposal.trim() ? "③ Draft or paste proposal" :
-                   "④ Review brief and send proposal"}
+                   !briefSummary.trim() ? "② Auto-fill brief" :
+                   scopeReady === false && !briefProposal.trim() ? "③ Review scope — clarify or proceed" :
+                   !briefProposal.trim() ? "③ Generate proposal" :
+                   "④ Review & send proposal"}
                 </span>
               </div>
 
@@ -2003,47 +2069,71 @@ export default function LeadDetailPage() {
                     />
                   </div>
 
-                  {/* ── B. AI prompt generation ────────────────────────── */}
+                  {/* ── B. Auto-fill actions ────────────────────────────── */}
                   <div className="pt-3 border-t border-white/5">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">ChatGPT brief prompt</span>
+                    <div className="flex items-center gap-3 flex-wrap">
                       <button
                         type="button"
-                        disabled={!briefReply.trim()}
-                        onClick={() => {
-                          setBriefPromptOutput(buildBriefPrompt());
-                          setBriefPromptCopied(false);
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        disabled={!briefReply.trim() || autofillLoading}
+                        onClick={() => autofillBrief(false)}
+                        className="px-4 py-2 rounded-lg text-xs font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                       >
-                        Generate prompt
+                        {autofillLoading ? "Analysing…" : "Auto-fill from client reply"}
                       </button>
-                    </div>
-                    {!briefReply.trim() && !briefPromptOutput && (
-                      <p className="text-xs text-gray-700">Paste the scoping reply above to generate a ChatGPT analysis prompt.</p>
-                    )}
-                    {briefPromptOutput && (
-                      <div className="relative">
-                        <textarea
-                          readOnly
-                          value={briefPromptOutput}
-                          rows={14}
-                          className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none leading-relaxed"
-                        />
+                      {rounds.some((r) => r.status === "replied" || r.status === "closed") && (
                         <button
                           type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(briefPromptOutput);
-                            setBriefPromptCopied(true);
-                            setTimeout(() => setBriefPromptCopied(false), 2000);
-                          }}
-                          className="absolute top-2 right-2 px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                          disabled={!briefReply.trim() || autofillLoading}
+                          onClick={() => autofillBrief(true)}
+                          className="px-4 py-2 rounded-lg text-xs font-medium border border-emerald-600/40 text-emerald-400 hover:bg-emerald-600/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                         >
-                          {briefPromptCopied ? "Copied ✓" : "Copy"}
+                          {autofillLoading ? "Analysing…" : "Refresh brief from latest replies"}
                         </button>
-                      </div>
+                      )}
+                    </div>
+                    {autofillError && (
+                      <p className="text-xs text-red-400 mt-2">{autofillError}</p>
+                    )}
+                    {!briefReply.trim() && (
+                      <p className="text-xs text-gray-700 mt-2">Paste the scoping reply above to enable auto-fill.</p>
                     )}
                   </div>
+
+                  {/* ── Readiness assessment (advisory) ────────────────── */}
+                  {scopeReady !== null && (
+                    <div className={cx(
+                      "px-4 py-3 rounded-lg border",
+                      scopeReady
+                        ? "bg-green-500/5 border-green-500/20"
+                        : "bg-amber-500/5 border-amber-500/20"
+                    )}>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className={cx(
+                            "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
+                            scopeReady
+                              ? "bg-green-500/15 text-green-400"
+                              : "bg-amber-500/15 text-amber-400"
+                          )}>
+                            {scopeReady ? "Ready" : "Needs clarification"}
+                          </span>
+                          <span className="text-xs text-gray-400">{readinessReason}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!scopeReady && briefFollowUp.trim() && (
+                            <button
+                              type="button"
+                              onClick={startClarificationFromAutofill}
+                              disabled={roundSaving === "new"}
+                              className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 transition-colors disabled:opacity-50"
+                            >
+                              Start clarification round
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── C. Structured brief fields ────────────────────── */}
                   <div className="pt-3 border-t border-white/5">
@@ -2162,7 +2252,49 @@ export default function LeadDetailPage() {
                     </div>
                   </div>
 
-                  {/* ── D. Proposal draft ─────────────────────────────── */}
+                  {/* ── D. Proposal prompt ──────────────────────────────── */}
+                  <div className="pt-3 border-t border-white/5">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal prompt</span>
+                      <button
+                        type="button"
+                        disabled={!briefSummary.trim()}
+                        onClick={() => {
+                          setBriefPromptOutput(buildBriefPrompt());
+                          setBriefPromptCopied(false);
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        Generate proposal prompt
+                      </button>
+                    </div>
+                    {!briefSummary.trim() && !briefPromptOutput && (
+                      <p className="text-xs text-gray-700">Fill in the structured brief above to generate a proposal prompt.</p>
+                    )}
+                    {briefPromptOutput && (
+                      <div className="relative">
+                        <textarea
+                          readOnly
+                          value={briefPromptOutput}
+                          rows={14}
+                          className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none leading-relaxed"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(briefPromptOutput);
+                            setBriefPromptCopied(true);
+                            setTimeout(() => setBriefPromptCopied(false), 2000);
+                          }}
+                          className="absolute top-2 right-2 px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                        >
+                          {briefPromptCopied ? "Copied ✓" : "Copy"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── E. Proposal draft ─────────────────────────────── */}
                   <div className="pt-3 border-t border-white/5">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal draft</span>
