@@ -226,7 +226,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  let body: { scoping_reply?: string; clarification_rounds?: ClarificationRoundInput[] };
+  let body: { scoping_reply?: string; merged_context?: string; clarification_rounds?: ClarificationRoundInput[] };
   try {
     body = await req.json();
   } catch {
@@ -234,8 +234,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const scopingReply = body.scoping_reply?.trim();
-  if (!scopingReply) {
-    return NextResponse.json({ error: 'scoping_reply is required.' }, { status: 400 });
+  const mergedContext = body.merged_context?.trim();
+
+  if (!scopingReply && !mergedContext) {
+    return NextResponse.json({ error: 'scoping_reply or merged_context is required.' }, { status: 400 });
   }
 
   // Load lead context
@@ -255,12 +257,28 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('lead_id', id)
     .maybeSingle();
 
-  const userPrompt = buildPrompt(
-    lead,
-    details,
-    scopingReply,
-    body.clarification_rounds,
-  );
+  // Prefer merged context (includes all sources); fall back to legacy scoping reply
+  let userPrompt: string;
+  if (mergedContext) {
+    userPrompt = mergedContext;
+    // Append clarification rounds if not already in merged context
+    if (body.clarification_rounds && body.clarification_rounds.length > 0) {
+      const roundLines = body.clarification_rounds.map((r) => {
+        const parts: string[] = [`### Round ${r.round_number}`];
+        if (r.questions) { parts.push('**Questions asked:**'); parts.push(r.questions); }
+        if (r.client_reply) { parts.push('**Client reply:**'); parts.push(r.client_reply); }
+        return parts.join('\n');
+      });
+      userPrompt += '\n\n## Clarification rounds\n' + roundLines.join('\n\n');
+    }
+  } else {
+    userPrompt = buildPrompt(
+      lead,
+      details,
+      scopingReply!,
+      body.clarification_rounds,
+    );
+  }
 
   try {
     const anthropic = new Anthropic({ apiKey });

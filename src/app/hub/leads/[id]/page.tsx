@@ -1129,6 +1129,90 @@ export default function LeadDetailPage() {
     ? (process.env.NEXT_PUBLIC_BOOKINGS_URL ?? "")
     : "";
 
+  // ── Merged client context ────────────────────────────────────────────────────
+  // Single evolving source of truth from all customer-input sources.
+
+  const mergedClientContext = useMemo(() => {
+    if (!lead) return "";
+    const sections: string[] = [];
+
+    // 1. Client details
+    const clientLines: string[] = [];
+    clientLines.push(`Name: ${lead.contact_name ?? "Unknown"}`);
+    if (lead.contact_email) clientLines.push(`Email: ${lead.contact_email}`);
+    if (lead.company_name) clientLines.push(`Company: ${lead.company_name}`);
+    if (lead.company_website) clientLines.push(`Website: ${lead.company_website}`);
+    if (lead.role) clientLines.push(`Role: ${lead.role}`);
+    if (lead.decision_authority) clientLines.push(`Decision authority: ${lead.decision_authority}`);
+    if (lead.engagement_type) clientLines.push(`Engagement type: ${ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type}`);
+    if (lead.budget) clientLines.push(`Budget range: ${BUDGET_LABELS[lead.budget] ?? lead.budget}`);
+    if (lead.timeline) clientLines.push(`Timeline: ${TIMELINE_LABELS[lead.timeline] ?? lead.timeline}`);
+    sections.push("## Client details\n" + clientLines.join("\n"));
+
+    // 2. Intake clarifiers
+    const clarifiers = lead.lead_details?.clarifier_answers;
+    if (clarifiers && Object.keys(clarifiers).length > 0) {
+      const lines = Object.entries(clarifiers).map(([k, v]) => `- ${k.replace(/_/g, " ")}: ${v}`);
+      sections.push("## Intake clarifiers\n" + lines.join("\n"));
+    }
+
+    // 3. Success definition
+    if (lead.lead_details?.success_definition) {
+      sections.push("## Success definition\n" + lead.lead_details.success_definition);
+    }
+
+    // 4. Internal scoring
+    if (lead.total_score != null) {
+      const scoreLines = [`Total: ${Number(lead.total_score).toFixed(1)}/5`];
+      if (lead.clarity_score != null) scoreLines.push(`Clarity: ${lead.clarity_score}/5`);
+      if (lead.alignment_score != null) scoreLines.push(`Alignment: ${lead.alignment_score}/5`);
+      if (lead.complexity_score != null) scoreLines.push(`Complexity: ${lead.complexity_score}/5`);
+      if (lead.authority_score != null) scoreLines.push(`Authority: ${lead.authority_score}/5`);
+      sections.push("## Internal scoring\n" + scoreLines.join("\n"));
+    }
+
+    // 5. Workflow state
+    const workflowLines: string[] = [];
+    if (intakePath) workflowLines.push(`Intake path: ${intakePath === "clarification_email" ? "Scoping email" : intakePath === "discovery_call" ? "Discovery call" : "Proceed to brief"}`);
+    if (contactStrategy) workflowLines.push(`Contact strategy: ${contactStrategy === "bookings" ? "Microsoft Bookings" : contactStrategy === "teams" ? "Microsoft Teams" : "Phone call"}`);
+    if (workflowLines.length > 0) sections.push("## Workflow state\n" + workflowLines.join("\n"));
+
+    // 6. Scoping reply
+    if (briefReply.trim()) {
+      sections.push("## Client scoping reply\n" + briefReply.trim());
+    }
+
+    // 7. Clarification rounds
+    const answeredRounds = rounds.filter((r) => r.status === "replied" || r.status === "closed");
+    if (answeredRounds.length > 0) {
+      const roundLines = answeredRounds.map((r) => {
+        const parts: string[] = [`### Round ${r.round_number}`];
+        if (r.questions) { parts.push("**Questions asked:**"); parts.push(r.questions); }
+        if (r.client_reply) { parts.push("**Client reply:**"); parts.push(r.client_reply); }
+        return parts.join("\n");
+      });
+      sections.push("## Clarification rounds\n" + roundLines.join("\n\n"));
+    }
+
+    // 8. Discovery notes (from internal notes if discovery path)
+    if (intakePath === "discovery_call" && lead.lead_details?.internal_notes) {
+      sections.push("## Discovery call notes\n" + lead.lead_details.internal_notes);
+    }
+
+    // 9. Existing brief analysis (if any fields populated)
+    const briefFields: string[] = [];
+    if (briefSummary.trim()) briefFields.push(`Project summary: ${briefSummary.trim()}`);
+    if (briefType.trim()) briefFields.push(`Project type: ${briefType.trim()}`);
+    if (briefSolution.trim()) briefFields.push(`Recommended solution: ${briefSolution.trim()}`);
+    if (briefIntegrations.trim()) briefFields.push(`Suggested integrations: ${briefIntegrations.trim()}`);
+    if (briefTimeline.trim()) briefFields.push(`Timeline estimate: ${briefTimeline.trim()}`);
+    if (briefBudget.trim()) briefFields.push(`Budget positioning: ${briefBudget.trim()}`);
+    if (briefRisks.trim()) briefFields.push(`Risks & unknowns: ${briefRisks.trim()}`);
+    if (briefFields.length > 0) sections.push("## Existing brief analysis\n" + briefFields.join("\n"));
+
+    return sections.join("\n\n");
+  }, [lead, briefReply, rounds, intakePath, contactStrategy, briefSummary, briefType, briefSolution, briefIntegrations, briefTimeline, briefBudget, briefRisks]);
+
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
   async function saveBrief() {
@@ -1170,21 +1254,25 @@ export default function LeadDetailPage() {
   async function autofillBrief(includeRounds = false) {
     // Confirm if fields already populated
     const hasContent = briefSummary.trim() || briefType.trim() || briefSolution.trim();
-    if (hasContent && !window.confirm("This will overwrite the current brief fields. Continue?")) return;
+    if (hasContent && !window.confirm("This will overwrite the current brief fields with AI analysis. Continue?")) return;
 
     setAutofillLoading(true);
     setAutofillError("");
 
-    const body: Record<string, unknown> = { scoping_reply: briefReply };
+    // Always send merged context as primary input; keep scoping_reply for backward compat
+    const body: Record<string, unknown> = {
+      scoping_reply: briefReply || "(No direct scoping reply — see merged context)",
+      merged_context: mergedClientContext,
+    };
 
-    if (includeRounds && rounds.length > 0) {
-      body.clarification_rounds = rounds
-        .filter((r) => r.status === "replied" || r.status === "closed")
-        .map((r) => ({
-          round_number: r.round_number,
-          questions: r.questions,
-          client_reply: r.client_reply,
-        }));
+    // Always include answered clarification rounds
+    const answeredRounds = rounds.filter((r) => r.status === "replied" || r.status === "closed");
+    if (answeredRounds.length > 0) {
+      body.clarification_rounds = answeredRounds.map((r) => ({
+        round_number: r.round_number,
+        questions: r.questions,
+        client_reply: r.client_reply,
+      }));
     }
 
     const result = await safeFetch<{
@@ -1330,22 +1418,21 @@ export default function LeadDetailPage() {
     return lines.join("\n");
   }
 
-  // ── Build proposal prompt (from structured brief) ──────────────────────────
+  // ── Build proposal prompt (from merged context + structured brief) ──────────
 
   function buildBriefPrompt(): string {
     if (!lead) return "";
     const lines: string[] = [];
 
-    lines.push("You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You are drafting a professional proposal based on a reviewed project brief.");
+    lines.push("You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You are drafting a professional proposal based on a reviewed project brief and the full client context.");
     lines.push("");
-    lines.push("## Client details");
-    lines.push(`Name: ${lead.contact_name ?? "Unknown"}`);
-    if (lead.company_name) lines.push(`Company: ${lead.company_name}`);
-    if (lead.company_website) lines.push(`Website: ${lead.company_website}`);
-    if (lead.engagement_type) lines.push(`Engagement type: ${ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type}`);
-    if (lead.budget) lines.push(`Budget range: ${BUDGET_LABELS[lead.budget] ?? lead.budget}`);
-    if (lead.timeline) lines.push(`Timeline: ${TIMELINE_LABELS[lead.timeline] ?? lead.timeline}`);
-    lines.push("");
+
+    // Full merged context gives the AI everything
+    if (mergedClientContext) {
+      lines.push("## Full client context");
+      lines.push(mergedClientContext);
+      lines.push("");
+    }
 
     // Structured brief (defensive String() to handle non-string values from AI autofill)
     const s = (v: unknown) => String(v ?? "").trim();
@@ -1360,13 +1447,6 @@ export default function LeadDetailPage() {
     if (s(briefBudget)) lines.push(`**Budget positioning:** ${s(briefBudget)}`);
     if (s(briefRisks)) lines.push(`**Risks & unknowns:** ${s(briefRisks)}`);
     lines.push("");
-
-    // Original scoping reply for context
-    if (s(briefReply)) {
-      lines.push("## Original client scoping reply (for context)");
-      lines.push(s(briefReply));
-      lines.push("");
-    }
 
     // Required output
     lines.push("## Required output");
@@ -2329,6 +2409,59 @@ export default function LeadDetailPage() {
           </Section>
         )}
 
+        {/* ── System Analysis ───────────────────────────────────────────── */}
+        {briefAccessible && (
+          <div className="lg:col-span-2">
+            <Section title="System Analysis">
+              <p className="text-xs text-gray-600 -mt-1 mb-3">
+                Merged view of all client inputs and analysis. Driven by enquiry, scoping, clarifications, and brief data.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                <Row label="Project summary" value={briefSummary.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
+                <Row label="Project type" value={briefType.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
+                <Row label="Recommended solution" value={briefSolution.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
+                <Row label="Suggested integrations" value={briefIntegrations.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
+                <Row label="Suggested pages" value={briefPages.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
+                <Row label="Suggested features" value={briefFeatures.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
+                <Row label="Timeline estimate" value={briefTimeline.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
+                <Row label="Budget positioning" value={briefBudget.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
+                <Row label="Risks & unknowns" value={briefRisks.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
+                <Row label="Follow-up questions" value={briefFollowUp.trim() || <span className="text-gray-600 text-sm italic">None identified</span>} />
+              </div>
+              {/* Proposal readiness */}
+              <div className="mt-3 pt-3 border-t border-white/5">
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wide">Proposal readiness</span>
+                  {scopeReady === true ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-green-500/15 text-green-400">Ready</span>
+                  ) : scopeReady === false ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-amber-500/15 text-amber-400">Needs work</span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-gray-500/15 text-gray-500">Not assessed</span>
+                  )}
+                  {readinessReason && <span className="text-xs text-gray-400">{readinessReason}</span>}
+                </div>
+              </div>
+              {/* Context source count */}
+              <div className="mt-2 flex items-center gap-3 flex-wrap">
+                <span className="text-[10px] text-gray-600">
+                  Sources: enquiry data{briefReply.trim() ? " · scoping reply" : ""}{rounds.filter(r => r.status === "replied" || r.status === "closed").length > 0 ? ` · ${rounds.filter(r => r.status === "replied" || r.status === "closed").length} clarification round${rounds.filter(r => r.status === "replied" || r.status === "closed").length > 1 ? "s" : ""}` : ""}{intakePath === "discovery_call" && lead?.lead_details?.internal_notes ? " · discovery notes" : ""}
+                </span>
+                {!briefSummary.trim() && !briefType.trim() && briefAccessible && (
+                  <button
+                    type="button"
+                    disabled={autofillLoading}
+                    onClick={() => autofillBrief(true)}
+                    className="px-3 py-1 rounded-lg text-[10px] font-medium bg-emerald-600/60 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30"
+                  >
+                    {autofillLoading ? "Analysing…" : "Run AI analysis"}
+                  </button>
+                )}
+              </div>
+            </Section>
+          </div>
+        )}
+
         {/* ── Raw customer inputs (collapsible) ───────────────────────────── */}
         {lead && (
           <div className="lg:col-span-2">
@@ -2682,8 +2815,8 @@ export default function LeadDetailPage() {
 
                 type StepState = "done" | "active" | "upcoming";
                 const steps: Array<{ label: string; state: StepState }> = [
-                  { label: "Client reply received",      state: hasReply ? "done" : "active" },
-                  { label: "Intake analysis",             state: hasBrief && reviewed ? "done" : hasBrief ? "active" : hasReply ? "active" : "upcoming" },
+                  { label: "Client input received",       state: hasReply ? "done" : "active" },
+                  { label: "Merged context analysis",     state: hasBrief && reviewed ? "done" : hasBrief ? "active" : hasReply ? "active" : "upcoming" },
                   { label: pathLabel,                     state: hasPath ? "done" : reviewed ? "active" : "upcoming" },
                   { label: "Structured brief finalised",  state: canProceed && hasBrief ? "done" : hasPath ? "active" : "upcoming" },
                   { label: "Proposal prompt generated",   state: hasPrompt ? "done" : (canProceed && hasBrief) ? "active" : "upcoming" },
@@ -2741,33 +2874,36 @@ export default function LeadDetailPage() {
                     />
                   </div>
 
-                  {/* ── B. Auto-fill actions ────────────────────────────── */}
+                  {/* ── B. Analyse & auto-fill actions ───────────────────── */}
                   <div className="pt-3 border-t border-white/5">
                     <div className="flex items-center gap-3 flex-wrap">
                       <button
                         type="button"
-                        disabled={!briefReply.trim() || autofillLoading}
-                        onClick={() => autofillBrief(false)}
+                        disabled={(!briefReply.trim() && !mergedClientContext.trim()) || autofillLoading}
+                        onClick={() => autofillBrief(true)}
                         className="px-4 py-2 rounded-lg text-xs font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                       >
-                        {autofillLoading ? "Analysing…" : "Auto-fill from client reply"}
+                        {autofillLoading ? "Analysing…" : "Analyse & fill from all inputs"}
                       </button>
-                      {rounds.some((r) => r.status === "replied" || r.status === "closed") && (
+                      {(briefSummary.trim() || briefType.trim()) && (
                         <button
                           type="button"
-                          disabled={!briefReply.trim() || autofillLoading}
+                          disabled={(!briefReply.trim() && !mergedClientContext.trim()) || autofillLoading}
                           onClick={() => autofillBrief(true)}
                           className="px-4 py-2 rounded-lg text-xs font-medium border border-emerald-600/40 text-emerald-400 hover:bg-emerald-600/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                         >
-                          {autofillLoading ? "Analysing…" : "Refresh brief from latest replies"}
+                          {autofillLoading ? "Analysing…" : "Refresh from merged context"}
                         </button>
                       )}
                     </div>
                     {autofillError && (
                       <p className="text-xs text-red-400 mt-2">{autofillError}</p>
                     )}
-                    {!briefReply.trim() && (
-                      <p className="text-xs text-gray-700 mt-2">Paste the scoping reply above to enable auto-fill.</p>
+                    {!briefReply.trim() && !mergedClientContext.trim() && (
+                      <p className="text-xs text-gray-700 mt-2">Paste the scoping reply above or ensure enquiry data is available to enable analysis.</p>
+                    )}
+                    {!briefReply.trim() && mergedClientContext.trim() && (
+                      <p className="text-xs text-gray-600 mt-2">No scoping reply yet — analysis will use enquiry data, clarification rounds, and other available inputs.</p>
                     )}
                   </div>
 
