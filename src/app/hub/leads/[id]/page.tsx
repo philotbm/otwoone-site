@@ -1240,45 +1240,117 @@ export default function LeadDetailPage() {
     const engagement = lead.engagement_type ?? "";
     const timeline = lead.timeline ?? "";
 
-    // Text analysis helpers — lowercase all brief fields for keyword detection
-    const allAnalysis = [briefSummary, briefType, briefSolution, briefIntegrations, briefFeatures, briefPages, briefRisks].join(" ").toLowerCase();
+    // ── Analysis quality gate ──────────────────────────────────────
+    // Detect weak/stale/placeholder analysis that should not drive pricing.
+    // A trusted field must have ≥15 chars of meaningful content.
+    const isTrusted = (v: string) => {
+      const t = v.trim();
+      if (t.length < 15) return false;
+      // Reject obvious placeholder/bootstrap patterns
+      if (/^(test|not_sure|nothing|n\/a|tbd|placeholder|unknown)/i.test(t)) return false;
+      if (/^[^a-zA-Z]*$/.test(t)) return false; // no letters at all
+      return true;
+    };
 
-    // Complexity signal keywords
-    const hasWorkflowSignals = /\b(workflow|booking|dashboard|crm|portal|automation|scheduling|inventory|login|auth|user.?account|admin.?panel|multi.?step|ops|operational)\b/.test(allAnalysis);
-    const hasIntegrationSignals = /\b(api|integrat|stripe|payment|oauth|webhook|third.?party|zapier|hubspot|salesforce|xero|quickbooks|mailchimp)\b/.test(allAnalysis);
-    const hasEcommerceSignals = /\b(e.?commerce|shop|store|cart|checkout|product.?catalog|woocommerce|shopify)\b/.test(allAnalysis);
-    const hasBrochureSignals = /\b(brochure|landing.?page|one.?page|simple|informational|static|portfolio)\b/.test(allAnalysis);
-    const hasGrowthSignals = /\b(blog|seo|content.?manage|cms|lead.?gen|marketing|growth|funnel|conversion)\b/.test(allAnalysis);
+    const trustedSummary = isTrusted(briefSummary);
+    const trustedType = isTrusted(briefType);
+    const trustedSolution = isTrusted(briefSolution);
+    const hasAnyTrustedAnalysis = trustedSummary || trustedType || trustedSolution;
 
-    // Count complexity signals
-    const complexitySignals = [hasWorkflowSignals, hasIntegrationSignals, hasEcommerceSignals].filter(Boolean).length;
+    // If no trusted analysis at all, fall back immediately
+    if (!hasAnyTrustedAnalysis) {
+      return {
+        deliveryClass: "Needs review",
+        pricingFit: "Needs review",
+        package: "Needs review",
+        priceBand: "Needs custom quote",
+        rationale: "Insufficient or low-quality analysis to classify — run AI analysis or complete more client inputs before pricing.",
+        confidence: "low",
+      };
+    }
 
-    // Budget parsing
+    // Text analysis helpers — only use trusted fields for keyword detection
+    const trustedFields = [
+      trustedSummary ? briefSummary : "",
+      trustedType ? briefType : "",
+      trustedSolution ? briefSolution : "",
+      isTrusted(briefIntegrations) ? briefIntegrations : "",
+      isTrusted(briefFeatures) ? briefFeatures : "",
+      isTrusted(briefPages) ? briefPages : "",
+      isTrusted(briefRisks) ? briefRisks : "",
+      isTrusted(briefBudget) ? briefBudget : "",
+      isTrusted(briefTimeline) ? briefTimeline : "",
+      isTrusted(briefFollowUp) ? briefFollowUp : "",
+    ].join(" ").toLowerCase();
+
+    // ── Complexity keyword detection ────────────────────────────────
+    // Tier 1: Strong custom/system signals (each one alone implies custom scope)
+    const strongSystemPatterns = /\b(booking.?engine|staff.?dashboard|admin.?panel|ops.?platform|operational.?system|custom.?workflow|customer.?portal|client.?portal|user.?portal|staff.?portal|migration.?complex|data.?migration|legacy.?system|gdpr|compliance|privacy.?requirement|uptime.?requirement|infrastructure.?complex|mvp.?recommend|phased.?approach|phase.?1|multi.?phase)\b/;
+    const hasStrongSystemSignals = strongSystemPatterns.test(trustedFields);
+
+    // Tier 2: Moderate complexity signals
+    const hasWorkflowSignals = /\b(workflow|booking|dashboard|crm|portal|automation|scheduling|inventory|login|auth|user.?account|admin|multi.?step|ops|operational)\b/.test(trustedFields);
+    const hasIntegrationSignals = /\b(api|integrat|stripe|payment|oauth|webhook|third.?party|zapier|hubspot|salesforce|xero|quickbooks|mailchimp|twilio|sendgrid|aws|azure|google.?cloud)\b/.test(trustedFields);
+    const hasEcommerceSignals = /\b(e.?commerce|shop|store|cart|checkout|product.?catalog|woocommerce|shopify)\b/.test(trustedFields);
+
+    // Tier 3: Standard signals
+    const hasBrochureSignals = /\b(brochure|landing.?page|one.?page|simple.?site|informational|static.?site|portfolio)\b/.test(trustedFields);
+    const hasGrowthSignals = /\b(blog|seo|content.?manage|cms|lead.?gen|marketing|growth|funnel|conversion)\b/.test(trustedFields);
+
+    // Budget/scope tension detection from analysis text
+    const hasBudgetTension = /\b(exceed|over.?budget|tight.?budget|budget.?tension|budget.?constraint|scope.?exceed|not.?feasible.?within|materially.?exceed|beyond.?budget|budget.?insufficient|budget.?challenge|reduce.?scope|mvp|minimum.?viable)\b/.test(trustedFields);
+    const hasRiskComplexity = /\b(significant.?risk|high.?risk|complex|substantial|considerable|challenging|ambitious|migration|legacy|refactor|rewrite|overhaul)\b/.test(trustedFields);
+
+    // Count complexity signal categories
+    const complexitySignalCount = [hasStrongSystemSignals, hasWorkflowSignals, hasIntegrationSignals, hasEcommerceSignals].filter(Boolean).length;
+
+    // Budget tier
     const budgetTier: number = budget === "under_3k" ? 1 : budget === "3k_5k" ? 2 : budget === "5k_15k" ? 3 : budget === "15k_40k" ? 4 : budget === "40k_plus" ? 5 : 0;
 
-    // ── Delivery class determination ────────────────────────────────
+    // ── Delivery class determination (with guardrails) ──────────────
     let deliveryClass: DeliveryClass;
-    if (!briefType.trim() && !briefSolution.trim() && complexitySignals === 0) {
-      deliveryClass = "Needs review";
-    } else if (hasWorkflowSignals && (complexity >= 4 || complexitySignals >= 2)) {
-      deliveryClass = "Ops platform";
-    } else if (hasWorkflowSignals || (hasIntegrationSignals && complexity >= 3)) {
+
+    // GUARDRAIL: Strong system signals always escalate to custom
+    if (hasStrongSystemSignals) {
+      deliveryClass = complexitySignalCount >= 3 || complexity >= 4 ? "Ops platform" : "Custom workflow build";
+    }
+    // Workflow + any other complexity → custom at minimum
+    else if (hasWorkflowSignals && (hasIntegrationSignals || complexity >= 3 || hasRiskComplexity)) {
+      deliveryClass = complexitySignalCount >= 3 ? "Ops platform" : "Custom workflow build";
+    }
+    // Workflow signals alone → custom workflow build
+    else if (hasWorkflowSignals) {
       deliveryClass = "Custom workflow build";
-    } else if (hasEcommerceSignals || (hasIntegrationSignals && hasGrowthSignals)) {
+    }
+    // Integration signals with moderate complexity → at least growth
+    else if (hasIntegrationSignals && (complexity >= 3 || hasRiskComplexity)) {
+      deliveryClass = "Custom workflow build";
+    }
+    // E-commerce or integration + growth
+    else if (hasEcommerceSignals || (hasIntegrationSignals && hasGrowthSignals)) {
       deliveryClass = "Growth website";
-    } else if (hasGrowthSignals || (complexity >= 3 && !hasBrochureSignals)) {
+    }
+    // Growth signals or moderate complexity
+    else if (hasGrowthSignals || (complexity >= 3 && !hasBrochureSignals)) {
       deliveryClass = "Business website";
-    } else if (hasBrochureSignals || complexity <= 2) {
+    }
+    // Only classify as brochure if explicit brochure signals AND no complexity
+    else if (hasBrochureSignals && complexity <= 2 && complexitySignalCount === 0) {
       deliveryClass = "Brochure site";
-    } else {
-      deliveryClass = "Business website"; // safe default
+    }
+    // Default to business website (not brochure)
+    else {
+      deliveryClass = "Business website";
+    }
+
+    // GUARDRAIL: Budget tension + complexity signals → force escalation
+    if (hasBudgetTension && (deliveryClass === "Brochure site" || deliveryClass === "Business website")) {
+      deliveryClass = hasWorkflowSignals || hasIntegrationSignals ? "Custom workflow build" : "Growth website";
     }
 
     // ── Package recommendation ──────────────────────────────────────
     let pkg: RecommendedPackage;
-    if (deliveryClass === "Needs review") {
-      pkg = "Needs review";
-    } else if (deliveryClass === "Ops platform") {
+    if (deliveryClass === "Ops platform") {
       pkg = "Custom System";
     } else if (deliveryClass === "Custom workflow build") {
       pkg = "Accelerator";
@@ -1292,9 +1364,7 @@ export default function LeadDetailPage() {
 
     // ── Indicative price band ───────────────────────────────────────
     let priceBand: PriceBand;
-    if (deliveryClass === "Needs review") {
-      priceBand = "Needs custom quote";
-    } else if (pkg === "Custom System") {
+    if (pkg === "Custom System") {
       priceBand = "€12k+";
     } else if (pkg === "Accelerator") {
       priceBand = "€8k–€12k";
@@ -1304,10 +1374,18 @@ export default function LeadDetailPage() {
       priceBand = "€3k–€5k";
     }
 
-    // ── Pricing fit (budget vs recommendation) ──────────────────────
+    // GUARDRAIL: If budget tension detected and band is low, escalate band
+    if (hasBudgetTension && (priceBand === "€3k–€5k" || priceBand === "€5k–€8k")) {
+      priceBand = "Needs custom quote";
+    }
+
+    // ── Pricing fit (budget vs recommendation + analysis tension) ────
     let pricingFit: PricingFit;
     if (budgetTier === 0) {
-      pricingFit = "Needs review"; // unknown budget
+      pricingFit = "Needs review";
+    } else if (hasBudgetTension) {
+      // Analysis itself says budget is tight → respect that
+      pricingFit = "Tight";
     } else if (pkg === "Foundation" && budgetTier >= 2) {
       pricingFit = budgetTier >= 3 ? "Premium" : "Feasible";
     } else if (pkg === "Growth" && budgetTier >= 3) {
@@ -1325,21 +1403,27 @@ export default function LeadDetailPage() {
     }
 
     // ── Confidence ──────────────────────────────────────────────────
-    const hasAnalysis = briefSummary.trim() || briefType.trim();
     const hasScoring = totalScore > 0;
-    const confidence: "high" | "medium" | "low" = (hasAnalysis && hasScoring && budgetTier > 0) ? "high" : (hasAnalysis || hasScoring) ? "medium" : "low";
+    const confidence: "high" | "medium" | "low" =
+      (hasAnyTrustedAnalysis && hasScoring && budgetTier > 0) ? "high"
+      : (hasAnyTrustedAnalysis && (hasScoring || budgetTier > 0)) ? "medium"
+      : "low";
 
     // ── Rationale ───────────────────────────────────────────────────
     const parts: string[] = [];
-    if (deliveryClass !== "Needs review") {
-      parts.push(`Classified as ${deliveryClass.toLowerCase()} based on ${complexitySignals > 0 ? "project signals" : "scope analysis"}.`);
-    } else {
-      parts.push("Insufficient analysis to classify — run AI analysis or complete more client inputs.");
+    parts.push(`Classified as ${deliveryClass.toLowerCase()} based on ${complexitySignalCount > 0 ? `${complexitySignalCount} complexity signal categories` : "scope analysis"}.`);
+    if (hasStrongSystemSignals) {
+      parts.push("Strong custom system indicators detected in analysis (e.g. booking engine, staff dashboard, portal, migration, MVP).");
     }
-    if (pricingFit === "Tight") {
+    if (hasBudgetTension) {
+      parts.push("Analysis indicates scope may exceed stated budget — pricing fit marked as tight.");
+    } else if (pricingFit === "Tight") {
       parts.push("Client budget may be tight for the recommended scope.");
     } else if (pricingFit === "Premium") {
       parts.push("Budget comfortably covers the recommended scope.");
+    }
+    if (hasRiskComplexity) {
+      parts.push("Significant complexity or risk signals present in analysis.");
     }
     if (engagement === "tech_advice" || engagement === "ongoing_support") {
       parts.push(`Engagement type (${ENGAGEMENT_LABELS[engagement] ?? engagement}) may warrant retainer pricing instead.`);
@@ -1347,7 +1431,7 @@ export default function LeadDetailPage() {
     if (timeline === "asap") {
       parts.push("Urgent timeline — consider rush premium.");
     }
-    if (briefRisks.trim()) {
+    if (isTrusted(briefRisks)) {
       parts.push("Risks identified in analysis — review before confirming price.");
     }
 
@@ -1359,7 +1443,7 @@ export default function LeadDetailPage() {
       rationale: parts.join(" "),
       confidence,
     };
-  }, [lead, briefSummary, briefType, briefSolution, briefIntegrations, briefFeatures, briefPages, briefRisks]);
+  }, [lead, briefSummary, briefType, briefSolution, briefIntegrations, briefFeatures, briefPages, briefRisks, briefBudget, briefTimeline, briefFollowUp]);
 
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
