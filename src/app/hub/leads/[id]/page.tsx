@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { PROJECT_STATUSES, type ProjectStatus } from "@/lib/projectStatus";
@@ -773,6 +773,8 @@ export default function LeadDetailPage() {
   const [contactStrategy,      setContactStrategy]      = useState<"bookings" | "teams" | "phone" | null>(null);
   const [showCallModal,        setShowCallModal]        = useState(false);
   const [intakePath,           setIntakePath]           = useState<IntakePath | null>(null);
+  const [showRawInputs,        setShowRawInputs]        = useState(false);
+  const [bootstrapDone,        setBootstrapDone]        = useState(false);
 
   const fetchLead = useCallback(async () => {
     setLoading(true);
@@ -903,9 +905,132 @@ export default function LeadDetailPage() {
     }
   }, []);
 
-  // Load brief when lead reaches scope_received or later
+  // Brief accessible from lead_submitted onward; full brief editing only at scope_received+
+  const briefAccessible = ['lead_submitted', 'scoping_sent', 'scope_received', 'proposal_sent', 'deposit_requested', 'deposit_received', 'converted'].includes(status);
   const briefEligible = ['scope_received', 'proposal_sent', 'deposit_requested', 'deposit_received', 'converted'].includes(status);
-  useEffect(() => { if (briefEligible && id) fetchBrief(id); }, [briefEligible, id, fetchBrief]);
+  useEffect(() => { if (briefAccessible && id) fetchBrief(id); }, [briefAccessible, id, fetchBrief]);
+
+  // ── Bootstrap brief from enquiry data (early stages, fill-if-empty) ─────────
+
+  const bootstrapBriefFromEnquiry = useCallback(async () => {
+    if (!lead || !id || bootstrapDone) return;
+    // Only bootstrap for early stages where there's no scoping reply yet
+    if (!['lead_submitted', 'scoping_sent'].includes(status)) return;
+
+    setBootstrapDone(true);
+
+    // Build seed data from existing lead fields
+    const seed: Record<string, string> = {};
+
+    // Project type from engagement_type
+    if (lead.engagement_type) {
+      const typeMap: Record<string, string> = {
+        new_website: "New website build",
+        redesign: "Website redesign",
+        ongoing_support: "Ongoing support & maintenance",
+        consultation: "Consultation / discovery",
+        other: "Custom engagement",
+      };
+      seed.project_type = typeMap[lead.engagement_type] ?? lead.engagement_type.replace(/_/g, " ");
+    }
+
+    // Budget positioning from budget
+    if (lead.budget) {
+      const budgetMap: Record<string, string> = {
+        under_2k: "Under €2,000 — micro project",
+        "2k_5k": "€2,000–€5,000 — small project",
+        "5k_10k": "€5,000–€10,000 — standard project",
+        "10k_20k": "€10,000–€20,000 — mid-range project",
+        "20k_plus": "€20,000+ — large/enterprise project",
+        not_sure: "Budget not yet defined — requires discovery",
+      };
+      seed.budget_positioning = budgetMap[lead.budget] ?? lead.budget.replace(/_/g, " ");
+    }
+
+    // Timeline estimate from timeline
+    if (lead.timeline) {
+      const timeMap: Record<string, string> = {
+        asap: "ASAP — urgent delivery required",
+        "1_month": "Within 1 month",
+        "1_3_months": "1–3 months",
+        "3_6_months": "3–6 months",
+        flexible: "Flexible / no hard deadline",
+      };
+      seed.timeline_estimate = timeMap[lead.timeline] ?? lead.timeline.replace(/_/g, " ");
+    }
+
+    // Project summary from success definition + clarifier answers
+    const summaryParts: string[] = [];
+    if (lead.lead_details?.success_definition) {
+      summaryParts.push(lead.lead_details.success_definition);
+    }
+    if (lead.lead_details?.clarifier_answers) {
+      const answers = Object.values(lead.lead_details.clarifier_answers).filter(Boolean);
+      if (answers.length > 0) summaryParts.push(answers.join("; "));
+    }
+    if (summaryParts.length > 0) {
+      seed.project_summary = summaryParts.join("\n\n");
+    }
+
+    // Only seed fields that don't already have values
+    const fieldsToSave: Record<string, string> = {};
+    if (seed.project_type && !briefType) fieldsToSave.project_type = seed.project_type;
+    if (seed.budget_positioning && !briefBudget) fieldsToSave.budget_positioning = seed.budget_positioning;
+    if (seed.timeline_estimate && !briefTimeline) fieldsToSave.timeline_estimate = seed.timeline_estimate;
+    if (seed.project_summary && !briefSummary) fieldsToSave.project_summary = seed.project_summary;
+
+    if (Object.keys(fieldsToSave).length === 0) return;
+
+    // Update local state
+    if (fieldsToSave.project_type) setBriefType(fieldsToSave.project_type);
+    if (fieldsToSave.budget_positioning) setBriefBudget(fieldsToSave.budget_positioning);
+    if (fieldsToSave.timeline_estimate) setBriefTimeline(fieldsToSave.timeline_estimate);
+    if (fieldsToSave.project_summary) setBriefSummary(fieldsToSave.project_summary);
+
+    // Persist to DB
+    await safeFetch(`/api/hub/leads/${id}/brief`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fieldsToSave),
+    });
+  }, [lead, id, status, bootstrapDone, briefType, briefBudget, briefTimeline, briefSummary]);
+
+  // Trigger bootstrap after brief loads for early-stage leads
+  useEffect(() => {
+    if (briefAccessible && !briefLoading && lead && !bootstrapDone) {
+      bootstrapBriefFromEnquiry();
+    }
+  }, [briefAccessible, briefLoading, lead, bootstrapDone, bootstrapBriefFromEnquiry]);
+
+  // ── Recommended next action (deterministic from enquiry richness) ───────────
+
+  const recommendedNextAction = useMemo(() => {
+    if (!lead) return null;
+    // Only show for early stages
+    if (!['lead_submitted', 'scoping_sent'].includes(status)) return null;
+
+    const hasEmail = Boolean(lead.contact_email);
+    const hasBudget = Boolean(lead.budget && lead.budget !== "not_sure");
+    const hasTimeline = Boolean(lead.timeline);
+    const hasSuccessDef = Boolean(lead.lead_details?.success_definition);
+    const hasClarifiers = Boolean(lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0);
+    const totalScore = lead.total_score ?? 0;
+
+    // Rich enquiry with good scores → proceed to scoping email
+    if (totalScore >= 4 && hasBudget && hasTimeline && hasSuccessDef) {
+      return { action: "Send scoping email", colour: "green" as const, detail: "Strong enquiry with clear budget, timeline, and success criteria — ready for scoping." };
+    }
+    // Moderate enquiry → send clarification questions
+    if (totalScore >= 3 || (hasBudget && hasTimeline)) {
+      return { action: "Send clarification questions", colour: "amber" as const, detail: "Decent lead but missing detail — follow up with targeted questions before scoping." };
+    }
+    // Has email but thin data → request more info
+    if (hasEmail && (!hasBudget || !hasTimeline || !hasClarifiers)) {
+      return { action: "Request more information", colour: "amber" as const, detail: "Contact details present but enquiry lacks substance — ask for budget, timeline, or project details." };
+    }
+    // Low quality / minimal data
+    return { action: "Review manually", colour: "gray" as const, detail: "Insufficient data for automated recommendation — review the raw submission and decide." };
+  }, [lead, status]);
 
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
@@ -1874,9 +1999,29 @@ export default function LeadDetailPage() {
         </Section>
 
         {/* ── Qualification ──────────────────────────────────────────────── */}
-        {briefEligible && (
+        {briefAccessible && (
           <Section title="Qualification">
             <div className="space-y-2">
+              {/* Recommended next action — early stages only */}
+              {recommendedNextAction && (
+                <div className={cx(
+                  "px-3 py-2.5 rounded-lg border mb-3",
+                  recommendedNextAction.colour === "green" && "bg-green-500/5 border-green-500/20",
+                  recommendedNextAction.colour === "amber" && "bg-amber-500/5 border-amber-500/20",
+                  recommendedNextAction.colour === "gray" && "bg-gray-500/5 border-gray-500/20",
+                )}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] text-gray-500 uppercase tracking-wide">Recommended</span>
+                    <span className={cx(
+                      "text-xs font-medium",
+                      recommendedNextAction.colour === "green" && "text-green-400",
+                      recommendedNextAction.colour === "amber" && "text-amber-400",
+                      recommendedNextAction.colour === "gray" && "text-gray-400",
+                    )}>{recommendedNextAction.action}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">{recommendedNextAction.detail}</p>
+                </div>
+              )}
               <Row label="Scope ready" value={
                 scopeReady === true
                   ? <span className="text-green-400 text-sm font-medium">Ready</span>
@@ -1915,6 +2060,61 @@ export default function LeadDetailPage() {
               } />
             </div>
           </Section>
+        )}
+
+        {/* ── Raw customer inputs (collapsible) ───────────────────────────── */}
+        {lead && (
+          <div className="lg:col-span-2">
+            <div className="rounded-xl border border-white/[0.06] bg-[#12131a] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowRawInputs(!showRawInputs)}
+                className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-white/[0.02] transition-colors"
+              >
+                <span className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Raw customer inputs</span>
+                <span className="text-xs text-gray-600">{showRawInputs ? "▲ Hide" : "▼ Show"}</span>
+              </button>
+              {showRawInputs && (
+                <div className="px-5 pb-4 space-y-3 border-t border-white/5">
+                  <Row label="Email" value={lead.contact_email} />
+                  <Row label="Company" value={lead.company_name} />
+                  <Row label="Website" value={lead.company_website} />
+                  <Row label="Role" value={lead.role} />
+                  <Row label="Engagement type" value={lead.engagement_type?.replace(/_/g, " ") ?? null} />
+                  <Row label="Budget" value={lead.budget?.replace(/_/g, " ") ?? null} />
+                  <Row label="Timeline" value={lead.timeline?.replace(/_/g, " ") ?? null} />
+                  {lead.lead_details?.success_definition && (
+                    <div className="pt-2 border-t border-white/5">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Success definition</p>
+                      <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
+                    </div>
+                  )}
+                  {lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0 && (
+                    <div className="pt-2 border-t border-white/5">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Clarifier answers</p>
+                      {Object.entries(lead.lead_details.clarifier_answers).map(([k, v]) => (
+                        <Row key={k} label={k.replace(/_/g, " ")} value={String(v)} />
+                      ))}
+                    </div>
+                  )}
+                  {lead.lead_details?.raw_submission && Object.keys(lead.lead_details.raw_submission).length > 0 && (
+                    <div className="pt-2 border-t border-white/5">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Raw submission</p>
+                      <pre className="text-xs text-gray-500 leading-relaxed whitespace-pre-wrap font-mono bg-black/20 rounded-lg p-3 max-h-60 overflow-y-auto">
+                        {JSON.stringify(lead.lead_details.raw_submission, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                  {lead.lead_details?.internal_notes && (
+                    <div className="pt-2 border-t border-white/5">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Internal notes</p>
+                      <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.internal_notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* ── Clarifications ──────────────────────────────────────────────── */}
