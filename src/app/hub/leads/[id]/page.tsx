@@ -218,6 +218,8 @@ type LeadBrief = {
   proposal_draft: string | null;
   override_scope_warning: boolean | null;
   contact_strategy: string | null;
+  scope_ready: boolean | null;
+  readiness_reason: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -885,6 +887,9 @@ export default function LeadDetailPage() {
         if (b.contact_strategy === "bookings" || b.contact_strategy === "teams" || b.contact_strategy === "phone") {
           setContactStrategy(b.contact_strategy);
         }
+        if (b.scope_ready === true) setScopeReady(true);
+        else if (b.scope_ready === false) setScopeReady(false);
+        if (b.readiness_reason) setReadinessReason(b.readiness_reason);
       }
     } finally {
       setBriefLoading(false);
@@ -918,6 +923,8 @@ export default function LeadDetailPage() {
         proposal_draft: briefProposal,
         override_scope_warning: overrideScopeWarning,
         contact_strategy: contactStrategy,
+        scope_ready: scopeReady,
+        readiness_reason: readinessReason,
       }),
     });
     setBriefSaving(false);

@@ -17,10 +17,12 @@ const ALLOWED_TEXT_FIELDS = [
   'follow_up_questions',
   'proposal_draft',
   'contact_strategy',
+  'readiness_reason',
 ] as const;
 
 const ALLOWED_BOOL_FIELDS = [
   'override_scope_warning',
+  'scope_ready',
 ] as const;
 
 /**
@@ -139,7 +141,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   for (const field of ALLOWED_BOOL_FIELDS) {
     if (field in body) {
-      fields[field] = body[field] === true;
+      const v = body[field];
+      fields[field] = v === true ? true : v === false ? false : null;
     }
   }
 
