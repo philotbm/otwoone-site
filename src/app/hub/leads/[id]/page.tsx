@@ -2409,13 +2409,316 @@ export default function LeadDetailPage() {
           </Section>
         )}
 
-        {/* ── System Analysis ───────────────────────────────────────────── */}
+        {/* ════════════════════════════════════════════════════════════════
+            CLIENT INPUTS — scoping reply, clarifications, raw inputs
+            ════════════════════════════════════════════════════════════════ */}
+        <div className="lg:col-span-2">
+          <Section title="Client Inputs">
+            <div className="space-y-5">
+
+              {/* ── Scoping reply / call notes ─────────────────────────────── */}
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">
+                  {intakePath === "discovery_call" ? "Client scoping reply / call notes" : "Client\u2019s scoping reply"}
+                </label>
+                <textarea
+                  value={briefReply}
+                  onChange={(e) => setBriefReply(e.target.value)}
+                  placeholder={intakePath === "discovery_call" ? "Paste the client\u2019s reply or discovery call notes here\u2026" : "Paste the client\u2019s reply to your scoping email here\u2026"}
+                  rows={5}
+                  className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
+                />
+              </div>
+
+              {/* ── Clarification rounds ───────────────────────────────────── */}
+              <div className="pt-3 border-t border-white/5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Clarification rounds</span>
+                    <span className="text-xs text-gray-500">·</span>
+                    <span className="text-xs text-gray-500">Scope confidence</span>
+                    {(() => {
+                      const hasRepliedAll = rounds.length > 0 && rounds.every((r) => r.status === "replied" || r.status === "closed");
+                      const hasPending    = rounds.some((r) => r.status === "draft" || r.status === "sent");
+                      const noRounds      = rounds.length === 0;
+
+                      if (noRounds && ["scope_received", "proposal_sent", "deposit_requested", "deposit_received", "converted"].includes(status)) {
+                        return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-green-500/15 text-green-400">Clear</span>;
+                      }
+                      if (noRounds) {
+                        return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-gray-500/15 text-gray-400">Not assessed</span>;
+                      }
+                      if (hasPending) {
+                        return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-yellow-500/15 text-yellow-400">Pending</span>;
+                      }
+                      if (hasRepliedAll) {
+                        return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-green-500/15 text-green-400">Clear</span>;
+                      }
+                      return null;
+                    })()}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={createRound}
+                    disabled={roundSaving === "new"}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                  >
+                    {roundSaving === "new" ? "Creating…" : "+ New round"}
+                  </button>
+                </div>
+
+                {roundsLoading && <p className="text-xs text-gray-600 py-2">Loading rounds…</p>}
+
+                {!roundsLoading && rounds.length === 0 && (
+                  <p className="text-xs text-gray-600 py-2">No clarification rounds yet. Scope may already be clear — or start a round if you need to ask follow-ups.</p>
+                )}
+
+                {!roundsLoading && rounds.length > 0 && (
+                  <div className="space-y-3">
+                    {rounds.map((round) => {
+                      const isExpanded = expandedRound === round.id;
+                      const isSaving   = roundSaving === round.id;
+                      return (
+                        <div
+                          key={round.id}
+                          className="border border-white/5 rounded-lg overflow-hidden"
+                        >
+                          {/* Round header */}
+                          <button
+                            type="button"
+                            onClick={() => setExpandedRound(isExpanded ? null : round.id)}
+                            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-medium text-gray-300">Round {round.round_number}</span>
+                              <span className={cx(
+                                "px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
+                                ROUND_STATUS_COLOUR[round.status]
+                              )}>
+                                {ROUND_STATUS_LABELS[round.status]}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] text-gray-600">{fmt(round.created_at)}</span>
+                              <span className="text-xs text-gray-600">{isExpanded ? "▲" : "▼"}</span>
+                            </div>
+                          </button>
+
+                          {/* Round body */}
+                          {isExpanded && (
+                            <div className="px-4 pb-4 space-y-4 border-t border-white/5">
+                              {/* Questions */}
+                              <div className="pt-3">
+                                <label className="text-xs text-gray-500 block mb-1.5">
+                                  {intakePath === "discovery_call" ? "Discussion points" : "Questions for client"}
+                                </label>
+                                <textarea
+                                  value={draftQuestions[round.id] ?? ""}
+                                  onChange={(e) => setDraftQuestions((prev) => ({ ...prev, [round.id]: e.target.value }))}
+                                  placeholder={intakePath === "discovery_call" ? "Points to discuss on the call…" : "Type your clarification questions here…"}
+                                  rows={4}
+                                  className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none leading-relaxed"
+                                />
+                                <div className="flex items-center gap-2 mt-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => saveRound(round.id, { questions: draftQuestions[round.id] ?? "" })}
+                                    disabled={isSaving}
+                                    className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
+                                  >
+                                    {isSaving ? "Saving…" : "Save questions"}
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Client reply */}
+                              <div>
+                                <label className="text-xs text-gray-500 block mb-1.5">
+                                  {intakePath === "discovery_call" ? "Call notes / client response" : "Client reply"}
+                                </label>
+                                <textarea
+                                  value={draftReplies[round.id] ?? ""}
+                                  onChange={(e) => setDraftReplies((prev) => ({ ...prev, [round.id]: e.target.value }))}
+                                  placeholder={intakePath === "discovery_call" ? "Paste call notes or client response…" : "Paste client reply here…"}
+                                  rows={4}
+                                  className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none leading-relaxed"
+                                />
+                                <div className="flex items-center gap-2 mt-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => saveRound(round.id, { client_reply: draftReplies[round.id] ?? "", status: "replied" })}
+                                    disabled={isSaving}
+                                    className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
+                                  >
+                                    {isSaving ? "Saving…" : "Save reply"}
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Actions row */}
+                              <div className="flex items-center justify-between pt-3 border-t border-white/5 flex-wrap gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {/* Generate email */}
+                                  {(draftQuestions[round.id] ?? "").trim() && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const email = buildClarificationEmail({ ...round, questions: draftQuestions[round.id] ?? "" });
+                                        saveRound(round.id, { questions: draftQuestions[round.id], generated_email: email });
+                                      }}
+                                      disabled={isSaving}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors disabled:opacity-50"
+                                    >
+                                      {isSaving ? "Generating…" : "Generate email"}
+                                    </button>
+                                  )}
+
+                                  {/* Copy email */}
+                                  {round.generated_email && (
+                                    <button
+                                      type="button"
+                                      onClick={() => navigator.clipboard.writeText(round.generated_email!)}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors"
+                                    >
+                                      Copy email
+                                    </button>
+                                  )}
+
+                                  {/* Open mailto */}
+                                  {round.generated_email && lead?.contact_email && (
+                                    <a
+                                      href={`mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — a few follow-up questions")}&body=${encodeURIComponent(round.generated_email)}`}
+                                      onClick={() => {
+                                        if (round.status === "draft") saveRound(round.id, { status: "sent" });
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors inline-block"
+                                    >
+                                      Send via email
+                                    </a>
+                                  )}
+
+                                  {/* Mark sent manually */}
+                                  {round.status === "draft" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => saveRound(round.id, { status: "sent" })}
+                                      disabled={isSaving}
+                                      className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
+                                    >
+                                      {isSaving ? "Updating…" : "Mark sent"}
+                                    </button>
+                                  )}
+
+                                  {/* Close round */}
+                                  {(round.status === "replied" || round.status === "sent") && (
+                                    <button
+                                      type="button"
+                                      onClick={() => saveRound(round.id, { status: "closed" })}
+                                      disabled={isSaving}
+                                      className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
+                                    >
+                                      {isSaving ? "Closing…" : "Close round"}
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Delete (draft only) */}
+                                {round.status === "draft" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteRound(round.id)}
+                                    disabled={isSaving}
+                                    className="text-xs text-red-400/60 hover:text-red-400 disabled:opacity-50"
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Generated email preview */}
+                              {round.generated_email && (
+                                <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
+                                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5">Email preview</p>
+                                  <pre className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed font-sans">{round.generated_email}</pre>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Raw customer inputs (collapsible, inside Client Inputs) ── */}
+              {lead && (
+                <div className="pt-3 border-t border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => setShowRawInputs(!showRawInputs)}
+                    className="w-full flex items-center justify-between py-2 text-left hover:opacity-80 transition-opacity"
+                  >
+                    <span className="text-[10px] font-medium tracking-wide text-gray-500 uppercase">Raw customer inputs</span>
+                    <span className="text-xs text-gray-600">{showRawInputs ? "▲ Hide" : "▼ Show"}</span>
+                  </button>
+                  {showRawInputs && (
+                    <div className="pt-2 space-y-3">
+                      <Row label="Email" value={lead.contact_email} />
+                      <Row label="Company" value={lead.company_name} />
+                      <Row label="Website" value={lead.company_website} />
+                      <Row label="Role" value={lead.role} />
+                      <Row label="Engagement type" value={lead.engagement_type?.replace(/_/g, " ") ?? null} />
+                      <Row label="Budget" value={lead.budget?.replace(/_/g, " ") ?? null} />
+                      <Row label="Timeline" value={lead.timeline?.replace(/_/g, " ") ?? null} />
+                      {lead.lead_details?.success_definition && (
+                        <div className="pt-2 border-t border-white/5">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Success definition</p>
+                          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
+                        </div>
+                      )}
+                      {lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0 && (
+                        <div className="pt-2 border-t border-white/5">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Clarifier answers</p>
+                          {Object.entries(lead.lead_details.clarifier_answers).map(([k, v]) => (
+                            <Row key={k} label={k.replace(/_/g, " ")} value={String(v)} />
+                          ))}
+                        </div>
+                      )}
+                      {lead.lead_details?.raw_submission && Object.keys(lead.lead_details.raw_submission).length > 0 && (
+                        <div className="pt-2 border-t border-white/5">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Raw submission</p>
+                          <pre className="text-xs text-gray-500 leading-relaxed whitespace-pre-wrap font-mono bg-black/20 rounded-lg p-3 max-h-60 overflow-y-auto">
+                            {JSON.stringify(lead.lead_details.raw_submission, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {lead.lead_details?.internal_notes && (
+                        <div className="pt-2 border-t border-white/5">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Internal notes</p>
+                          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.internal_notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </div>
+          </Section>
+        </div>
+
+        {/* ════════════════════════════════════════════════════════════════
+            SYSTEM ANALYSIS — merged context analysis + structured brief
+            ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && (
           <div className="lg:col-span-2">
             <Section title="System Analysis">
               <p className="text-xs text-gray-600 -mt-1 mb-3">
                 Merged view of all client inputs and analysis. Driven by enquiry, scoping, clarifications, and brief data.
               </p>
+
+              {/* ── Read-only analysis summary ─────────────────────────── */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                 <Row label="Project summary" value={briefSummary.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
                 <Row label="Project type" value={briefType.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
@@ -2428,6 +2731,7 @@ export default function LeadDetailPage() {
                 <Row label="Risks & unknowns" value={briefRisks.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
                 <Row label="Follow-up questions" value={briefFollowUp.trim() || <span className="text-gray-600 text-sm italic">None identified</span>} />
               </div>
+
               {/* Proposal readiness */}
               <div className="mt-3 pt-3 border-t border-white/5">
                 <div className="flex items-center gap-3">
@@ -2442,330 +2746,170 @@ export default function LeadDetailPage() {
                   {readinessReason && <span className="text-xs text-gray-400">{readinessReason}</span>}
                 </div>
               </div>
-              {/* Context source count */}
+
+              {/* Context sources + analysis action */}
               <div className="mt-2 flex items-center gap-3 flex-wrap">
                 <span className="text-[10px] text-gray-600">
                   Sources: enquiry data{briefReply.trim() ? " · scoping reply" : ""}{rounds.filter(r => r.status === "replied" || r.status === "closed").length > 0 ? ` · ${rounds.filter(r => r.status === "replied" || r.status === "closed").length} clarification round${rounds.filter(r => r.status === "replied" || r.status === "closed").length > 1 ? "s" : ""}` : ""}{intakePath === "discovery_call" && lead?.lead_details?.internal_notes ? " · discovery notes" : ""}
                 </span>
-                {!briefSummary.trim() && !briefType.trim() && briefAccessible && (
-                  <button
-                    type="button"
-                    disabled={autofillLoading}
-                    onClick={() => autofillBrief(true)}
-                    className="px-3 py-1 rounded-lg text-[10px] font-medium bg-emerald-600/60 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30"
-                  >
-                    {autofillLoading ? "Analysing…" : "Run AI analysis"}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={(!briefReply.trim() && !mergedClientContext.trim()) || autofillLoading}
+                  onClick={() => autofillBrief(true)}
+                  className="px-3 py-1 rounded-lg text-[10px] font-medium bg-emerald-600/60 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  {autofillLoading ? "Analysing…" : (briefSummary.trim() || briefType.trim()) ? "Refresh analysis" : "Run AI analysis"}
+                </button>
               </div>
-            </Section>
-          </div>
-        )}
 
-        {/* ── Raw customer inputs (collapsible) ───────────────────────────── */}
-        {lead && (
-          <div className="lg:col-span-2">
-            <div className="rounded-xl border border-white/[0.06] bg-[#12131a] overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowRawInputs(!showRawInputs)}
-                className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-white/[0.02] transition-colors"
-              >
-                <span className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Raw customer inputs</span>
-                <span className="text-xs text-gray-600">{showRawInputs ? "▲ Hide" : "▼ Show"}</span>
-              </button>
-              {showRawInputs && (
-                <div className="px-5 pb-4 space-y-3 border-t border-white/5">
-                  <Row label="Email" value={lead.contact_email} />
-                  <Row label="Company" value={lead.company_name} />
-                  <Row label="Website" value={lead.company_website} />
-                  <Row label="Role" value={lead.role} />
-                  <Row label="Engagement type" value={lead.engagement_type?.replace(/_/g, " ") ?? null} />
-                  <Row label="Budget" value={lead.budget?.replace(/_/g, " ") ?? null} />
-                  <Row label="Timeline" value={lead.timeline?.replace(/_/g, " ") ?? null} />
-                  {lead.lead_details?.success_definition && (
-                    <div className="pt-2 border-t border-white/5">
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Success definition</p>
-                      <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
-                    </div>
-                  )}
-                  {lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0 && (
-                    <div className="pt-2 border-t border-white/5">
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Clarifier answers</p>
-                      {Object.entries(lead.lead_details.clarifier_answers).map(([k, v]) => (
-                        <Row key={k} label={k.replace(/_/g, " ")} value={String(v)} />
-                      ))}
-                    </div>
-                  )}
-                  {lead.lead_details?.raw_submission && Object.keys(lead.lead_details.raw_submission).length > 0 && (
-                    <div className="pt-2 border-t border-white/5">
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Raw submission</p>
-                      <pre className="text-xs text-gray-500 leading-relaxed whitespace-pre-wrap font-mono bg-black/20 rounded-lg p-3 max-h-60 overflow-y-auto">
-                        {JSON.stringify(lead.lead_details.raw_submission, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                  {lead.lead_details?.internal_notes && (
-                    <div className="pt-2 border-t border-white/5">
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Internal notes</p>
-                      <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.internal_notes}</p>
+              {/* ── Editable structured brief fields ──────────────────── */}
+              {briefEligible && (
+                <div className="mt-5 pt-4 border-t border-white/5">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-3">Editable structured brief</p>
+                  {briefLoading ? (
+                    <p className="text-xs text-gray-600 py-2">Loading brief…</p>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project summary</label>
+                          <textarea
+                            value={briefSummary}
+                            onChange={(e) => setBriefSummary(e.target.value)}
+                            placeholder="2–3 sentence overview of what the client needs…"
+                            rows={3}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project type</label>
+                          <textarea
+                            value={briefType}
+                            onChange={(e) => setBriefType(e.target.value)}
+                            placeholder="e.g. brochure site, web app, e-commerce, redesign…"
+                            rows={3}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Recommended solution</label>
+                        <textarea
+                          value={briefSolution}
+                          onChange={(e) => setBriefSolution(e.target.value)}
+                          placeholder="What OTwoOne should build and how…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested pages</label>
+                          <textarea
+                            value={briefPages}
+                            onChange={(e) => setBriefPages(e.target.value)}
+                            placeholder="Homepage, About, Services, Contact…"
+                            rows={3}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested features</label>
+                          <textarea
+                            value={briefFeatures}
+                            onChange={(e) => setBriefFeatures(e.target.value)}
+                            placeholder="Contact form, blog, booking…"
+                            rows={3}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested integrations</label>
+                          <textarea
+                            value={briefIntegrations}
+                            onChange={(e) => setBriefIntegrations(e.target.value)}
+                            placeholder="Stripe, Google Analytics, CRM…"
+                            rows={3}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Timeline estimate</label>
+                          <textarea
+                            value={briefTimeline}
+                            onChange={(e) => setBriefTimeline(e.target.value)}
+                            placeholder="Realistic delivery window…"
+                            rows={2}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Budget positioning</label>
+                          <textarea
+                            value={briefBudget}
+                            onChange={(e) => setBriefBudget(e.target.value)}
+                            placeholder="Where this sits vs stated budget…"
+                            rows={2}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Risks &amp; unknowns</label>
+                          <textarea
+                            value={briefRisks}
+                            onChange={(e) => setBriefRisks(e.target.value)}
+                            placeholder="Anything unclear, missing, or risky…"
+                            rows={3}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Follow-up questions</label>
+                          <textarea
+                            value={briefFollowUp}
+                            onChange={(e) => setBriefFollowUp(e.target.value)}
+                            placeholder="Questions to ask the client before proceeding…"
+                            rows={3}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Save bar for brief fields */}
+                      <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                        <div className="flex items-center gap-3">
+                          <span className={cx("text-xs transition-opacity", briefSaved ? "text-green-400 opacity-100" : "opacity-0")}>
+                            Saved
+                          </span>
+                          {brief && (
+                            <span className="text-[10px] text-gray-700">
+                              Last updated {fmtDateTime(brief.updated_at)}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={saveBrief}
+                          disabled={briefSaving}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                        >
+                          {briefSaving ? "Saving…" : "Save brief"}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
-            </div>
+            </Section>
           </div>
         )}
-
-        {/* ── Clarifications ──────────────────────────────────────────────── */}
-        <div className="lg:col-span-2">
-          <Section title="Clarifications">
-            {/* Scope confidence signal */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Scope confidence</span>
-                {(() => {
-                  const hasRepliedAll = rounds.length > 0 && rounds.every((r) => r.status === "replied" || r.status === "closed");
-                  const hasPending    = rounds.some((r) => r.status === "draft" || r.status === "sent");
-                  const noRounds      = rounds.length === 0;
-
-                  if (noRounds && ["scope_received", "proposal_sent", "deposit_requested", "deposit_received", "converted"].includes(status)) {
-                    return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-green-500/15 text-green-400">Clear</span>;
-                  }
-                  if (noRounds) {
-                    return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-gray-500/15 text-gray-400">Not assessed</span>;
-                  }
-                  if (hasPending) {
-                    return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-yellow-500/15 text-yellow-400">Pending</span>;
-                  }
-                  if (hasRepliedAll) {
-                    return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-green-500/15 text-green-400">Clear</span>;
-                  }
-                  return null;
-                })()}
-              </div>
-              <button
-                type="button"
-                onClick={createRound}
-                disabled={roundSaving === "new"}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-              >
-                {roundSaving === "new" ? "Creating…" : "+ New round"}
-              </button>
-            </div>
-
-            {roundsLoading && <p className="text-xs text-gray-600 py-2">Loading…</p>}
-
-            {!roundsLoading && rounds.length === 0 && (
-              <p className="text-xs text-gray-600 py-2">No clarification rounds yet. Scope may already be clear — or start a round if you need to ask follow-ups.</p>
-            )}
-
-            {!roundsLoading && rounds.length > 0 && (
-              <div className="space-y-3">
-                {rounds.map((round) => {
-                  const isExpanded = expandedRound === round.id;
-                  const isSaving   = roundSaving === round.id;
-                  return (
-                    <div
-                      key={round.id}
-                      className="border border-white/5 rounded-lg overflow-hidden"
-                    >
-                      {/* Round header */}
-                      <button
-                        type="button"
-                        onClick={() => setExpandedRound(isExpanded ? null : round.id)}
-                        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-medium text-gray-300">Round {round.round_number}</span>
-                          <span className={cx(
-                            "px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
-                            ROUND_STATUS_COLOUR[round.status]
-                          )}>
-                            {ROUND_STATUS_LABELS[round.status]}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] text-gray-600">{fmt(round.created_at)}</span>
-                          <span className="text-xs text-gray-600">{isExpanded ? "▲" : "▼"}</span>
-                        </div>
-                      </button>
-
-                      {/* Round body */}
-                      {isExpanded && (
-                        <div className="px-4 pb-4 space-y-4 border-t border-white/5">
-                          {/* Questions */}
-                          <div className="pt-3">
-                            <label className="text-xs text-gray-500 block mb-1.5">Questions for client</label>
-                            <textarea
-                              value={draftQuestions[round.id] ?? ""}
-                              onChange={(e) => setDraftQuestions((prev) => ({ ...prev, [round.id]: e.target.value }))}
-                              placeholder="Type your clarification questions here…"
-                              rows={4}
-                              className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none leading-relaxed"
-                            />
-                            <div className="flex items-center gap-2 mt-2">
-                              <button
-                                type="button"
-                                onClick={() => saveRound(round.id, { questions: draftQuestions[round.id] ?? "" })}
-                                disabled={isSaving}
-                                className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
-                              >
-                                Save questions
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Client reply */}
-                          <div>
-                            <label className="text-xs text-gray-500 block mb-1.5">Client reply</label>
-                            <textarea
-                              value={draftReplies[round.id] ?? ""}
-                              onChange={(e) => setDraftReplies((prev) => ({ ...prev, [round.id]: e.target.value }))}
-                              placeholder="Paste client reply here…"
-                              rows={4}
-                              className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none leading-relaxed"
-                            />
-                            <div className="flex items-center gap-2 mt-2">
-                              <button
-                                type="button"
-                                onClick={() => saveRound(round.id, { client_reply: draftReplies[round.id] ?? "", status: "replied" })}
-                                disabled={isSaving}
-                                className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
-                              >
-                                Save reply
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Actions row */}
-                          <div className="flex items-center justify-between pt-3 border-t border-white/5 flex-wrap gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {/* Generate email */}
-                              {(draftQuestions[round.id] ?? "").trim() && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const email = buildClarificationEmail({ ...round, questions: draftQuestions[round.id] ?? "" });
-                                    saveRound(round.id, { questions: draftQuestions[round.id], generated_email: email });
-                                  }}
-                                  disabled={isSaving}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors disabled:opacity-50"
-                                >
-                                  Generate email
-                                </button>
-                              )}
-
-                              {/* Copy email */}
-                              {round.generated_email && (
-                                <button
-                                  type="button"
-                                  onClick={() => navigator.clipboard.writeText(round.generated_email!)}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors"
-                                >
-                                  Copy email
-                                </button>
-                              )}
-
-                              {/* Open mailto */}
-                              {round.generated_email && lead?.contact_email && (
-                                <a
-                                  href={`mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — a few follow-up questions")}&body=${encodeURIComponent(round.generated_email)}`}
-                                  onClick={() => {
-                                    if (round.status === "draft") saveRound(round.id, { status: "sent" });
-                                  }}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors inline-block"
-                                >
-                                  Send via email
-                                </a>
-                              )}
-
-                              {/* Mark sent manually */}
-                              {round.status === "draft" && (
-                                <button
-                                  type="button"
-                                  onClick={() => saveRound(round.id, { status: "sent" })}
-                                  disabled={isSaving}
-                                  className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
-                                >
-                                  Mark sent
-                                </button>
-                              )}
-
-                              {/* Close round */}
-                              {(round.status === "replied" || round.status === "sent") && (
-                                <button
-                                  type="button"
-                                  onClick={() => saveRound(round.id, { status: "closed" })}
-                                  disabled={isSaving}
-                                  className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
-                                >
-                                  Close round
-                                </button>
-                              )}
-                            </div>
-
-                            {/* Delete (draft only) */}
-                            {round.status === "draft" && (
-                              <button
-                                type="button"
-                                onClick={() => deleteRound(round.id)}
-                                disabled={isSaving}
-                                className="text-xs text-red-400/60 hover:text-red-400 disabled:opacity-50"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Generated email preview */}
-                          {round.generated_email && (
-                            <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
-                              <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5">Email preview</p>
-                              <pre className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed font-sans">{round.generated_email}</pre>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── Proposal handoff ────────────────────────────────────────── */}
-            <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <p className="text-xs text-gray-500">Ready for proposal?</p>
-                <p className="text-[10px] text-gray-600 mt-0.5">
-                  {rounds.length === 0
-                    ? "No clarification rounds — scope may already be clear."
-                    : rounds.every((r) => r.status === "replied" || r.status === "closed")
-                      ? "All rounds resolved. Ready to proceed."
-                      : "Some rounds still open. Resolve or close them first."}
-                </p>
-              </div>
-              {["scope_received", "scoping_sent", "lead_submitted"].includes(status) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    saveField({ status: "proposal_sent" });
-                    setStatus("proposal_sent");
-                  }}
-                  disabled={saving}
-                  className="px-4 py-2 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-                >
-                  Advance to Proposal
-                </button>
-              )}
-              {status === "proposal_sent" && (
-                <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
-                  Proposal stage reached
-                </span>
-              )}
-            </div>
-          </Section>
-        </div>
 
         {/* Internal notes (full width) */}
         <div className="lg:col-span-2">
@@ -2792,45 +2936,36 @@ export default function LeadDetailPage() {
           </Section>
         </div>
 
-        {/* ── Project Brief (scope_received or later, pre-project workflow) ── */}
+        {/* ════════════════════════════════════════════════════════════════
+            PROPOSAL PREP — proposal prompt, draft, and handoff actions
+            ════════════════════════════════════════════════════════════════ */}
         {briefEligible && (
           <div className="lg:col-span-2">
-            <Section title="Project Brief">
+            <Section title="Proposal Prep">
 
-              {/* ── Workflow progress header ─────────────────────────────── */}
+              {/* ── Workflow progress indicator ─────────────────────────── */}
               {(() => {
-                const hasReply   = briefReply.trim().length > 0;
                 const hasBrief   = briefSummary.trim().length > 0;
-                const reviewed   = scopeReady !== null;
-                const hasPath    = intakePath !== null;
-                const canProceed = hasPath && (intakePath === "proceed_to_brief" || overrideScopeWarning || scopeReady);
                 const hasPrompt  = briefPromptOutput.trim().length > 0;
                 const hasDraft   = briefProposal.trim().length > 0;
                 const isSent     = status === "proposal_sent" || status === "deposit_requested" || status === "deposit_received" || status === "converted";
 
-                const pathLabel = intakePath === "clarification_email" ? "✉️ Clarification email"
-                  : intakePath === "discovery_call" ? "📞 Discovery call"
-                  : intakePath === "proceed_to_brief" ? "✅ Proceed to brief"
-                  : "Choose intake path";
-
                 type StepState = "done" | "active" | "upcoming";
                 const steps: Array<{ label: string; state: StepState }> = [
-                  { label: "Client input received",       state: hasReply ? "done" : "active" },
-                  { label: "Merged context analysis",     state: hasBrief && reviewed ? "done" : hasBrief ? "active" : hasReply ? "active" : "upcoming" },
-                  { label: pathLabel,                     state: hasPath ? "done" : reviewed ? "active" : "upcoming" },
-                  { label: "Structured brief finalised",  state: canProceed && hasBrief ? "done" : hasPath ? "active" : "upcoming" },
-                  { label: "Proposal prompt generated",   state: hasPrompt ? "done" : (canProceed && hasBrief) ? "active" : "upcoming" },
-                  { label: "Proposal draft prepared",     state: hasDraft ? "done" : hasPrompt ? "active" : "upcoming" },
-                  { label: "Ready to send proposal",      state: isSent ? "done" : hasDraft ? "active" : "upcoming" },
+                  { label: "Analysis complete",       state: hasBrief && scopeReady !== null ? "done" : hasBrief ? "active" : "upcoming" },
+                  { label: "Brief finalised",         state: hasBrief && (scopeReady || overrideScopeWarning) ? "done" : hasBrief ? "active" : "upcoming" },
+                  { label: "Proposal prompt ready",   state: hasPrompt ? "done" : hasBrief ? "active" : "upcoming" },
+                  { label: "Proposal draft prepared",  state: hasDraft ? "done" : hasPrompt ? "active" : "upcoming" },
+                  { label: "Ready to send",            state: isSent ? "done" : hasDraft ? "active" : "upcoming" },
                 ];
 
                 return (
                   <div className="mb-5 px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
-                    <div className="space-y-1.5">
+                    <div className="flex items-center gap-4 flex-wrap">
                       {steps.map((s, i) => (
-                        <div key={i} className="flex items-center gap-2.5">
+                        <div key={i} className="flex items-center gap-1.5">
                           <span className={cx(
-                            "w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold shrink-0",
+                            "w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold shrink-0",
                             s.state === "done"   && "bg-green-500/20 text-green-400",
                             s.state === "active"  && "bg-indigo-500/20 text-indigo-400",
                             s.state === "upcoming" && "bg-white/5 text-gray-600",
@@ -2838,16 +2973,14 @@ export default function LeadDetailPage() {
                             {s.state === "done" ? "✓" : s.state === "active" ? "→" : (i + 1)}
                           </span>
                           <span className={cx(
-                            "text-xs",
+                            "text-[10px]",
                             s.state === "done"   && "text-green-400/80",
                             s.state === "active"  && "text-indigo-300 font-medium",
                             s.state === "upcoming" && "text-gray-600",
                           )}>
                             {s.label}
-                            {s.label === "Scope review completed" && reviewed && !scopeReady && !overrideScopeWarning && (
-                              <span className="ml-2 text-amber-400 font-normal">— clarification recommended</span>
-                            )}
                           </span>
+                          {i < steps.length - 1 && <span className="text-gray-700 text-[10px] ml-1">→</span>}
                         </div>
                       ))}
                     </div>
@@ -2855,460 +2988,140 @@ export default function LeadDetailPage() {
                 );
               })()}
 
-              {briefLoading ? (
-                <div className="py-4 text-center">
-                  <p className="text-xs text-gray-600">Loading brief…</p>
-                </div>
-              ) : (
-                <div className="space-y-5">
+              <div className="space-y-5">
 
-                  {/* ── A. Scoping reply input ────────────────────────── */}
+                {/* ── Proposal handoff ──────────────────────────────────── */}
+                <div className="flex items-center justify-between flex-wrap gap-3">
                   <div>
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Client&apos;s scoping reply</label>
-                    <textarea
-                      value={briefReply}
-                      onChange={(e) => setBriefReply(e.target.value)}
-                      placeholder="Paste the client's reply to your scoping email here…"
-                      rows={6}
-                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
-                    />
+                    <p className="text-xs text-gray-500">Ready for proposal?</p>
+                    <p className="text-[10px] text-gray-600 mt-0.5">
+                      {rounds.length === 0
+                        ? "No clarification rounds — scope may already be clear."
+                        : rounds.every((r) => r.status === "replied" || r.status === "closed")
+                          ? "All rounds resolved. Ready to proceed."
+                          : "Some rounds still open. Resolve or close them first."}
+                    </p>
                   </div>
+                  {["scope_received", "scoping_sent", "lead_submitted"].includes(status) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveField({ status: "proposal_sent" });
+                        setStatus("proposal_sent");
+                      }}
+                      disabled={saving}
+                      className="px-4 py-2 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                    >
+                      {saving ? "Updating…" : "Advance to Proposal"}
+                    </button>
+                  )}
+                  {status === "proposal_sent" && (
+                    <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                      Proposal stage reached
+                    </span>
+                  )}
+                </div>
 
-                  {/* ── B. Analyse & auto-fill actions ───────────────────── */}
-                  <div className="pt-3 border-t border-white/5">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <button
-                        type="button"
-                        disabled={(!briefReply.trim() && !mergedClientContext.trim()) || autofillLoading}
-                        onClick={() => autofillBrief(true)}
-                        className="px-4 py-2 rounded-lg text-xs font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        {autofillLoading ? "Analysing…" : "Analyse & fill from all inputs"}
-                      </button>
-                      {(briefSummary.trim() || briefType.trim()) && (
-                        <button
-                          type="button"
-                          disabled={(!briefReply.trim() && !mergedClientContext.trim()) || autofillLoading}
-                          onClick={() => autofillBrief(true)}
-                          className="px-4 py-2 rounded-lg text-xs font-medium border border-emerald-600/40 text-emerald-400 hover:bg-emerald-600/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          {autofillLoading ? "Analysing…" : "Refresh from merged context"}
-                        </button>
-                      )}
-                    </div>
-                    {autofillError && (
-                      <p className="text-xs text-red-400 mt-2">{autofillError}</p>
-                    )}
-                    {!briefReply.trim() && !mergedClientContext.trim() && (
-                      <p className="text-xs text-gray-700 mt-2">Paste the scoping reply above or ensure enquiry data is available to enable analysis.</p>
-                    )}
-                    {!briefReply.trim() && mergedClientContext.trim() && (
-                      <p className="text-xs text-gray-600 mt-2">No scoping reply yet — analysis will use enquiry data, clarification rounds, and other available inputs.</p>
-                    )}
-                  </div>
-
-                  {/* ── Readiness assessment + intake path selector ──── */}
-                  {scopeReady !== null && (
-                    <div className="space-y-3">
-                      {/* Readiness banner */}
-                      <div className={cx(
-                        "px-4 py-3 rounded-lg border",
-                        scopeReady
-                          ? "bg-green-500/5 border-green-500/20"
-                          : "bg-amber-500/5 border-amber-500/20"
-                      )}>
-                        <div className="flex items-center gap-2">
-                          <span className={cx(
-                            "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
-                            scopeReady
-                              ? "bg-green-500/15 text-green-400"
-                              : "bg-amber-500/15 text-amber-400"
-                          )}>
-                            {scopeReady ? "Ready" : "Needs clarification"}
-                          </span>
-                          <span className="text-xs text-gray-400">{readinessReason}</span>
-                        </div>
-                        {overrideScopeWarning && !scopeReady && (
-                          <p className="text-[10px] text-amber-400/70 mt-2">⚠ Operator override active — proceeding despite clarification recommendation</p>
-                        )}
-                      </div>
-
-                      {/* Choose next action — intake path selector */}
-                      <div className="px-4 py-4 rounded-lg border border-white/10 bg-white/[0.02]">
-                        <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-3">
-                          Choose next action
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => selectIntakePath("clarification_email")}
-                            className={cx(
-                              "px-3 py-3 rounded-lg text-xs font-medium border transition-all text-left",
-                              intakePath === "clarification_email"
-                                ? "border-amber-500 bg-amber-500/10 text-amber-200"
-                                : "border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300"
-                            )}
-                          >
-                            <span className="block font-semibold mb-0.5">✉️ Send clarification email</span>
-                            <span className="block text-[10px] opacity-70">Email targeted questions to the client</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => selectIntakePath("discovery_call")}
-                            className={cx(
-                              "px-3 py-3 rounded-lg text-xs font-medium border transition-all text-left",
-                              intakePath === "discovery_call"
-                                ? "border-blue-500 bg-blue-500/10 text-blue-200"
-                                : "border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300"
-                            )}
-                          >
-                            <span className="block font-semibold mb-0.5">📞 Discovery call</span>
-                            <span className="block text-[10px] opacity-70">Schedule a call to discuss in depth</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => selectIntakePath("proceed_to_brief")}
-                            className={cx(
-                              "px-3 py-3 rounded-lg text-xs font-medium border transition-all text-left",
-                              intakePath === "proceed_to_brief"
-                                ? "border-green-500 bg-green-500/10 text-green-200"
-                                : "border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300"
-                            )}
-                          >
-                            <span className="block font-semibold mb-0.5">✅ Proceed to brief</span>
-                            <span className="block text-[10px] opacity-70">Scope is clear — draft proposal</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* ── Clarification Email Pack ─────────────────────── */}
-                      {intakePath === "clarification_email" && (
-                        <div className="px-4 py-4 rounded-lg border border-amber-500/20 bg-amber-500/5 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-[10px] text-amber-400 uppercase tracking-wide font-medium">
-                              Clarification email draft
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(buildClarificationEmailContent());
-                                setBriefPromptCopied(true);
-                                setTimeout(() => setBriefPromptCopied(false), 2000);
-                              }}
-                              className="px-2.5 py-1 rounded text-[10px] font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 transition-colors"
-                            >
-                              {briefPromptCopied ? "Copied ✓" : "Copy email"}
-                            </button>
-                          </div>
-                          <textarea
-                            readOnly
-                            value={buildClarificationEmailContent()}
-                            rows={12}
-                            className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono resize-y focus:outline-none leading-relaxed"
-                          />
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={startClarificationFromAutofill}
-                              disabled={roundSaving === "new" || !briefFollowUp.trim()}
-                              className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                            >
-                              Create clarification round
-                            </button>
-                            <span className="text-[10px] text-gray-600">Saves questions to the clarification tracker below</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* ── Discovery Call Pack ──────────────────────────── */}
-                      {intakePath === "discovery_call" && (
-                        <div className="px-4 py-4 rounded-lg border border-blue-500/20 bg-blue-500/5 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-[10px] text-blue-400 uppercase tracking-wide font-medium">
-                              Discovery call preparation pack
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(buildDiscoveryCallPrep());
-                                setBriefPromptCopied(true);
-                                setTimeout(() => setBriefPromptCopied(false), 2000);
-                              }}
-                              className="px-2.5 py-1 rounded text-[10px] font-medium bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors"
-                            >
-                              {briefPromptCopied ? "Copied ✓" : "Copy pack"}
-                            </button>
-                          </div>
-                          <textarea
-                            readOnly
-                            value={buildDiscoveryCallPrep()}
-                            rows={16}
-                            className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono resize-y focus:outline-none leading-relaxed"
-                          />
-                          <div className="space-y-2">
-                            <p className="text-[10px] text-blue-400/70 uppercase tracking-wide font-medium">Scheduling (Microsoft-first)</p>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <a
-                                href={`https://outlook.office.com/calendar/action/compose?subject=Discovery+Call+-+${encodeURIComponent(lead?.company_name ?? lead?.contact_name ?? "Client")}&body=${encodeURIComponent("Hi " + ((lead?.contact_name ?? "").split(" ")[0] || "there") + ",\n\nI'd like to schedule a quick discovery call to discuss your project in more detail. Would any of the following times work?\n\n• [Option 1]\n• [Option 2]\n• [Option 3]\n\nBest,\nPhil")}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-blue-600/80 hover:bg-blue-600 text-white transition-colors inline-block"
-                              >
-                                Open Outlook Calendar
-                              </a>
-                              <a
-                                href={`https://teams.microsoft.com/l/meeting/new?subject=Discovery+Call+-+${encodeURIComponent(lead?.company_name ?? lead?.contact_name ?? "Client")}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-colors inline-block"
-                              >
-                                New Teams Meeting
-                              </a>
-                            </div>
-                          </div>
-                          <div className="pt-2 border-t border-blue-500/10">
-                            <p className="text-[10px] text-gray-500">After the call, update the brief fields below and click <strong className="text-gray-400">Proceed to brief</strong> to move forward.</p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* ── Proceed to Brief — just confirms ─────────────── */}
-                      {intakePath === "proceed_to_brief" && (
-                        <div className="px-4 py-3 rounded-lg border border-green-500/20 bg-green-500/5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-green-400">✓ Proceeding directly to proposal.</span>
-                            <span className="text-[10px] text-gray-500">Complete the structured brief below, then generate the proposal prompt.</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Contact strategy indicator (legacy) */}
-                      {contactStrategy && (
-                        <p className="text-[10px] text-indigo-400/70">
-                          📞 Contact strategy: {contactStrategy === "bookings" ? "Microsoft Bookings link sent" : contactStrategy === "teams" ? "Microsoft Teams call offered" : "Phone call offered"}
-                        </p>
-                      )}
+                {/* ── Proposal prompt ─────────────────────────────────── */}
+                <div className="pt-3 border-t border-white/5">
+                  {(scopeReady === true || overrideScopeWarning) && briefSummary.trim() && (
+                    <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-green-500/5 border border-green-500/10">
+                      <span className="text-[10px] text-green-400 font-medium">✓ Brief confirmed</span>
+                      <span className="text-[10px] text-gray-500">→ Generate proposal prompt</span>
                     </div>
                   )}
-
-                  {/* ── C. Structured brief fields ────────────────────── */}
-                  <div className="pt-3 border-t border-white/5">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-3">Structured brief</p>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project summary</label>
-                        <textarea
-                          value={briefSummary}
-                          onChange={(e) => setBriefSummary(e.target.value)}
-                          placeholder="2–3 sentence overview of what the client needs…"
-                          rows={3}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project type</label>
-                        <textarea
-                          value={briefType}
-                          onChange={(e) => setBriefType(e.target.value)}
-                          placeholder="e.g. brochure site, web app, e-commerce, redesign…"
-                          rows={3}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Recommended solution</label>
-                      <textarea
-                        value={briefSolution}
-                        onChange={(e) => setBriefSolution(e.target.value)}
-                        placeholder="What OTwoOne should build and how…"
-                        rows={3}
-                        className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mt-4">
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested pages</label>
-                        <textarea
-                          value={briefPages}
-                          onChange={(e) => setBriefPages(e.target.value)}
-                          placeholder="Homepage, About, Services, Contact…"
-                          rows={3}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested features</label>
-                        <textarea
-                          value={briefFeatures}
-                          onChange={(e) => setBriefFeatures(e.target.value)}
-                          placeholder="Contact form, blog, booking…"
-                          rows={3}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested integrations</label>
-                        <textarea
-                          value={briefIntegrations}
-                          onChange={(e) => setBriefIntegrations(e.target.value)}
-                          placeholder="Stripe, Google Analytics, CRM…"
-                          rows={3}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-4">
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Timeline estimate</label>
-                        <textarea
-                          value={briefTimeline}
-                          onChange={(e) => setBriefTimeline(e.target.value)}
-                          placeholder="Realistic delivery window…"
-                          rows={2}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Budget positioning</label>
-                        <textarea
-                          value={briefBudget}
-                          onChange={(e) => setBriefBudget(e.target.value)}
-                          placeholder="Where this sits vs stated budget…"
-                          rows={2}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-4">
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Risks &amp; unknowns</label>
-                        <textarea
-                          value={briefRisks}
-                          onChange={(e) => setBriefRisks(e.target.value)}
-                          placeholder="Anything unclear, missing, or risky…"
-                          rows={3}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Follow-up questions</label>
-                        <textarea
-                          value={briefFollowUp}
-                          onChange={(e) => setBriefFollowUp(e.target.value)}
-                          placeholder="Questions to ask the client before proceeding…"
-                          rows={3}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ── D. Proposal prompt (gated: ready OR override) ───── */}
-                  <div className="pt-3 border-t border-white/5">
-                    {/* Transition indicator */}
-                    {(scopeReady === true || overrideScopeWarning) && briefSummary.trim() && (
-                      <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-green-500/5 border border-green-500/10">
-                        <span className="text-[10px] text-green-400 font-medium">✓ Brief confirmed</span>
-                        <span className="text-[10px] text-gray-500">→ Generate proposal prompt</span>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal prompt</span>
-                      <button
-                        type="button"
-                        disabled={!briefSummary.trim() || (scopeReady === false && !overrideScopeWarning)}
-                        onClick={() => {
-                          setBriefPromptOutput(buildBriefPrompt());
-                          setBriefPromptCopied(false);
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        Generate proposal prompt
-                      </button>
-                    </div>
-                    {scopeReady === false && !overrideScopeWarning && briefSummary.trim() && !briefPromptOutput && (
-                      <p className="text-xs text-amber-400/60">Scope needs clarification. Override or clarify to unlock proposal generation.</p>
-                    )}
-                    {!briefSummary.trim() && !briefPromptOutput && (
-                      <p className="text-xs text-gray-700">Fill in the structured brief above to generate a proposal prompt.</p>
-                    )}
-                    {briefPromptOutput && (
-                      <div className="relative">
-                        <textarea
-                          readOnly
-                          value={briefPromptOutput}
-                          rows={14}
-                          className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none leading-relaxed"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(briefPromptOutput);
-                            setBriefPromptCopied(true);
-                            setTimeout(() => setBriefPromptCopied(false), 2000);
-                          }}
-                          className="absolute top-2 right-2 px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
-                        >
-                          {briefPromptCopied ? "Copied ✓" : "Copy"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ── E. Proposal draft ─────────────────────────────── */}
-                  <div className="pt-3 border-t border-white/5">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal draft</span>
-                      {briefProposal.trim() && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(briefProposal);
-                            setProposalCopied(true);
-                            setTimeout(() => setProposalCopied(false), 2000);
-                          }}
-                          className="px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
-                        >
-                          {proposalCopied ? "Copied ✓" : "Copy proposal"}
-                        </button>
-                      )}
-                    </div>
-                    <textarea
-                      value={briefProposal}
-                      onChange={(e) => setBriefProposal(e.target.value)}
-                      placeholder="Paste or write the proposal email draft here. This can be AI-generated, manually written, or a combination."
-                      rows={8}
-                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
-                    />
-                  </div>
-
-                  {/* ── Save bar ──────────────────────────────────────── */}
-                  <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                    <div className="flex items-center gap-3">
-                      <span className={cx("text-xs transition-opacity", briefSaved ? "text-green-400 opacity-100" : "opacity-0")}>
-                        Saved
-                      </span>
-                      {brief && (
-                        <span className="text-[10px] text-gray-700">
-                          Last updated {fmtDateTime(brief.updated_at)}
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal prompt</span>
                     <button
-                      onClick={saveBrief}
-                      disabled={briefSaving}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                      type="button"
+                      disabled={!briefSummary.trim() || (scopeReady === false && !overrideScopeWarning)}
+                      onClick={() => {
+                        setBriefPromptOutput(buildBriefPrompt());
+                        setBriefPromptCopied(false);
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      {briefSaving ? "Saving…" : "Save brief"}
+                      Generate proposal prompt
                     </button>
                   </div>
+                  {scopeReady === false && !overrideScopeWarning && briefSummary.trim() && !briefPromptOutput && (
+                    <p className="text-xs text-amber-400/60">Scope needs clarification. Override or clarify to unlock proposal generation.</p>
+                  )}
+                  {!briefSummary.trim() && !briefPromptOutput && (
+                    <p className="text-xs text-gray-700">Complete the analysis in System Analysis above to generate a proposal prompt.</p>
+                  )}
+                  {briefPromptOutput && (
+                    <div className="relative">
+                      <textarea
+                        readOnly
+                        value={briefPromptOutput}
+                        rows={14}
+                        className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none leading-relaxed"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(briefPromptOutput);
+                          setBriefPromptCopied(true);
+                          setTimeout(() => setBriefPromptCopied(false), 2000);
+                        }}
+                        className="absolute top-2 right-2 px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                      >
+                        {briefPromptCopied ? "Copied ✓" : "Copy"}
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* ── Proposal draft ──────────────────────────────────── */}
+                <div className="pt-3 border-t border-white/5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal draft</span>
+                    {briefProposal.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(briefProposal);
+                          setProposalCopied(true);
+                          setTimeout(() => setProposalCopied(false), 2000);
+                        }}
+                        className="px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                      >
+                        {proposalCopied ? "Copied ✓" : "Copy proposal"}
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={briefProposal}
+                    onChange={(e) => setBriefProposal(e.target.value)}
+                    placeholder="Paste or write the proposal email draft here. This can be AI-generated, manually written, or a combination."
+                    rows={8}
+                    className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
+                  />
+                </div>
+
+                {/* ── Save all ──────────────────────────────────────── */}
+                <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                  <div className="flex items-center gap-3">
+                    <span className={cx("text-xs transition-opacity", briefSaved ? "text-green-400 opacity-100" : "opacity-0")}>
+                      Saved
+                    </span>
+                    {brief && (
+                      <span className="text-[10px] text-gray-700">
+                        Last updated {fmtDateTime(brief.updated_at)}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={saveBrief}
+                    disabled={briefSaving}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                  >
+                    {briefSaving ? "Saving…" : "Save all"}
+                  </button>
+                </div>
+
+              </div>
             </Section>
 
             {/* ── Discovery call modal ────────────────────────────── */}
