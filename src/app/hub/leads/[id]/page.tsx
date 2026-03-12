@@ -1002,35 +1002,132 @@ export default function LeadDetailPage() {
     }
   }, [briefAccessible, briefLoading, lead, bootstrapDone, bootstrapBriefFromEnquiry]);
 
-  // ── Recommended next action (deterministic from enquiry richness) ───────────
+  // ── Stage-1 recommendation engine (deterministic) ───────────────────────────
 
-  const recommendedNextAction = useMemo(() => {
+  type Stage1Recommendation = {
+    path: IntakePath;
+    label: string;
+    colour: "green" | "blue" | "amber";
+    reason: string;
+    confidence: "high" | "medium" | "low";
+  };
+
+  const stage1Recommendation = useMemo((): Stage1Recommendation | null => {
     if (!lead) return null;
-    // Only show for early stages
     if (!['lead_submitted', 'scoping_sent'].includes(status)) return null;
 
-    const hasEmail = Boolean(lead.contact_email);
+    const totalScore = lead.total_score ?? 0;
+    const complexity = lead.complexity_score ?? 0;
+    const clarity = lead.clarity_score ?? 0;
+    const authority = lead.authority_score ?? 0;
     const hasBudget = Boolean(lead.budget && lead.budget !== "not_sure");
     const hasTimeline = Boolean(lead.timeline);
     const hasSuccessDef = Boolean(lead.lead_details?.success_definition);
     const hasClarifiers = Boolean(lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0);
-    const totalScore = lead.total_score ?? 0;
 
-    // Rich enquiry with good scores → proceed to scoping email
-    if (totalScore >= 4 && hasBudget && hasTimeline && hasSuccessDef) {
-      return { action: "Send scoping email", colour: "green" as const, detail: "Strong enquiry with clear budget, timeline, and success criteria — ready for scoping." };
+    // Detect complexity signals from clarifier answers and success definition
+    const allText = [
+      lead.lead_details?.success_definition ?? "",
+      ...Object.values(lead.lead_details?.clarifier_answers ?? {}),
+    ].join(" ").toLowerCase();
+
+    const complexityKeywords = ["workflow", "integration", "api", "automation", "custom", "crm", "erp", "booking system", "portal", "dashboard", "login", "auth", "database", "multi-step", "inventory", "scheduling"];
+    const complexityHits = complexityKeywords.filter(kw => allText.includes(kw)).length;
+    const isComplex = complexity >= 4 || complexityHits >= 2;
+
+    const isHighBudget = lead.budget === "10k_20k" || lead.budget === "20k_plus";
+    const engagementType = lead.engagement_type ?? "";
+
+    // ── Decision tree ──
+
+    // Complex / operational / custom workflow → discovery call
+    if (isComplex && (isHighBudget || engagementType === "consultation")) {
+      return {
+        path: "discovery_call",
+        label: "Schedule discovery call",
+        colour: "blue",
+        reason: `Complex project (${complexityHits > 0 ? complexityHits + " workflow signals" : "high complexity score"}) with ${isHighBudget ? "significant budget" : "consultation engagement"} — call recommended to align on scope.`,
+        confidence: "high",
+      };
     }
-    // Moderate enquiry → send clarification questions
-    if (totalScore >= 3 || (hasBudget && hasTimeline)) {
-      return { action: "Send clarification questions", colour: "amber" as const, detail: "Decent lead but missing detail — follow up with targeted questions before scoping." };
+    if (isComplex) {
+      return {
+        path: "discovery_call",
+        label: "Schedule discovery call",
+        colour: "blue",
+        reason: `Operational complexity detected (${complexityHits > 0 ? complexityKeywords.filter(kw => allText.includes(kw)).slice(0, 3).join(", ") : "high complexity score"}) — a call will surface requirements faster than email.`,
+        confidence: "medium",
+      };
     }
-    // Has email but thin data → request more info
-    if (hasEmail && (!hasBudget || !hasTimeline || !hasClarifiers)) {
-      return { action: "Request more information", colour: "amber" as const, detail: "Contact details present but enquiry lacks substance — ask for budget, timeline, or project details." };
+
+    // Strong enquiry, clear scope → proceed to brief
+    if (totalScore >= 4 && clarity >= 4 && hasBudget && hasTimeline && hasSuccessDef) {
+      return {
+        path: "proceed_to_brief",
+        label: "Proceed to brief",
+        colour: "green",
+        reason: "Strong, clear enquiry with budget, timeline, and success criteria defined — ready to draft proposal.",
+        confidence: "high",
+      };
     }
-    // Low quality / minimal data
-    return { action: "Review manually", colour: "gray" as const, detail: "Insufficient data for automated recommendation — review the raw submission and decide." };
+
+    // Good data but not fully clear → scoping email
+    if ((totalScore >= 3 || (hasBudget && hasTimeline)) && clarity >= 3) {
+      return {
+        path: "clarification_email",
+        label: "Send scoping email",
+        colour: "amber",
+        reason: "Reasonable enquiry but needs targeted follow-up to fill scope gaps before proposing.",
+        confidence: "medium",
+      };
+    }
+
+    // Decent authority/budget but thin detail → scoping email
+    if (hasBudget || authority >= 3 || hasClarifiers) {
+      return {
+        path: "clarification_email",
+        label: "Send scoping email",
+        colour: "amber",
+        reason: "Some substance present but missing key project details — follow up with scoping questions.",
+        confidence: "low",
+      };
+    }
+
+    // Minimal data → scoping email (safest default)
+    return {
+      path: "clarification_email",
+      label: "Send scoping email",
+      colour: "amber",
+      reason: "Insufficient data for confident recommendation — start with a scoping email to gather requirements.",
+      confidence: "low",
+    };
   }, [lead, status]);
+
+  // ── Stage-1 path selection (persists intake_path + contact_strategy) ────────
+
+  const [stage1Saving, setStage1Saving] = useState(false);
+
+  async function selectStage1Path(path: IntakePath, strategy?: "bookings" | "teams" | "phone" | null) {
+    setStage1Saving(true);
+    setIntakePath(path);
+    const patch: Record<string, unknown> = { intake_path: path };
+    if (strategy !== undefined) {
+      setContactStrategy(strategy);
+      patch.contact_strategy = strategy;
+    }
+    await safeFetch(`/api/hub/leads/${id}/brief`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    setStage1Saving(false);
+  }
+
+  // ── Microsoft Bookings URL (env-configurable) ──────────────────────────────
+
+  const bookingsUrl = typeof window !== "undefined"
+    ? (process.env.NEXT_PUBLIC_BOOKINGS_URL ?? "")
+    : "";
 
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
@@ -1998,66 +2095,236 @@ export default function LeadDetailPage() {
           </div>
         </Section>
 
-        {/* ── Qualification ──────────────────────────────────────────────── */}
+        {/* ── Qualification — stage-1 decision workflow ─────────────────── */}
         {briefAccessible && (
           <Section title="Qualification">
-            <div className="space-y-2">
-              {/* Recommended next action — early stages only */}
-              {recommendedNextAction && (
+            <div className="space-y-3">
+
+              {/* ── Recommendation banner (early stages) ── */}
+              {stage1Recommendation && (
                 <div className={cx(
-                  "px-3 py-2.5 rounded-lg border mb-3",
-                  recommendedNextAction.colour === "green" && "bg-green-500/5 border-green-500/20",
-                  recommendedNextAction.colour === "amber" && "bg-amber-500/5 border-amber-500/20",
-                  recommendedNextAction.colour === "gray" && "bg-gray-500/5 border-gray-500/20",
+                  "px-3 py-2.5 rounded-lg border",
+                  stage1Recommendation.colour === "green" && "bg-green-500/5 border-green-500/20",
+                  stage1Recommendation.colour === "blue" && "bg-blue-500/5 border-blue-500/20",
+                  stage1Recommendation.colour === "amber" && "bg-amber-500/5 border-amber-500/20",
                 )}>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-[10px] text-gray-500 uppercase tracking-wide">Recommended</span>
                     <span className={cx(
                       "text-xs font-medium",
-                      recommendedNextAction.colour === "green" && "text-green-400",
-                      recommendedNextAction.colour === "amber" && "text-amber-400",
-                      recommendedNextAction.colour === "gray" && "text-gray-400",
-                    )}>{recommendedNextAction.action}</span>
+                      stage1Recommendation.colour === "green" && "text-green-400",
+                      stage1Recommendation.colour === "blue" && "text-blue-400",
+                      stage1Recommendation.colour === "amber" && "text-amber-400",
+                    )}>{stage1Recommendation.label}</span>
+                    <span className={cx(
+                      "px-1.5 py-0.5 rounded text-[9px] font-medium uppercase tracking-wider",
+                      stage1Recommendation.confidence === "high" && "bg-green-500/10 text-green-500",
+                      stage1Recommendation.confidence === "medium" && "bg-yellow-500/10 text-yellow-500",
+                      stage1Recommendation.confidence === "low" && "bg-gray-500/10 text-gray-500",
+                    )}>{stage1Recommendation.confidence}</span>
                   </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">{recommendedNextAction.detail}</p>
+                  <p className="text-xs text-gray-500 leading-relaxed">{stage1Recommendation.reason}</p>
                 </div>
               )}
-              <Row label="Scope ready" value={
-                scopeReady === true
-                  ? <span className="text-green-400 text-sm font-medium">Ready</span>
-                  : scopeReady === false
-                    ? <span className="text-amber-400 text-sm font-medium">Not ready</span>
+
+              {/* ── Decision path selector (early stages) ── */}
+              {['lead_submitted', 'scoping_sent'].includes(status) && (
+                <div className="space-y-3">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Choose workflow path</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      disabled={stage1Saving}
+                      onClick={() => selectStage1Path("clarification_email")}
+                      className={cx(
+                        "px-3 py-3 rounded-lg text-xs font-medium border transition-all text-left relative",
+                        intakePath === "clarification_email"
+                          ? "border-amber-500 bg-amber-500/10 text-amber-200 ring-1 ring-amber-500/30"
+                          : "border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300"
+                      )}
+                    >
+                      {stage1Recommendation?.path === "clarification_email" && intakePath !== "clarification_email" && (
+                        <span className="absolute -top-1.5 -right-1.5 px-1 py-0.5 rounded text-[8px] font-bold uppercase bg-amber-500 text-black">Rec</span>
+                      )}
+                      <span className="block font-semibold mb-0.5">✉️ Send scoping email</span>
+                      <span className="block text-[10px] opacity-70">Clarify requirements via email</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={stage1Saving}
+                      onClick={() => selectStage1Path("discovery_call", "bookings")}
+                      className={cx(
+                        "px-3 py-3 rounded-lg text-xs font-medium border transition-all text-left relative",
+                        intakePath === "discovery_call"
+                          ? "border-blue-500 bg-blue-500/10 text-blue-200 ring-1 ring-blue-500/30"
+                          : "border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300"
+                      )}
+                    >
+                      {stage1Recommendation?.path === "discovery_call" && intakePath !== "discovery_call" && (
+                        <span className="absolute -top-1.5 -right-1.5 px-1 py-0.5 rounded text-[8px] font-bold uppercase bg-blue-500 text-black">Rec</span>
+                      )}
+                      <span className="block font-semibold mb-0.5">📞 Discovery call</span>
+                      <span className="block text-[10px] opacity-70">Schedule via Bookings / Teams</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={stage1Saving}
+                      onClick={() => selectStage1Path("proceed_to_brief")}
+                      className={cx(
+                        "px-3 py-3 rounded-lg text-xs font-medium border transition-all text-left relative",
+                        intakePath === "proceed_to_brief"
+                          ? "border-green-500 bg-green-500/10 text-green-200 ring-1 ring-green-500/30"
+                          : "border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300"
+                      )}
+                    >
+                      {stage1Recommendation?.path === "proceed_to_brief" && intakePath !== "proceed_to_brief" && (
+                        <span className="absolute -top-1.5 -right-1.5 px-1 py-0.5 rounded text-[8px] font-bold uppercase bg-green-500 text-black">Rec</span>
+                      )}
+                      <span className="block font-semibold mb-0.5">✅ Proceed to brief</span>
+                      <span className="block text-[10px] opacity-70">Scope is clear — draft proposal</span>
+                    </button>
+                  </div>
+
+                  {/* ── Next action: Scoping email ── */}
+                  {intakePath === "clarification_email" && (
+                    <div className="px-4 py-3 rounded-lg border border-amber-500/20 bg-amber-500/5 space-y-2">
+                      <p className="text-[10px] text-amber-400 uppercase tracking-wide font-medium">Next step</p>
+                      <p className="text-xs text-gray-400">Advance this lead to <strong className="text-gray-300">Scoping sent</strong> and send a scoping / clarification email from the Clarifications section below.</p>
+                      {lead?.contact_email && (
+                        <p className="text-[10px] text-gray-500">Client email: <span className="text-gray-300">{lead.contact_email}</span></p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Next action: Discovery call setup ── */}
+                  {intakePath === "discovery_call" && (
+                    <div className="px-4 py-3 rounded-lg border border-blue-500/20 bg-blue-500/5 space-y-3">
+                      <p className="text-[10px] text-blue-400 uppercase tracking-wide font-medium">Schedule discovery call</p>
+                      <div className="space-y-2">
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Contact strategy</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => selectStage1Path("discovery_call", "bookings")}
+                            disabled={stage1Saving}
+                            className={cx(
+                              "px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all",
+                              contactStrategy === "bookings"
+                                ? "border-blue-500 bg-blue-500/15 text-blue-300"
+                                : "border-white/10 text-gray-400 hover:border-blue-500/30 hover:text-blue-400"
+                            )}
+                          >
+                            Microsoft Bookings
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => selectStage1Path("discovery_call", "teams")}
+                            disabled={stage1Saving}
+                            className={cx(
+                              "px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all",
+                              contactStrategy === "teams"
+                                ? "border-blue-500 bg-blue-500/15 text-blue-300"
+                                : "border-white/10 text-gray-400 hover:border-blue-500/30 hover:text-blue-400"
+                            )}
+                          >
+                            Microsoft Teams
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => selectStage1Path("discovery_call", "phone")}
+                            disabled={stage1Saving}
+                            className={cx(
+                              "px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all",
+                              contactStrategy === "phone"
+                                ? "border-blue-500 bg-blue-500/15 text-blue-300"
+                                : "border-white/10 text-gray-400 hover:border-blue-500/30 hover:text-blue-400"
+                            )}
+                          >
+                            Phone call
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap pt-1">
+                        {bookingsUrl ? (
+                          <a
+                            href={bookingsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-blue-600/80 hover:bg-blue-600 text-white transition-colors inline-block"
+                          >
+                            Open Bookings page
+                          </a>
+                        ) : (
+                          <a
+                            href={`https://outlook.office.com/calendar/action/compose?subject=Discovery+Call+-+${encodeURIComponent(lead?.company_name ?? lead?.contact_name ?? "Client")}&body=${encodeURIComponent("Hi " + ((lead?.contact_name ?? "").split(" ")[0] || "there") + ",\n\nI'd like to schedule a quick discovery call to discuss your project in more detail. Would any of the following times work?\n\n• [Option 1]\n• [Option 2]\n• [Option 3]\n\nBest,\nPhil")}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-blue-600/80 hover:bg-blue-600 text-white transition-colors inline-block"
+                          >
+                            Open Outlook Calendar
+                          </a>
+                        )}
+                        <a
+                          href={`https://teams.microsoft.com/l/meeting/new?subject=Discovery+Call+-+${encodeURIComponent(lead?.company_name ?? lead?.contact_name ?? "Client")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-colors inline-block"
+                        >
+                          New Teams Meeting
+                        </a>
+                      </div>
+                      {lead?.contact_email && (
+                        <p className="text-[10px] text-gray-500">Client email: <span className="text-gray-300">{lead.contact_email}</span></p>
+                      )}
+                      <p className="text-[10px] text-gray-600 pt-1 border-t border-blue-500/10">After the call, update the brief in the Project Brief section and choose <strong className="text-gray-500">Proceed to brief</strong>.</p>
+                    </div>
+                  )}
+
+                  {/* ── Next action: Proceed to brief ── */}
+                  {intakePath === "proceed_to_brief" && (
+                    <div className="px-4 py-3 rounded-lg border border-green-500/20 bg-green-500/5">
+                      <p className="text-[10px] text-green-400 uppercase tracking-wide font-medium mb-1">Next step</p>
+                      <p className="text-xs text-gray-400">Advance this lead to <strong className="text-gray-300">Scope received</strong> to unlock the full Project Brief editor and generate a proposal.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Status rows (all stages) ── */}
+              <div className={cx("space-y-2", ['lead_submitted', 'scoping_sent'].includes(status) && "pt-2 border-t border-white/5")}>
+                <Row label="Intake path" value={
+                  intakePath
+                    ? <span className={cx(
+                        "text-sm font-medium",
+                        intakePath === "clarification_email" && "text-amber-400",
+                        intakePath === "discovery_call" && "text-blue-400",
+                        intakePath === "proceed_to_brief" && "text-green-400",
+                      )}>
+                        {intakePath === "clarification_email" ? "Scoping email" : intakePath === "discovery_call" ? "Discovery call" : "Proceed to brief"}
+                      </span>
                     : <span className="text-gray-600 text-sm">Not set</span>
-              } />
-              <Row label="Readiness reason" value={
-                readinessReason
-                  ? <span className="text-sm text-gray-300">{readinessReason}</span>
-                  : <span className="text-gray-600 text-sm">Not set</span>
-              } />
-              <Row label="Contact strategy" value={
-                contactStrategy
-                  ? <span className="text-sm text-gray-300">
-                      {contactStrategy === "bookings" ? "Microsoft Bookings" : contactStrategy === "teams" ? "Microsoft Teams" : contactStrategy === "phone" ? "Phone call" : contactStrategy}
-                    </span>
-                  : <span className="text-gray-600 text-sm">Not set</span>
-              } />
-              <Row label="Intake path" value={
-                intakePath
-                  ? <span className={cx(
-                      "text-sm font-medium",
-                      intakePath === "clarification_email" && "text-amber-400",
-                      intakePath === "discovery_call" && "text-blue-400",
-                      intakePath === "proceed_to_brief" && "text-green-400",
-                    )}>
-                      {intakePath === "clarification_email" ? "Clarification email" : intakePath === "discovery_call" ? "Discovery call" : "Proceed to brief"}
-                    </span>
-                  : <span className="text-gray-600 text-sm">Not set</span>
-              } />
-              <Row label="Override" value={
-                overrideScopeWarning
-                  ? <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-amber-500/15 text-amber-400">Override used</span>
-                  : <span className="text-gray-600 text-sm">No</span>
-              } />
+                } />
+                <Row label="Contact strategy" value={
+                  contactStrategy
+                    ? <span className="text-sm text-gray-300">
+                        {contactStrategy === "bookings" ? "Microsoft Bookings" : contactStrategy === "teams" ? "Microsoft Teams" : contactStrategy === "phone" ? "Phone call" : contactStrategy}
+                      </span>
+                    : <span className="text-gray-600 text-sm">Not set</span>
+                } />
+                <Row label="Scope ready" value={
+                  scopeReady === true
+                    ? <span className="text-green-400 text-sm font-medium">Ready</span>
+                    : scopeReady === false
+                      ? <span className="text-amber-400 text-sm font-medium">Not ready</span>
+                      : <span className="text-gray-600 text-sm">Not set</span>
+                } />
+                {readinessReason && (
+                  <Row label="Readiness reason" value={<span className="text-sm text-gray-300">{readinessReason}</span>} />
+                )}
+                {overrideScopeWarning && (
+                  <Row label="Override" value={<span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-amber-500/15 text-amber-400">Override used</span>} />
+                )}
+              </div>
             </div>
           </Section>
         )}
