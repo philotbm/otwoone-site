@@ -470,17 +470,109 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 // ─── Score bar ─────────────────────────────────────────────────────────────────
 
-function ScoreBar({ score }: { score: number | null }) {
-  if (score == null) return <span className="text-gray-600 text-sm">—</span>;
-  const pct = (score / 5) * 100;
-  const colour = score >= 4 ? "bg-green-500" : score >= 3 ? "bg-yellow-500" : "bg-red-500";
+// ScoreBar removed v1.68.3 — replaced by Decision Signals
+
+type SignalLevel = "Weak" | "Moderate" | "Strong";
+type BudgetClarity = "Unknown" | "Partial" | "Clear";
+type ScopeMaturity = "Early" | "Developing" | "Defined";
+type CommercialFit = "Needs review" | "Likely fit" | "Strong fit" | "Budget risk";
+
+type DecisionSignals = {
+  inputQuality: SignalLevel;
+  budgetClarity: BudgetClarity;
+  scopeMaturity: ScopeMaturity;
+  commercialFit: CommercialFit;
+  nextBestAction: string;
+};
+
+function useDecisionSignals(lead: Lead | null, pricingRec: { pricingFit?: string; deliveryClass?: string } | null, stage1Rec: { label?: string } | null): DecisionSignals | null {
+  return useMemo(() => {
+    if (!lead) return null;
+
+    // ── Input quality ──
+    const successDef = lead.lead_details?.success_definition?.trim() ?? "";
+    const clarifiers = lead.lead_details?.clarifier_answers ?? {};
+    const clarifierCount = Object.keys(clarifiers).length;
+    const clarifierText = Object.values(clarifiers).join(" ");
+    const allInputText = [successDef, clarifierText].join(" ").trim();
+    const hasSubstantiveSuccess = successDef.length >= 15 && !/^(test|n\/a|tbd|not sure|nothing|placeholder|unknown)$/i.test(successDef);
+
+    let inputQuality: SignalLevel = "Weak";
+    if (hasSubstantiveSuccess && clarifierCount >= 2 && allInputText.length > 80) {
+      inputQuality = "Strong";
+    } else if ((hasSubstantiveSuccess || clarifierCount >= 1) && allInputText.length > 30) {
+      inputQuality = "Moderate";
+    }
+
+    // ── Budget clarity ──
+    let budgetClarity: BudgetClarity = "Unknown";
+    if (lead.budget && lead.budget !== "not_sure") {
+      budgetClarity = "Clear";
+    } else if (lead.budget === "not_sure") {
+      budgetClarity = "Partial";
+    }
+
+    // ── Scope maturity ──
+    const hasTimeline = Boolean(lead.timeline);
+    const hasEngagement = Boolean(lead.engagement_type);
+    const complexityKeywords = ["workflow", "integration", "api", "automation", "custom", "crm", "erp", "booking", "portal", "dashboard", "login", "auth", "database", "inventory", "scheduling"];
+    const complexityHits = complexityKeywords.filter(kw => allInputText.toLowerCase().includes(kw)).length;
+
+    let scopeMaturity: ScopeMaturity = "Early";
+    if (hasSubstantiveSuccess && hasTimeline && hasEngagement && (clarifierCount >= 2 || complexityHits >= 2)) {
+      scopeMaturity = "Defined";
+    } else if ((hasSubstantiveSuccess || clarifierCount >= 1) && (hasTimeline || hasEngagement)) {
+      scopeMaturity = "Developing";
+    }
+
+    // ── Commercial fit ──
+    let commercialFit: CommercialFit = "Needs review";
+    if (pricingRec) {
+      if (pricingRec.pricingFit === "Tight") {
+        commercialFit = "Budget risk";
+      } else if (pricingRec.pricingFit === "Premium") {
+        commercialFit = "Strong fit";
+      } else if (pricingRec.pricingFit === "Feasible") {
+        commercialFit = "Likely fit";
+      } else if (pricingRec.deliveryClass === "Needs review") {
+        commercialFit = "Needs review";
+      }
+    } else if (budgetClarity === "Clear" && scopeMaturity !== "Early") {
+      commercialFit = "Likely fit";
+    }
+
+    // ── Next best action ──
+    const nextBestAction = stage1Rec?.label ?? "Review enquiry data";
+
+    return { inputQuality, budgetClarity, scopeMaturity, commercialFit, nextBestAction };
+  }, [lead, pricingRec, stage1Rec]);
+}
+
+const SIGNAL_COLOURS: Record<string, string> = {
+  // Input quality
+  Weak:           "bg-red-500/15 text-red-400",
+  Moderate:       "bg-amber-500/15 text-amber-400",
+  Strong:         "bg-green-500/15 text-green-400",
+  // Budget clarity
+  Unknown:        "bg-red-500/15 text-red-400",
+  Partial:        "bg-amber-500/15 text-amber-400",
+  Clear:          "bg-green-500/15 text-green-400",
+  // Scope maturity
+  Early:          "bg-red-500/15 text-red-400",
+  Developing:     "bg-amber-500/15 text-amber-400",
+  Defined:        "bg-green-500/15 text-green-400",
+  // Commercial fit
+  "Needs review": "bg-gray-500/15 text-gray-400",
+  "Likely fit":   "bg-amber-500/15 text-amber-400",
+  "Strong fit":   "bg-green-500/15 text-green-400",
+  "Budget risk":  "bg-red-500/15 text-red-400",
+};
+
+function SignalPill({ value }: { value: string }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
-        <div className={cx("h-full rounded-full", colour)} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs text-gray-400 w-6">{score}/5</span>
-    </div>
+    <span className={cx("inline-block px-2 py-0.5 rounded text-[11px] font-medium", SIGNAL_COLOURS[value] ?? "bg-gray-500/15 text-gray-400")}>
+      {value}
+    </span>
   );
 }
 
@@ -1162,15 +1254,14 @@ export default function LeadDetailPage() {
       sections.push("## Success definition\n" + lead.lead_details.success_definition);
     }
 
-    // 4. Internal scoring
-    if (lead.total_score != null) {
-      const scoreLines = [`Total: ${Number(lead.total_score).toFixed(1)}/5`];
-      if (lead.clarity_score != null) scoreLines.push(`Clarity: ${lead.clarity_score}/5`);
-      if (lead.alignment_score != null) scoreLines.push(`Alignment: ${lead.alignment_score}/5`);
-      if (lead.complexity_score != null) scoreLines.push(`Complexity: ${lead.complexity_score}/5`);
-      if (lead.authority_score != null) scoreLines.push(`Authority: ${lead.authority_score}/5`);
-      sections.push("## Internal scoring\n" + scoreLines.join("\n"));
-    }
+    // 4. Decision signals context (raw scores still useful for AI analysis)
+    const sigLines: string[] = [];
+    if (lead.total_score != null) sigLines.push(`Overall score: ${Number(lead.total_score).toFixed(1)}/5`);
+    if (lead.clarity_score != null) sigLines.push(`Clarity: ${lead.clarity_score}/5`);
+    if (lead.complexity_score != null) sigLines.push(`Complexity: ${lead.complexity_score}/5`);
+    if (lead.budget) sigLines.push(`Budget: ${lead.budget === "not_sure" ? "not sure" : lead.budget}`);
+    if (lead.timeline) sigLines.push(`Timeline: ${lead.timeline}`);
+    if (sigLines.length > 0) sections.push("## Decision signals\n" + sigLines.join("\n"));
 
     // 5. Workflow state
     const workflowLines: string[] = [];
@@ -1444,6 +1535,9 @@ export default function LeadDetailPage() {
       confidence,
     };
   }, [lead, briefSummary, briefType, briefSolution, briefIntegrations, briefFeatures, briefPages, briefRisks, briefBudget, briefTimeline, briefFollowUp]);
+
+  // ── Decision signals ─────────────────────────────────────────────────────────
+  const decisionSignals = useDecisionSignals(lead, pricingRecommendation, stage1Recommendation);
 
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
@@ -2222,42 +2316,34 @@ export default function LeadDetailPage() {
           )}
         </Section>
 
-        {/* Internal scoring */}
-        <Section title="Internal scoring">
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-24">Clarity</span>
-              <div className="flex-1"><ScoreBar score={lead.clarity_score} /></div>
+        {/* Decision signals — replaced Internal scoring v1.68.3 */}
+        <Section title="Decision signals">
+          {decisionSignals ? (
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Input quality</span>
+                <SignalPill value={decisionSignals.inputQuality} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Budget clarity</span>
+                <SignalPill value={decisionSignals.budgetClarity} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Scope maturity</span>
+                <SignalPill value={decisionSignals.scopeMaturity} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Commercial fit</span>
+                <SignalPill value={decisionSignals.commercialFit} />
+              </div>
+              <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                <span className="text-xs text-gray-500">Next best action</span>
+                <span className="text-xs font-medium text-indigo-400">{decisionSignals.nextBestAction}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-24">Alignment</span>
-              <div className="flex-1"><ScoreBar score={lead.alignment_score} /></div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-24">Complexity</span>
-              <div className="flex-1"><ScoreBar score={lead.complexity_score} /></div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-24">Authority</span>
-              <div className="flex-1"><ScoreBar score={lead.authority_score} /></div>
-            </div>
-            <div className="pt-2 border-t border-white/5 flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-24">Total</span>
-              <span className={cx(
-                "text-base font-semibold",
-                (lead.total_score ?? 0) >= 4 ? "text-green-400" :
-                (lead.total_score ?? 0) >= 3 ? "text-yellow-400" : "text-red-400"
-              )}>
-                {lead.total_score?.toFixed(1) ?? "—"}/5
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-24">Discovery rec.</span>
-              <span className="text-xs font-medium uppercase tracking-wide text-indigo-400">
-                {lead.discovery_depth_suggested ?? "—"}
-              </span>
-            </div>
-          </div>
+          ) : (
+            <p className="text-xs text-gray-600">Loading…</p>
+          )}
         </Section>
 
         {/* Lead stage */}
@@ -3199,7 +3285,7 @@ export default function LeadDetailPage() {
                 {/* ── Source signals ───────────────────────────────────── */}
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-[10px] text-gray-600">
-                    Signals: {lead?.engagement_type ? `${ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type}` : "no engagement type"} · {lead?.budget ? `${BUDGET_LABELS[lead.budget] ?? lead.budget}` : "no budget"} · complexity {lead?.complexity_score ?? "?"}/5 · total {lead?.total_score != null ? `${Number(lead.total_score).toFixed(1)}/5` : "?/5"}
+                    Signals: {lead?.engagement_type ? `${ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type}` : "no engagement type"} · {lead?.budget ? `${BUDGET_LABELS[lead.budget] ?? lead.budget}` : "no budget"}{decisionSignals ? ` · input ${decisionSignals.inputQuality.toLowerCase()} · scope ${decisionSignals.scopeMaturity.toLowerCase()}` : ""}
                   </span>
                 </div>
 
