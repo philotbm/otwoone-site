@@ -323,7 +323,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 };
 
 const NEXT_ACTION: Record<LeadStatus, string> = {
-  lead_submitted:    "Next: send scoping template",
+  lead_submitted:    "Next action managed in Qualification below",
   scoping_sent:      "Next: wait for scope",
   scope_received:    "Next: paste scoping reply → generate brief → draft proposal",
   proposal_sent:     "Next: request deposit",
@@ -742,7 +742,7 @@ export default function LeadDetailPage() {
   const [proposedPlan, setProposedPlan]         = useState("");
   const [reviewsIncluded, setReviewsIncluded]   = useState(2);
   const [reviewLimitError, setReviewLimitError] = useState("");
-  const [scopingError, setScopingError]         = useState("");
+  // scopingError removed v1.68.2 — scoping CTA moved to Qualification only
 
   // Project brief state
   const [brief,            setBrief]            = useState<LeadBrief | null>(null);
@@ -2281,63 +2281,7 @@ export default function LeadDetailPage() {
               </select>
               <p className="mt-1.5 text-xs text-gray-500">{NEXT_ACTION[status]}</p>
 
-              {/* Quick action */}
-              {status === "lead_submitted" && (
-                lead.contact_email ? (
-                  <div className="mt-3">
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={async () => {
-                        setScopingError("");
-                        setSaving(true);
-                        const result = await safeFetch(`/api/hub/leads/${id}`, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ status: "scoping_sent" }),
-                        });
-                        setSaving(false);
-                        if (!result.ok) {
-                          setScopingError(result.error);
-                          return;
-                        }
-                        setStatus("scoping_sent");
-                        fetchLead();
-                        const scopingBody = [
-                          `Hi ${lead.contact_name ?? "there"},`,
-                          ``,
-                          `Thanks for getting in touch with OTwoOne — great to hear from you.`,
-                          ``,
-                          `To put together the right approach and an accurate quote, it would be helpful to know a bit more about what you have in mind. If you could reply with answers to the following, that would be perfect:`,
-                          ``,
-                          `1. What pages or sections do you need? (e.g. homepage, about, services, contact, blog)`,
-                          `2. Are there any websites or designs you like as references?`,
-                          `3. Do you have a target launch date or deadline?`,
-                          `4. Any specific functionality or integrations? (e.g. booking, payments, forms, CRM)`,
-                          `5. Do you already have content, branding, or imagery — or will that need to be created?`,
-                          `6. Do you have an approximate budget range in mind? (completely optional, but helps us tailor the proposal)`,
-                          ``,
-                          `Once I have this, I'll come back with a clear recommendation and next steps.`,
-                          ``,
-                          `Looking forward to it.`,
-                        ].join('\n');
-                        window.location.href = `mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — Scoping your project")}&body=${encodeURIComponent(scopingBody)}`;
-                      }}
-                      className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-                    >
-                      Send scoping template
-                    </button>
-                    {scopingError && <p className="text-[11px] text-red-400 mt-1">{scopingError}</p>}
-                  </div>
-                ) : (
-                  <div className="mt-3">
-                    <button disabled className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 opacity-40 text-white cursor-not-allowed">
-                      Send scoping template
-                    </button>
-                    <p className="text-[11px] text-gray-600 mt-1">No email on lead.</p>
-                  </div>
-                )
-              )}
+              {/* Scoping CTA removed v1.68.2 — Qualification is the single source of truth for early-stage workflow actions */}
               {status === "deposit_received" && (
                 <button
                   type="button"
