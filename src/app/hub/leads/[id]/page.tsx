@@ -223,8 +223,35 @@ type LeadBrief = {
   scope_ready: boolean | null;
   readiness_reason: string | null;
   intake_path: IntakePath | null;
+  technical_research: TechnicalResearch | null;
+  technical_research_updated_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type ResearchItem = {
+  name: string;
+  description: string;
+  pricing?: string;
+  docs_url?: string;
+  relevance: "required" | "likely" | "optional";
+};
+
+type ResearchCategory = {
+  items: ResearchItem[];
+  summary: string;
+};
+
+type TechnicalResearch = {
+  summary: string;
+  recommendations: string[];
+  assumptions: string[];
+  unknowns: string[];
+  integrations: ResearchCategory;
+  infrastructure: ResearchCategory;
+  third_party_services: ResearchCategory;
+  compliance: ResearchCategory;
+  operating_cost_estimate: ResearchCategory;
 };
 
 type ProjectContext = {
@@ -858,6 +885,10 @@ export default function LeadDetailPage() {
   const [proposalCopied,   setProposalCopied]   = useState(false);
   const [autofillLoading,  setAutofillLoading]  = useState(false);
   const [autofillError,    setAutofillError]    = useState("");
+  const [researchLoading,  setResearchLoading]  = useState(false);
+  const [researchError,    setResearchError]    = useState("");
+  const [technicalResearch, setTechnicalResearch] = useState<TechnicalResearch | null>(null);
+  const [researchUpdatedAt, setResearchUpdatedAt] = useState<string | null>(null);
   const [scopeReady,       setScopeReady]       = useState<boolean | null>(null);
   const [readinessReason,  setReadinessReason]  = useState("");
 
@@ -992,6 +1023,8 @@ export default function LeadDetailPage() {
         if (b.intake_path === "clarification_email" || b.intake_path === "discovery_call" || b.intake_path === "proceed_to_brief") {
           setIntakePath(b.intake_path);
         }
+        if (b.technical_research) setTechnicalResearch(b.technical_research as TechnicalResearch);
+        if (b.technical_research_updated_at) setResearchUpdatedAt(b.technical_research_updated_at);
       }
     } finally {
       setBriefLoading(false);
@@ -1696,6 +1729,32 @@ export default function LeadDetailPage() {
     setBriefFollowUp(str(fields.follow_up_questions));
     setScopeReady(ready);
     setReadinessReason(readiness_reason);
+  }
+
+  async function runResearch() {
+    if (technicalResearch && !window.confirm("This will overwrite the current research with a fresh analysis. Continue?")) return;
+
+    setResearchLoading(true);
+    setResearchError("");
+
+    const result = await safeFetch<{ research: TechnicalResearch; updated_at: string }>(
+      `/api/hub/leads/${id}/brief/research`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ merged_context: mergedClientContext }),
+      },
+    );
+
+    setResearchLoading(false);
+
+    if (!result.ok) {
+      setResearchError(result.error);
+      return;
+    }
+
+    setTechnicalResearch(result.data.research);
+    setResearchUpdatedAt(result.data.updated_at);
   }
 
   async function startClarificationFromAutofill() {
@@ -3126,6 +3185,15 @@ export default function LeadDetailPage() {
                 >
                   {autofillLoading ? "Analysing…" : (briefSummary.trim() || briefType.trim()) ? "Refresh analysis" : "Run AI analysis"}
                 </button>
+                <button
+                  type="button"
+                  disabled={!mergedClientContext.trim() || researchLoading}
+                  onClick={runResearch}
+                  className="px-3 py-1 rounded-lg text-[10px] font-medium bg-violet-600/60 hover:bg-violet-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  {researchLoading ? "Researching…" : technicalResearch ? "Update research" : "Research stack"}
+                </button>
+                {researchError && <span className="text-[10px] text-red-400">{researchError}</span>}
               </div>
 
               {/* ── Editable structured brief fields ──────────────────── */}
@@ -3272,6 +3340,105 @@ export default function LeadDetailPage() {
                     </div>
                   )}
                 </div>
+              )}
+            </Section>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════
+            TECHNICAL RESEARCH — stack due-diligence from Research Agent
+            ════════════════════════════════════════════════════════════════ */}
+        {briefAccessible && (
+          <div className="lg:col-span-2">
+            <Section title="Technical Research">
+              {technicalResearch ? (
+                <div className="space-y-4">
+                  {/* Overall summary */}
+                  <p className="text-sm text-gray-300 leading-relaxed">{technicalResearch.summary}</p>
+
+                  {/* Recommendations / Assumptions / Unknowns */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {technicalResearch.recommendations.length > 0 && (
+                      <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                        <p className="text-[10px] text-emerald-400/70 uppercase tracking-wide font-medium mb-1.5">Recommendations</p>
+                        <ul className="space-y-1">
+                          {technicalResearch.recommendations.map((r, i) => (
+                            <li key={i} className="text-xs text-gray-400 leading-relaxed">• {r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {technicalResearch.assumptions.length > 0 && (
+                      <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-1.5">Assumptions</p>
+                        <ul className="space-y-1">
+                          {technicalResearch.assumptions.map((a, i) => (
+                            <li key={i} className="text-xs text-gray-500 leading-relaxed">• {a}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {technicalResearch.unknowns.length > 0 && (
+                      <div className="px-3 py-3 rounded-lg border border-amber-500/10 bg-amber-500/[0.02]">
+                        <p className="text-[10px] text-amber-400/70 uppercase tracking-wide font-medium mb-1.5">Unknowns</p>
+                        <ul className="space-y-1">
+                          {technicalResearch.unknowns.map((u, i) => (
+                            <li key={i} className="text-xs text-amber-400/60 leading-relaxed">• {u}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Research category cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {(["integrations", "infrastructure", "third_party_services", "compliance", "operating_cost_estimate"] as const).map((catKey) => {
+                      const category = technicalResearch[catKey];
+                      const labels: Record<string, string> = {
+                        integrations: "Integrations",
+                        infrastructure: "Infrastructure",
+                        third_party_services: "Third-Party Services",
+                        compliance: "Compliance",
+                        operating_cost_estimate: "Operating Cost Estimate",
+                      };
+                      return (
+                        <div key={catKey} className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-1.5">{labels[catKey]}</p>
+                          <p className="text-xs text-gray-400 mb-2 leading-relaxed">{category.summary}</p>
+                          {category.items.length > 0 && (
+                            <ul className="space-y-1.5">
+                              {category.items.map((item, i) => (
+                                <li key={i} className="text-xs">
+                                  <span className="text-gray-300 font-medium">{item.name}</span>
+                                  <span className={cx(
+                                    "ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-medium uppercase",
+                                    item.relevance === "required" && "bg-green-500/15 text-green-400",
+                                    item.relevance === "likely" && "bg-amber-500/15 text-amber-400",
+                                    item.relevance === "optional" && "bg-gray-500/15 text-gray-500",
+                                  )}>{item.relevance}</span>
+                                  <span className="block text-gray-500 mt-0.5">{item.description}</span>
+                                  {item.pricing && <span className="block text-emerald-400/70 text-[11px] mt-0.5">{item.pricing}</span>}
+                                  {item.docs_url && (
+                                    <a href={item.docs_url} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 text-[10px]">[docs]</a>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Last researched */}
+                  {researchUpdatedAt && (
+                    <p className="text-[10px] text-gray-600">Last researched {fmtDateTime(researchUpdatedAt)}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-600">
+                  No technical research yet. Click <span className="text-violet-400">Research stack</span> above to analyse integrations, infrastructure, compliance, and operating costs.
+                </p>
               )}
             </Section>
           </div>
