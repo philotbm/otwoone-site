@@ -675,6 +675,7 @@ export default function LeadDetailPage() {
   const [showConvert, setShowConvert] = useState(false);
   const [notes, setNotes]           = useState("");
   const [notesSaved, setNotesSaved] = useState(false);
+  const [notesOpen, setNotesOpen]   = useState(false);
 
   // Portal link state
   const [portalSending, setPortalSending] = useState(false);
@@ -2556,11 +2557,51 @@ export default function LeadDetailPage() {
           </Section>
         )}
 
+        {/* ── Workflow progress indicator ────────────────────────────────── */}
+        {lead && (
+          <div className="lg:col-span-2">
+            <div className="px-5 py-3 rounded-xl border border-white/[0.06] bg-[#12131a]">
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mr-2">Workflow</span>
+                {(() => {
+                  const qualDone = intakePath !== null;
+                  const contextDone = briefReply.trim().length > 0 || rounds.length > 0;
+                  const analysisDone = briefSummary.trim().length > 0 && briefType.trim().length > 0;
+                  const pricingDone = pricingRecommendation !== null && pricingRecommendation.deliveryClass !== "Needs review";
+                  const proposalDone = briefProposal.trim().length > 0;
+
+                  const steps = [
+                    { label: "Qualification", done: qualDone },
+                    { label: "Client Context", done: contextDone },
+                    { label: "Analysis", done: analysisDone },
+                    { label: "Pricing", done: pricingDone },
+                    { label: "Proposal", done: proposalDone },
+                  ];
+
+                  return steps.map((s, i) => (
+                    <div key={i} className="flex items-center gap-1">
+                      {i > 0 && <span className="text-gray-700 text-[10px]">→</span>}
+                      <span className={cx(
+                        "text-[10px] font-medium px-2 py-0.5 rounded",
+                        s.done
+                          ? "bg-green-500/15 text-green-400"
+                          : "bg-white/5 text-gray-600",
+                      )}>
+                        {s.done ? "✓" : "•"} {s.label}
+                      </span>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ════════════════════════════════════════════════════════════════
-            CLIENT INPUTS — scoping reply, clarifications, raw inputs
+            CLIENT CONTEXT — scoping reply, clarifications, raw inputs
             ════════════════════════════════════════════════════════════════ */}
         <div className="lg:col-span-2">
-          <Section title="Client Inputs">
+          <Section title="Client Context">
             <div className="space-y-5">
 
               {/* ── Scoping reply / call notes ─────────────────────────────── */}
@@ -2637,6 +2678,7 @@ export default function LeadDetailPage() {
                             className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
                           >
                             <div className="flex items-center gap-3">
+                              <span className="w-6 h-6 flex items-center justify-center rounded bg-white/5 text-[10px] font-bold text-gray-400 shrink-0">Q{round.round_number}</span>
                               <span className="text-xs font-medium text-gray-300">Round {round.round_number}</span>
                               <span className={cx(
                                 "px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
@@ -2654,10 +2696,10 @@ export default function LeadDetailPage() {
                           {/* Round body */}
                           {isExpanded && (
                             <div className="px-4 pb-4 space-y-4 border-t border-white/5">
-                              {/* Questions */}
+                              {/* Question */}
                               <div className="pt-3">
                                 <label className="text-xs text-gray-500 block mb-1.5">
-                                  {intakePath === "discovery_call" ? "Discussion points" : "Questions for client"}
+                                  {intakePath === "discovery_call" ? "Discussion points" : "Question"}
                                 </label>
                                 <textarea
                                   value={draftQuestions[round.id] ?? ""}
@@ -2673,15 +2715,15 @@ export default function LeadDetailPage() {
                                     disabled={isSaving}
                                     className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
                                   >
-                                    {isSaving ? "Saving…" : "Save questions"}
+                                    {isSaving ? "Saving…" : "Save question"}
                                   </button>
                                 </div>
                               </div>
 
-                              {/* Client reply */}
+                              {/* Answer */}
                               <div>
                                 <label className="text-xs text-gray-500 block mb-1.5">
-                                  {intakePath === "discovery_call" ? "Call notes / client response" : "Client reply"}
+                                  {intakePath === "discovery_call" ? "Call notes / client response" : "Answer"}
                                 </label>
                                 <textarea
                                   value={draftReplies[round.id] ?? ""}
@@ -2697,7 +2739,7 @@ export default function LeadDetailPage() {
                                     disabled={isSaving}
                                     className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
                                   >
-                                    {isSaving ? "Saving…" : "Save reply"}
+                                    {isSaving ? "Saving…" : "Save answer"}
                                   </button>
                                 </div>
                               </div>
@@ -3138,29 +3180,41 @@ export default function LeadDetailPage() {
           </div>
         )}
 
-        {/* Internal notes (full width) */}
+        {/* Internal notes (full width, collapsed by default) */}
         <div className="lg:col-span-2">
-          <Section title="Internal notes">
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Notes visible only in Hub…"
-              rows={4}
-              className="w-full bg-transparent text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none resize-none leading-relaxed"
-            />
-            <div className="flex items-center justify-between pt-3 border-t border-white/5 mt-3">
-              <span className={cx("text-xs transition-opacity", notesSaved ? "text-green-400 opacity-100" : "opacity-0")}>
-                Saved
-              </span>
-              <button
-                onClick={saveNotes}
-                disabled={saving}
-                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50"
-              >
-                Save notes
-              </button>
-            </div>
-          </Section>
+          <div className="rounded-xl border border-white/[0.06] bg-[#12131a] overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setNotesOpen(!notesOpen)}
+              className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-white/[0.02] transition-colors"
+            >
+              <span className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Internal Notes</span>
+              <span className="text-xs text-gray-600">{notesOpen ? "▲" : "▼"}</span>
+            </button>
+            {notesOpen && (
+              <div className="px-5 pb-4 border-t border-white/5">
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Notes visible only in Hub…"
+                  rows={4}
+                  className="w-full bg-transparent text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none resize-none leading-relaxed mt-3"
+                />
+                <div className="flex items-center justify-between pt-3 border-t border-white/5 mt-3">
+                  <span className={cx("text-xs transition-opacity", notesSaved ? "text-green-400 opacity-100" : "opacity-0")}>
+                    Saved
+                  </span>
+                  <button
+                    onClick={saveNotes}
+                    disabled={saving}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : "Save notes"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ════════════════════════════════════════════════════════════════
@@ -3485,7 +3539,7 @@ export default function LeadDetailPage() {
                       </a>
                     } />
                   )}
-                  {project.sharepoint_folder_error && (
+                  {project.sharepoint_folder_error && !project.sharepoint_folder_error.includes("not configured") && (
                     <div className="mt-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
                       <p className="text-xs text-red-400">SharePoint folder error: {project.sharepoint_folder_error}</p>
                     </div>
