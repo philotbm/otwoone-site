@@ -1873,6 +1873,50 @@ export default function LeadDetailPage() {
           </div>
         </Section>
 
+        {/* ── Qualification ──────────────────────────────────────────────── */}
+        {briefEligible && (
+          <Section title="Qualification">
+            <div className="space-y-2">
+              <Row label="Scope ready" value={
+                scopeReady === true
+                  ? <span className="text-green-400 text-sm font-medium">Ready</span>
+                  : scopeReady === false
+                    ? <span className="text-amber-400 text-sm font-medium">Not ready</span>
+                    : <span className="text-gray-600 text-sm">Not set</span>
+              } />
+              <Row label="Readiness reason" value={
+                readinessReason
+                  ? <span className="text-sm text-gray-300">{readinessReason}</span>
+                  : <span className="text-gray-600 text-sm">Not set</span>
+              } />
+              <Row label="Contact strategy" value={
+                contactStrategy
+                  ? <span className="text-sm text-gray-300">
+                      {contactStrategy === "bookings" ? "Microsoft Bookings" : contactStrategy === "teams" ? "Microsoft Teams" : contactStrategy === "phone" ? "Phone call" : contactStrategy}
+                    </span>
+                  : <span className="text-gray-600 text-sm">Not set</span>
+              } />
+              <Row label="Intake path" value={
+                intakePath
+                  ? <span className={cx(
+                      "text-sm font-medium",
+                      intakePath === "clarification_email" && "text-amber-400",
+                      intakePath === "discovery_call" && "text-blue-400",
+                      intakePath === "proceed_to_brief" && "text-green-400",
+                    )}>
+                      {intakePath === "clarification_email" ? "Clarification email" : intakePath === "discovery_call" ? "Discovery call" : "Proceed to brief"}
+                    </span>
+                  : <span className="text-gray-600 text-sm">Not set</span>
+              } />
+              <Row label="Override" value={
+                overrideScopeWarning
+                  ? <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-amber-500/15 text-amber-400">Override used</span>
+                  : <span className="text-gray-600 text-sm">No</span>
+              } />
+            </div>
+          </Section>
+        )}
+
         {/* ── Clarifications ──────────────────────────────────────────────── */}
         <div className="lg:col-span-2">
           <Section title="Clarifications">
