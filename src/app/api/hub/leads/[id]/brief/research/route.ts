@@ -38,56 +38,75 @@ type TechnicalResearch = {
 
 const RESEARCH_TOOL_NAME = 'technical_research';
 
+// Shared item schema for category items
+const ITEM_SCHEMA_WITH_PRICING = {
+  type: 'object' as const,
+  properties: {
+    name: { type: 'string' as const, description: 'Name of the service, tool, or component' },
+    description: { type: 'string' as const, description: 'What it does and why it is needed for this project' },
+    pricing: { type: 'string' as const, description: 'Real public pricing if available, otherwise "Commercial license required" or "Quote required". Never fabricate.' },
+    docs_url: { type: 'string' as const, description: 'Official documentation or pricing page URL' },
+    relevance: { type: 'string' as const, enum: ['required', 'likely', 'optional'], description: 'How critical this item is to the project' },
+  },
+  required: ['name', 'description', 'relevance'] as const,
+};
+
+const ITEM_SCHEMA_NO_PRICING = {
+  type: 'object' as const,
+  properties: {
+    name: { type: 'string' as const, description: 'Name of the compliance consideration' },
+    description: { type: 'string' as const, description: 'What it covers and why it matters' },
+    relevance: { type: 'string' as const, enum: ['required', 'likely', 'optional'] },
+  },
+  required: ['name', 'description', 'relevance'] as const,
+};
+
+function categorySchema(desc: string, itemSchema: typeof ITEM_SCHEMA_WITH_PRICING | typeof ITEM_SCHEMA_NO_PRICING) {
+  return {
+    type: 'object' as const,
+    description: desc,
+    properties: {
+      summary: { type: 'string' as const, description: 'Brief overview for this category' },
+      items: {
+        type: 'array' as const,
+        description: 'Concrete researched items. Populate with 2-5 items when this category is relevant to the project scope. Only leave empty if genuinely not applicable.',
+        items: itemSchema,
+      },
+    },
+    required: ['summary', 'items'] as const,
+  };
+}
+
 const RESEARCH_TOOL: Anthropic.Tool = {
   name: RESEARCH_TOOL_NAME,
-  description: 'Submit the technical research results as structured JSON.',
+  description: `Submit complete technical research results. CRITICAL: all researched items MUST go inside their respective category objects (integrations, infrastructure, third_party_services, compliance, operating_cost_estimate). Do NOT put items at the top level. Each relevant category should contain 2-5 concrete items with real service names, descriptions, pricing, and documentation links.`,
   input_schema: {
     type: 'object' as const,
     properties: {
       summary: { type: 'string', description: '2-3 sentence overall technical research summary' },
-      recommendations: { type: 'array', items: { type: 'string' }, description: 'Recommended stack choices' },
-      assumptions: { type: 'array', items: { type: 'string' }, description: 'Assumptions being made' },
-      unknowns: { type: 'array', items: { type: 'string' }, description: 'Unresolved unknowns' },
-      integrations: {
-        type: 'object',
-        properties: {
-          summary: { type: 'string' },
-          items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, pricing: { type: 'string' }, docs_url: { type: 'string' }, relevance: { type: 'string', enum: ['required', 'likely', 'optional'] } }, required: ['name', 'description', 'relevance'] } },
-        },
-        required: ['summary', 'items'],
-      },
-      infrastructure: {
-        type: 'object',
-        properties: {
-          summary: { type: 'string' },
-          items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, pricing: { type: 'string' }, docs_url: { type: 'string' }, relevance: { type: 'string', enum: ['required', 'likely', 'optional'] } }, required: ['name', 'description', 'relevance'] } },
-        },
-        required: ['summary', 'items'],
-      },
-      third_party_services: {
-        type: 'object',
-        properties: {
-          summary: { type: 'string' },
-          items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, pricing: { type: 'string' }, docs_url: { type: 'string' }, relevance: { type: 'string', enum: ['required', 'likely', 'optional'] } }, required: ['name', 'description', 'relevance'] } },
-        },
-        required: ['summary', 'items'],
-      },
-      compliance: {
-        type: 'object',
-        properties: {
-          summary: { type: 'string' },
-          items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, relevance: { type: 'string', enum: ['required', 'likely', 'optional'] } }, required: ['name', 'description', 'relevance'] } },
-        },
-        required: ['summary', 'items'],
-      },
-      operating_cost_estimate: {
-        type: 'object',
-        properties: {
-          summary: { type: 'string' },
-          items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, pricing: { type: 'string' }, relevance: { type: 'string', enum: ['required', 'likely', 'optional'] } }, required: ['name', 'description', 'relevance'] } },
-        },
-        required: ['summary', 'items'],
-      },
+      recommendations: { type: 'array', items: { type: 'string' }, description: 'Specific recommended stack choices (e.g. "Use Vercel for hosting with edge functions")' },
+      assumptions: { type: 'array', items: { type: 'string' }, description: 'Assumptions being made about the project' },
+      unknowns: { type: 'array', items: { type: 'string' }, description: 'Unresolved questions that need client clarification' },
+      integrations: categorySchema(
+        'External APIs and data providers the project needs to integrate with. Include specific provider names, not generic descriptions. Examples: FlightAware API, Revolut Business API, Google Maps Platform.',
+        ITEM_SCHEMA_WITH_PRICING,
+      ),
+      infrastructure: categorySchema(
+        'Hosting architecture, application framework, database, CDN, and deployment platform. Include specific plan/tier recommendations with pricing. Examples: Vercel Pro, Supabase Pro, Cloudflare.',
+        ITEM_SCHEMA_WITH_PRICING,
+      ),
+      third_party_services: categorySchema(
+        'Third-party SaaS for payments, email, SMS, analytics, monitoring, auth, storage, notifications. Include specific providers with pricing tiers. Examples: Stripe, Resend, PostHog, Clerk.',
+        ITEM_SCHEMA_WITH_PRICING,
+      ),
+      compliance: categorySchema(
+        'GDPR, cookie consent, data retention, privacy, sensitive data, and regulatory considerations relevant to an Irish/EU context.',
+        ITEM_SCHEMA_NO_PRICING,
+      ),
+      operating_cost_estimate: categorySchema(
+        'Monthly recurring cost breakdown derived from infrastructure + third-party services + API usage. Each item should have a €X-€Y/month pricing estimate. Include a total range in the summary.',
+        ITEM_SCHEMA_WITH_PRICING,
+      ),
     },
     required: ['summary', 'recommendations', 'assumptions', 'unknowns', 'integrations', 'infrastructure', 'third_party_services', 'compliance', 'operating_cost_estimate'],
   },
@@ -100,6 +119,21 @@ const CATEGORY_KEYS: (keyof Pick<TechnicalResearch, 'integrations' | 'infrastruc
 ];
 
 const DEFAULT_CATEGORY = { summary: '', items: [] };
+
+// Keywords for redistributing misplaced root-level items into categories
+// Keywords for redistributing misplaced root-level items into categories.
+// Order matters: third-party checked before infra so "Twilio or AWS SNS" → third_party, not infra.
+const COMPLIANCE_KEYWORDS = /\b(gdpr|cookie|consent|retention|privacy|dpo|data.?protection|regulation|compliance)\b/i;
+const THIRD_PARTY_KEYWORDS = /\b(stripe|twilio|resend|sendgrid|postmark|sentry|posthog|plausible|clerk|auth0|analytics|monitoring|email.?service|sms|notification|payment)/i;
+const INFRA_KEYWORDS = /\b(vercel|netlify|aws|azure|gcp|cloudflare|supabase|firebase|heroku|docker|kubernetes|hosting|cdn|database|postgres|mysql|redis|mongodb)\b/i;
+
+function classifyItem(item: Record<string, unknown>): keyof Pick<TechnicalResearch, 'integrations' | 'infrastructure' | 'third_party_services' | 'compliance' | 'operating_cost_estimate'> {
+  const text = `${item.name ?? ''} ${item.description ?? ''}`.toLowerCase();
+  if (COMPLIANCE_KEYWORDS.test(text)) return 'compliance';
+  if (THIRD_PARTY_KEYWORDS.test(text)) return 'third_party_services';
+  if (INFRA_KEYWORDS.test(text)) return 'infrastructure';
+  return 'integrations'; // default bucket for APIs and external data providers
+}
 
 function normaliseResearch(data: unknown): Record<string, unknown> {
   if (!data || typeof data !== 'object') return data as Record<string, unknown>;
@@ -127,6 +161,21 @@ function normaliseResearch(data: unknown): Record<string, unknown> {
       cat.items = [];
     }
     d[key] = cat;
+  }
+
+  // ── Redistribute root-level "items" array into categories ─────────────
+  // The model sometimes puts all items at the top level instead of inside categories.
+  // Detect this and redistribute into the correct category objects.
+  if (Array.isArray(d.items) && d.items.length > 0) {
+    console.warn(`[research:normalisation] Found ${d.items.length} root-level items — redistributing into categories.`);
+    for (const rawItem of d.items) {
+      if (!rawItem || typeof rawItem !== 'object') continue;
+      const item = rawItem as Record<string, unknown>;
+      const targetKey = classifyItem(item);
+      const cat = d[targetKey] as Record<string, unknown>;
+      (cat.items as unknown[]).push(item);
+    }
+    delete d.items;
   }
 
   return d;
@@ -196,66 +245,31 @@ function validateResearch(data: unknown): { valid: true; research: TechnicalRese
 
 // ── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You MUST respond with valid JSON only.
-Do NOT include:
-- markdown
-- explanations
-- headings
-- commentary
-- code fences
-- text before or after the JSON
-Your entire response must be a single JSON object that matches this schema.
+const SYSTEM_PROMPT = `You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You perform technical due-diligence research on project scopes to help operators understand the stack, services, compliance considerations, and operating costs.
 
-You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You perform technical due-diligence research on project scopes to help operators understand the stack, services, compliance considerations, and operating costs.
+You will receive a merged client context containing all available information about a project.
 
-You will receive a merged client context containing all available information about a project. Research the full technical stack required, but only include technologies that are clearly relevant to the analysed scope. Avoid generic "kitchen sink" tool lists.
+CRITICAL INSTRUCTIONS:
+1. All researched items MUST be placed inside their respective category objects. Do NOT create a top-level "items" array.
+2. Each of the 5 categories (integrations, infrastructure, third_party_services, compliance, operating_cost_estimate) must contain concrete items when relevant to the project.
+3. For a typical technical project, aim for 2-5 items per relevant category.
+4. Empty categories should ONLY be used when genuinely not applicable to the project scope.
 
-Your response must be exactly this JSON structure:
-{
-  "summary": "2-3 sentence overall technical research summary",
-  "recommendations": ["array of recommended stack choices, e.g. 'Use Vercel for hosting with edge functions'"],
-  "assumptions": ["array of assumptions being made, e.g. 'Assuming client has no existing backend infrastructure'"],
-  "unknowns": ["array of unresolved unknowns, e.g. 'Unclear whether existing booking system has an API'"],
-  "integrations": {
-    "summary": "brief overview of integration requirements",
-    "items": [
-      {
-        "name": "Service or API name",
-        "description": "what it does and why it is needed",
-        "pricing": "real pricing if publicly available, otherwise 'Commercial license required' or 'Quote required'",
-        "docs_url": "documentation URL if known",
-        "relevance": "required | likely | optional"
-      }
-    ]
-  },
-  "infrastructure": {
-    "summary": "hosting architecture recommendation with reasoning",
-    "items": [{ "name": "...", "description": "...", "pricing": "...", "docs_url": "...", "relevance": "..." }]
-  },
-  "third_party_services": {
-    "summary": "third-party services needed (payments, messaging, email, analytics)",
-    "items": [{ "name": "...", "description": "...", "pricing": "...", "docs_url": "...", "relevance": "..." }]
-  },
-  "compliance": {
-    "summary": "compliance considerations (GDPR, data retention, cookie consent, etc.)",
-    "items": [{ "name": "...", "description": "...", "relevance": "..." }]
-  },
-  "operating_cost_estimate": {
-    "summary": "estimated monthly operating cost range derived from hosting + services",
-    "items": [{ "name": "...", "description": "monthly cost component", "pricing": "€X–€Y/month", "relevance": "..." }]
-  }
-}
+Category guidance:
+- integrations: External APIs, data providers, POS/payment gateways, CRM connectors. Name specific providers (e.g. "FlightAware API", "Revolut Business API"), not generic descriptions.
+- infrastructure: Hosting platform, app framework, database, CDN. Include specific tiers/plans (e.g. "Vercel Pro", "Supabase Pro", "Cloudflare Free").
+- third_party_services: Email (Resend, SendGrid), SMS (Twilio), analytics (PostHog, Plausible), auth (Clerk, Auth0), monitoring (Sentry), storage (Cloudflare R2, S3).
+- compliance: GDPR, cookie consent, data retention, sensitive data handling — always relevant for Irish/EU projects.
+- operating_cost_estimate: Monthly cost breakdown derived from the items in infrastructure + third_party_services + integrations. Each item must have a €X–€Y/month estimate. Include a total monthly range in the summary.
 
 Rules:
-- Only include technologies clearly relevant to the project scope
+- Only include technologies clearly relevant to the project scope — avoid generic "kitchen sink" lists
 - Classify every item as "required", "likely", or "optional"
-- Include real documentation/source URLs where possible
+- Include real documentation/pricing page URLs in docs_url where possible
 - Never fabricate pricing — if not publicly available, state "Commercial license required" or "Quote required"
-- For operating costs, break down by service and provide a total monthly range
 - Consider Irish/EU context for compliance (GDPR, cookie consent, data residency)
 - Keep recommendations actionable and specific to the project
-
-If you cannot determine a field, return an empty value that still respects the schema (empty string for strings, empty array for arrays, empty items array for categories).`;
+- If you cannot determine a field, return an empty value that respects the schema`;
 
 // ── Structured error helper ─────────────────────────────────────────────────
 

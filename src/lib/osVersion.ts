@@ -3,4 +3,4 @@
  * Bump this on every release.
  */
 
-export const OTWOONE_OS_VERSION = "v1.69.6";
+export const OTWOONE_OS_VERSION = "v1.70.0";
