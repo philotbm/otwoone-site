@@ -1311,6 +1311,7 @@ export default function LeadDetailPage() {
   type PricingFit = "Tight" | "Feasible" | "Premium" | "Needs review";
   type RecommendedPackage = "Foundation" | "Growth" | "Accelerator" | "Custom System" | "Needs review";
   type PriceBand = "€3k–€5k" | "€5k–€8k" | "€8k–€12k" | "€12k+" | "Needs custom quote";
+  type CommercialPosture = "Standard package" | "Custom quote required" | "Phased MVP recommended";
 
   type PricingRecommendation = {
     deliveryClass: DeliveryClass;
@@ -1319,6 +1320,11 @@ export default function LeadDetailPage() {
     priceBand: PriceBand;
     rationale: string;
     confidence: "high" | "medium" | "low";
+    // Custom-build split pricing (only present for complex/custom leads)
+    isCustomSplit: boolean;
+    commercialPosture?: CommercialPosture;
+    fullScopeEstimate?: string;
+    phase1Path?: string;
   };
 
   const pricingRecommendation = useMemo((): PricingRecommendation | null => {
@@ -1357,6 +1363,7 @@ export default function LeadDetailPage() {
         priceBand: "Needs custom quote",
         rationale: "Insufficient or low-quality analysis to classify — run AI analysis or complete more client inputs before pricing.",
         confidence: "low",
+        isCustomSplit: false,
       };
     }
 
@@ -1526,13 +1533,69 @@ export default function LeadDetailPage() {
       parts.push("Risks identified in analysis — review before confirming price.");
     }
 
+    // ── Custom-build split pricing ──────────────────────────────────
+    // For complex/custom delivery classes, split into full-scope vs phase-1/MVP
+    const isCustomDelivery = deliveryClass === "Ops platform" || deliveryClass === "Custom workflow build";
+    const isCustomSplit = isCustomDelivery && (hasStrongSystemSignals || hasBudgetTension || complexitySignalCount >= 2);
+
+    if (!isCustomSplit) {
+      return {
+        deliveryClass, pricingFit, package: pkg, priceBand,
+        rationale: parts.join(" "), confidence, isCustomSplit: false,
+      };
+    }
+
+    // ── Commercial posture ─────────────────────────────────────────
+    let commercialPosture: CommercialPosture;
+    if (hasBudgetTension) {
+      commercialPosture = "Phased MVP recommended";
+    } else if (deliveryClass === "Ops platform" || complexitySignalCount >= 3) {
+      commercialPosture = "Custom quote required";
+    } else {
+      commercialPosture = "Custom quote required";
+    }
+
+    // ── Full-scope estimate ────────────────────────────────────────
+    // Derive from analysis text: look for explicit euro amounts in budget positioning
+    const euroAmountPattern = /€\s?[\d,.]+k?\s*[–\-]\s*€?\s?[\d,.]+k?\+?/gi;
+    const euroMatches = trustedFields.match(euroAmountPattern);
+    // Also look for standalone amounts like "€35k+" or "€60,000"
+    const standaloneEuroPattern = /€\s?[\d,.]+k?\+?/gi;
+    const standaloneMatches = trustedFields.match(standaloneEuroPattern);
+
+    let fullScopeEstimate: string;
+    if (euroMatches && euroMatches.length > 0) {
+      // Use the largest range found (likely the full-scope one)
+      fullScopeEstimate = euroMatches[euroMatches.length - 1].replace(/\s+/g, "");
+    } else if (deliveryClass === "Ops platform") {
+      fullScopeEstimate = budgetTier >= 5 ? "€40k+" : budgetTier >= 4 ? "€25k–€60k+" : "€20k–€40k+";
+    } else {
+      // Custom workflow build
+      fullScopeEstimate = budgetTier >= 4 ? "€15k–€40k" : "€12k–€25k";
+    }
+
+    // ── Phase 1 / MVP path ─────────────────────────────────────────
+    let phase1Path: string;
+    if (hasBudgetTension && budgetTier >= 3) {
+      // Budget exists but is tight for full scope → MVP starts within budget
+      phase1Path = budgetTier >= 4 ? "From €15k" : "From €8k–€12k";
+    } else if (deliveryClass === "Ops platform") {
+      phase1Path = "From €12k–€18k";
+    } else {
+      phase1Path = "From €8k–€12k";
+    }
+
+    // Override priceBand to not show the misleading single low band
+    const adjustedPriceBand: PriceBand = "Needs custom quote";
+
+    if (hasBudgetTension) {
+      parts.push(`Full scope estimated at ${fullScopeEstimate} — phased MVP from ${phase1Path} may fit stated budget.`);
+    }
+
     return {
-      deliveryClass,
-      pricingFit,
-      package: pkg,
-      priceBand,
-      rationale: parts.join(" "),
-      confidence,
+      deliveryClass, pricingFit, package: pkg, priceBand: adjustedPriceBand,
+      rationale: parts.join(" "), confidence, isCustomSplit: true,
+      commercialPosture, fullScopeEstimate, phase1Path,
     };
   }, [lead, briefSummary, briefType, briefSolution, briefIntegrations, briefFeatures, briefPages, briefRisks, briefBudget, briefTimeline, briefFollowUp]);
 
@@ -3236,45 +3299,96 @@ export default function LeadDetailPage() {
                 </div>
 
                 {/* ── Output grid ─────────────────────────────────────── */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {/* Delivery class */}
-                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Delivery class</p>
-                    <p className="text-sm font-medium text-gray-200">{pricingRecommendation.deliveryClass}</p>
+                {pricingRecommendation.isCustomSplit ? (
+                  /* Custom-build split pricing: posture + full-scope + phase-1 + fit */
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Commercial posture */}
+                      <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Commercial posture</p>
+                        <p className={cx(
+                          "text-sm font-medium",
+                          pricingRecommendation.commercialPosture === "Standard package" && "text-blue-400",
+                          pricingRecommendation.commercialPosture === "Custom quote required" && "text-purple-400",
+                          pricingRecommendation.commercialPosture === "Phased MVP recommended" && "text-amber-400",
+                        )}>
+                          {pricingRecommendation.commercialPosture}
+                        </p>
+                      </div>
+                      {/* Delivery class */}
+                      <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Delivery class</p>
+                        <p className="text-sm font-medium text-gray-200">{pricingRecommendation.deliveryClass}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {/* Full-scope estimate */}
+                      <div className="px-3 py-3 rounded-lg border border-purple-500/15 bg-purple-500/[0.03]">
+                        <p className="text-[10px] text-purple-400/70 uppercase tracking-wide mb-1">Full-scope estimate</p>
+                        <p className="text-sm font-semibold text-purple-300">{pricingRecommendation.fullScopeEstimate}</p>
+                      </div>
+                      {/* Phase 1 / MVP path */}
+                      <div className="px-3 py-3 rounded-lg border border-amber-500/15 bg-amber-500/[0.03]">
+                        <p className="text-[10px] text-amber-400/70 uppercase tracking-wide mb-1">Phase 1 / MVP path</p>
+                        <p className="text-sm font-semibold text-amber-300">{pricingRecommendation.phase1Path}</p>
+                      </div>
+                      {/* Pricing fit */}
+                      <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Pricing fit</p>
+                        <p className={cx(
+                          "text-sm font-medium",
+                          pricingRecommendation.pricingFit === "Premium"      && "text-green-400",
+                          pricingRecommendation.pricingFit === "Feasible"     && "text-emerald-400",
+                          pricingRecommendation.pricingFit === "Tight"        && "text-amber-400",
+                          pricingRecommendation.pricingFit === "Needs review" && "text-gray-500",
+                        )}>
+                          {pricingRecommendation.pricingFit}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  {/* Recommended package */}
-                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Recommended package</p>
-                    <p className={cx(
-                      "text-sm font-medium",
-                      pricingRecommendation.package === "Foundation"    && "text-blue-400",
-                      pricingRecommendation.package === "Growth"        && "text-emerald-400",
-                      pricingRecommendation.package === "Accelerator"   && "text-amber-400",
-                      pricingRecommendation.package === "Custom System" && "text-purple-400",
-                      pricingRecommendation.package === "Needs review"  && "text-gray-500",
-                    )}>
-                      {pricingRecommendation.package}
-                    </p>
+                ) : (
+                  /* Standard single-band pricing for simple leads */
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {/* Delivery class */}
+                    <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Delivery class</p>
+                      <p className="text-sm font-medium text-gray-200">{pricingRecommendation.deliveryClass}</p>
+                    </div>
+                    {/* Recommended package */}
+                    <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Recommended package</p>
+                      <p className={cx(
+                        "text-sm font-medium",
+                        pricingRecommendation.package === "Foundation"    && "text-blue-400",
+                        pricingRecommendation.package === "Growth"        && "text-emerald-400",
+                        pricingRecommendation.package === "Accelerator"   && "text-amber-400",
+                        pricingRecommendation.package === "Custom System" && "text-purple-400",
+                        pricingRecommendation.package === "Needs review"  && "text-gray-500",
+                      )}>
+                        {pricingRecommendation.package}
+                      </p>
+                    </div>
+                    {/* Indicative price band */}
+                    <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Indicative price band</p>
+                      <p className="text-sm font-semibold text-gray-100">{pricingRecommendation.priceBand}</p>
+                    </div>
+                    {/* Pricing fit */}
+                    <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Pricing fit</p>
+                      <p className={cx(
+                        "text-sm font-medium",
+                        pricingRecommendation.pricingFit === "Premium"      && "text-green-400",
+                        pricingRecommendation.pricingFit === "Feasible"     && "text-emerald-400",
+                        pricingRecommendation.pricingFit === "Tight"        && "text-amber-400",
+                        pricingRecommendation.pricingFit === "Needs review" && "text-gray-500",
+                      )}>
+                        {pricingRecommendation.pricingFit}
+                      </p>
+                    </div>
                   </div>
-                  {/* Indicative price band */}
-                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Indicative price band</p>
-                    <p className="text-sm font-semibold text-gray-100">{pricingRecommendation.priceBand}</p>
-                  </div>
-                  {/* Pricing fit */}
-                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Pricing fit</p>
-                    <p className={cx(
-                      "text-sm font-medium",
-                      pricingRecommendation.pricingFit === "Premium"      && "text-green-400",
-                      pricingRecommendation.pricingFit === "Feasible"     && "text-emerald-400",
-                      pricingRecommendation.pricingFit === "Tight"        && "text-amber-400",
-                      pricingRecommendation.pricingFit === "Needs review" && "text-gray-500",
-                    )}>
-                      {pricingRecommendation.pricingFit}
-                    </p>
-                  </div>
-                </div>
+                )}
 
                 {/* ── Commercial rationale ─────────────────────────────── */}
                 <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
