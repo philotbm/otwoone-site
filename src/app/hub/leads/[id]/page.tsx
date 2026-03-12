@@ -216,6 +216,8 @@ type LeadBrief = {
   risks_and_unknowns: string | null;
   follow_up_questions: string | null;
   proposal_draft: string | null;
+  override_scope_warning: boolean | null;
+  contact_strategy: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -763,7 +765,7 @@ export default function LeadDetailPage() {
 
   // Workflow state
   const [overrideScopeWarning, setOverrideScopeWarning] = useState(false);
-  const [contactStrategy,      setContactStrategy]      = useState<"call" | null>(null);
+  const [contactStrategy,      setContactStrategy]      = useState<"bookings" | "teams" | "phone" | null>(null);
   const [showCallModal,        setShowCallModal]        = useState(false);
 
   const fetchLead = useCallback(async () => {
@@ -879,6 +881,10 @@ export default function LeadDetailPage() {
         setBriefRisks(b.risks_and_unknowns ?? "");
         setBriefFollowUp(b.follow_up_questions ?? "");
         setBriefProposal(b.proposal_draft ?? "");
+        setOverrideScopeWarning(b.override_scope_warning === true);
+        if (b.contact_strategy === "bookings" || b.contact_strategy === "teams" || b.contact_strategy === "phone") {
+          setContactStrategy(b.contact_strategy);
+        }
       }
     } finally {
       setBriefLoading(false);
@@ -910,6 +916,8 @@ export default function LeadDetailPage() {
         risks_and_unknowns: briefRisks,
         follow_up_questions: briefFollowUp,
         proposal_draft: briefProposal,
+        override_scope_warning: overrideScopeWarning,
+        contact_strategy: contactStrategy,
       }),
     });
     setBriefSaving(false);
@@ -2207,8 +2215,10 @@ export default function LeadDetailPage() {
                       )}
 
                       {/* Contact strategy indicator */}
-                      {contactStrategy === "call" && (
-                        <p className="text-[10px] text-indigo-400/70">📞 Contact strategy set: direct call / meeting</p>
+                      {contactStrategy && (
+                        <p className="text-[10px] text-indigo-400/70">
+                          📞 Contact strategy: {contactStrategy === "bookings" ? "Microsoft Bookings link sent" : contactStrategy === "teams" ? "Microsoft Teams call offered" : "Phone call offered"}
+                        </p>
                       )}
                     </div>
                   )}
@@ -2457,7 +2467,7 @@ export default function LeadDetailPage() {
                         const name = lead?.contact_name?.split(" ")[0] ?? "there";
                         const text = `Hi ${name},\n\nThanks for the detailed replies \u2014 a quick call will help clarify a few points and avoid unnecessary back-and-forth.\n\nYou can pick a time that suits you here:\n[Microsoft Bookings link]\n\nBest\nPhil`;
                         navigator.clipboard.writeText(text);
-                        setContactStrategy("call");
+                        setContactStrategy("bookings");
                         setShowCallModal(false);
                       }}
                       className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"
@@ -2473,7 +2483,7 @@ export default function LeadDetailPage() {
                         const name = lead?.contact_name?.split(" ")[0] ?? "there";
                         const text = `Hi ${name},\n\nThanks for the information so far. It might be easier to run through a few details on a quick call.\n\nWould you be available for a 15\u201320 minute Microsoft Teams call this week?\n\nIf so, let me know a time that suits and I\u2019ll send a meeting invite.\n\nBest\nPhil`;
                         navigator.clipboard.writeText(text);
-                        setContactStrategy("call");
+                        setContactStrategy("teams");
                         setShowCallModal(false);
                       }}
                       className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"
@@ -2489,7 +2499,7 @@ export default function LeadDetailPage() {
                         const name = lead?.contact_name?.split(" ")[0] ?? "there";
                         const text = `Hi ${name},\n\nThanks for the detailed replies so far. A quick call might be the easiest way to clarify a few things.\n\nIf you\u2019d prefer, I\u2019m happy to give you a quick ring to run through it.\n\nJust let me know a time that suits you and the best number to reach you on.\n\nBest\nPhil`;
                         navigator.clipboard.writeText(text);
-                        setContactStrategy("call");
+                        setContactStrategy("phone");
                         setShowCallModal(false);
                       }}
                       className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"

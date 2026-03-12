@@ -3,7 +3,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 
 type Params = { params: Promise<{ id: string }> };
 
-const ALLOWED_FIELDS = [
+const ALLOWED_TEXT_FIELDS = [
   'scoping_reply',
   'project_summary',
   'project_type',
@@ -16,6 +16,11 @@ const ALLOWED_FIELDS = [
   'risks_and_unknowns',
   'follow_up_questions',
   'proposal_draft',
+  'contact_strategy',
+] as const;
+
+const ALLOWED_BOOL_FIELDS = [
+  'override_scope_warning',
 ] as const;
 
 /**
@@ -76,10 +81,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const insert: Record<string, unknown> = { lead_id: id };
-  for (const field of ALLOWED_FIELDS) {
+  for (const field of ALLOWED_TEXT_FIELDS) {
     if (field in body) {
       const val = String(body[field] ?? '').trim();
       insert[field] = val || null;
+    }
+  }
+  for (const field of ALLOWED_BOOL_FIELDS) {
+    if (field in body) {
+      insert[field] = body[field] === true;
     }
   }
 
@@ -121,10 +131,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const fields: Record<string, unknown> = {};
-  for (const field of ALLOWED_FIELDS) {
+  for (const field of ALLOWED_TEXT_FIELDS) {
     if (field in body) {
       const val = typeof body[field] === 'string' ? (body[field] as string).trim() : '';
       fields[field] = val || null;
+    }
+  }
+  for (const field of ALLOWED_BOOL_FIELDS) {
+    if (field in body) {
+      fields[field] = body[field] === true;
     }
   }
 
