@@ -34,65 +34,64 @@ type TechnicalResearch = {
   operating_cost_estimate: ResearchCategory;
 };
 
-// ── JSON extraction (mirrors autofill/route.ts pattern) ──────────────────────
+// ── Forced tool-call schema (guarantees structured JSON output) ──────────────
 
-/**
- * Extract and parse JSON from a Claude response that may include
- * explanatory text, markdown fences, or leading/trailing commentary.
- *
- * Extraction priority:
- *   1. ```json fenced block (greedy — outermost fence pair)
- *   2. Generic ``` fenced block
- *   3. First '{' to last '}' substring
- *   4. Full response text as-is
- *
- * Only after extraction does JSON.parse run.
- */
-function extractAndParseJSON(raw: string): TechnicalResearch {
-  const text = raw.trim();
-  let candidate: string | null = null;
+const RESEARCH_TOOL_NAME = 'technical_research';
 
-  // 1. ```json fenced block (greedy match to outermost closing fence)
-  const jsonFenceMatch = text.match(/```json\s*\n([\s\S]*)\n\s*```/);
-  if (jsonFenceMatch) {
-    candidate = jsonFenceMatch[1].trim();
-  }
-
-  // 2. Generic ``` fenced block
-  if (!candidate) {
-    const genericFenceMatch = text.match(/```\s*\n([\s\S]*)\n\s*```/);
-    if (genericFenceMatch) {
-      candidate = genericFenceMatch[1].trim();
-    }
-  }
-
-  // 3. First '{' to last '}' substring
-  if (!candidate) {
-    const firstBrace = text.indexOf('{');
-    const lastBrace = text.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      candidate = text.slice(firstBrace, lastBrace + 1);
-    }
-  }
-
-  // 4. Full response text as-is
-  if (!candidate) {
-    candidate = text;
-  }
-
-  try {
-    return JSON.parse(candidate) as TechnicalResearch;
-  } catch (parseErr) {
-    // Log both raw and extracted candidate for debugging
-    console.error('[research] JSON.parse failed on extracted candidate.');
-    console.error('[research] Parse error:', parseErr instanceof Error ? parseErr.message : parseErr);
-    console.error('[research] Candidate payload (first 1000 chars):', candidate.slice(0, 1000));
-    if (candidate !== text) {
-      console.error('[research] Full raw response (first 1000 chars):', text.slice(0, 1000));
-    }
-    throw new Error('Failed to parse JSON from AI response');
-  }
-}
+const RESEARCH_TOOL: Anthropic.Tool = {
+  name: RESEARCH_TOOL_NAME,
+  description: 'Submit the technical research results as structured JSON.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      summary: { type: 'string', description: '2-3 sentence overall technical research summary' },
+      recommendations: { type: 'array', items: { type: 'string' }, description: 'Recommended stack choices' },
+      assumptions: { type: 'array', items: { type: 'string' }, description: 'Assumptions being made' },
+      unknowns: { type: 'array', items: { type: 'string' }, description: 'Unresolved unknowns' },
+      integrations: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string' },
+          items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, pricing: { type: 'string' }, docs_url: { type: 'string' }, relevance: { type: 'string', enum: ['required', 'likely', 'optional'] } }, required: ['name', 'description', 'relevance'] } },
+        },
+        required: ['summary', 'items'],
+      },
+      infrastructure: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string' },
+          items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, pricing: { type: 'string' }, docs_url: { type: 'string' }, relevance: { type: 'string', enum: ['required', 'likely', 'optional'] } }, required: ['name', 'description', 'relevance'] } },
+        },
+        required: ['summary', 'items'],
+      },
+      third_party_services: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string' },
+          items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, pricing: { type: 'string' }, docs_url: { type: 'string' }, relevance: { type: 'string', enum: ['required', 'likely', 'optional'] } }, required: ['name', 'description', 'relevance'] } },
+        },
+        required: ['summary', 'items'],
+      },
+      compliance: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string' },
+          items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, relevance: { type: 'string', enum: ['required', 'likely', 'optional'] } }, required: ['name', 'description', 'relevance'] } },
+        },
+        required: ['summary', 'items'],
+      },
+      operating_cost_estimate: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string' },
+          items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, pricing: { type: 'string' }, relevance: { type: 'string', enum: ['required', 'likely', 'optional'] } }, required: ['name', 'description', 'relevance'] } },
+        },
+        required: ['summary', 'items'],
+      },
+    },
+    required: ['summary', 'recommendations', 'assumptions', 'unknowns', 'integrations', 'infrastructure', 'third_party_services', 'compliance', 'operating_cost_estimate'],
+  },
+};
 
 // ── Schema normalisation (coerce minor LLM variations before validation) ─────
 
@@ -373,35 +372,35 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const anthropic = new Anthropic({ apiKey });
 
-    let rawText: string;
+    // ── Call Claude with forced tool use for guaranteed structured JSON ──
+    let parsed: unknown;
     try {
       const aiMessage = await anthropic.messages.create({
         model: RESEARCH_MODEL,
         max_tokens: 4096,
+        temperature: 0,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: mergedContext }],
+        tools: [RESEARCH_TOOL],
+        tool_choice: { type: 'tool', name: RESEARCH_TOOL_NAME },
       });
 
-      rawText = aiMessage.content
-        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-        .map((block) => block.text)
-        .join('');
+      const toolBlock = aiMessage.content.find(
+        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use',
+      );
+
+      if (!toolBlock) {
+        console.error('[research:ai_call] No tool_use block in response. Stop reason:', aiMessage.stop_reason);
+        return failResponse('ai_call', 'Model did not return structured JSON.', 502);
+      }
+
+      parsed = toolBlock.input;
     } catch (aiErr) {
       const detail = aiErr instanceof Error ? aiErr.message : 'Unknown AI error';
       return failResponse('ai_call', detail, 502);
     }
 
-    // Step 1: Extract JSON from response
-    let parsed: unknown;
-    try {
-      parsed = extractAndParseJSON(rawText);
-    } catch (parseErr) {
-      const detail = parseErr instanceof Error ? parseErr.message : 'JSON extraction failed';
-      console.error(`[research:extraction] Raw response (first 1000 chars): ${rawText.slice(0, 1000)}`);
-      return failResponse('extraction', detail, 502);
-    }
-
-    // Step 2: Normalise minor LLM shape variations
+    // Step 1: Normalise minor LLM shape variations (extraction no longer needed)
     let normalised: Record<string, unknown>;
     try {
       normalised = normaliseResearch(parsed);
@@ -411,7 +410,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       return failResponse('normalisation', detail, 502);
     }
 
-    // Step 3: Strict validation
+    // Step 2: Strict validation
     const validation = validateResearch(normalised);
     if (!validation.valid) {
       console.error(`[research:validation] Normalised payload (first 1000 chars): ${JSON.stringify(normalised).slice(0, 1000)}`);
