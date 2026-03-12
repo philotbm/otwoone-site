@@ -94,12 +94,48 @@ function extractAndParseJSON(raw: string): TechnicalResearch {
   }
 }
 
-// ── Strict runtime validation ────────────────────────────────────────────────
+// ── Schema normalisation (coerce minor LLM variations before validation) ─────
 
-const VALID_RELEVANCE = new Set(['required', 'likely', 'optional']);
 const CATEGORY_KEYS: (keyof Pick<TechnicalResearch, 'integrations' | 'infrastructure' | 'third_party_services' | 'compliance' | 'operating_cost_estimate'>)[] = [
   'integrations', 'infrastructure', 'third_party_services', 'compliance', 'operating_cost_estimate',
 ];
+
+const DEFAULT_CATEGORY = { summary: '', items: [] };
+
+function normaliseResearch(data: unknown): Record<string, unknown> {
+  if (!data || typeof data !== 'object') return data as Record<string, unknown>;
+  const d = { ...(data as Record<string, unknown>) };
+
+  // Coerce top-level string arrays: if Claude returns a single string, wrap it
+  for (const key of ['recommendations', 'assumptions', 'unknowns'] as const) {
+    if (typeof d[key] === 'string') {
+      d[key] = [(d[key] as string)];
+    }
+  }
+
+  // Ensure all 5 category objects exist
+  for (const key of CATEGORY_KEYS) {
+    if (!d[key] || typeof d[key] !== 'object') {
+      d[key] = { ...DEFAULT_CATEGORY };
+      continue;
+    }
+    const cat = { ...(d[key] as Record<string, unknown>) };
+    // Ensure items is an array; if single object, wrap
+    if (cat.items && !Array.isArray(cat.items) && typeof cat.items === 'object') {
+      cat.items = [cat.items];
+    }
+    if (!Array.isArray(cat.items)) {
+      cat.items = [];
+    }
+    d[key] = cat;
+  }
+
+  return d;
+}
+
+// ── Strict runtime validation ────────────────────────────────────────────────
+
+const VALID_RELEVANCE = new Set(['required', 'likely', 'optional']);
 
 function validateResearch(data: unknown): { valid: true; research: TechnicalResearch } | { valid: false; reason: string } {
   if (!data || typeof data !== 'object') {
@@ -263,24 +299,39 @@ export async function POST(req: NextRequest, { params }: Params) {
       .map((block) => block.text)
       .join('');
 
+    // Step 1: Extract JSON from response
     let parsed: unknown;
     try {
       parsed = extractAndParseJSON(rawText);
     } catch (parseErr) {
-      console.error('[research] Failed to parse AI response.');
-      console.error('[research] Raw response:', rawText.slice(0, 1000));
-      console.error('[research] Parse error:', parseErr instanceof Error ? parseErr.message : parseErr);
+      console.error('[research:extraction] Failed to extract/parse JSON from AI response.');
+      console.error('[research:extraction] Parse error:', parseErr instanceof Error ? parseErr.message : parseErr);
+      console.error('[research:extraction] Raw response (first 1000 chars):', rawText.slice(0, 1000));
       return NextResponse.json(
         { error: 'Failed to parse AI response. Please try again.' },
         { status: 502 },
       );
     }
 
-    // Strict validation
-    const validation = validateResearch(parsed);
+    // Step 2: Normalise minor LLM shape variations
+    let normalised: Record<string, unknown>;
+    try {
+      normalised = normaliseResearch(parsed);
+    } catch (normErr) {
+      console.error('[research:normalisation] Failed to normalise AI response.');
+      console.error('[research:normalisation] Error:', normErr instanceof Error ? normErr.message : normErr);
+      console.error('[research:normalisation] Parsed payload (first 1000 chars):', JSON.stringify(parsed).slice(0, 1000));
+      return NextResponse.json(
+        { error: 'Failed to normalise AI response. Please try again.' },
+        { status: 502 },
+      );
+    }
+
+    // Step 3: Strict validation
+    const validation = validateResearch(normalised);
     if (!validation.valid) {
-      console.error('[research] Validation failed:', validation.reason);
-      console.error('[research] Raw response:', rawText.slice(0, 1000));
+      console.error('[research:validation] Validation failed:', validation.reason);
+      console.error('[research:validation] Normalised payload (first 1000 chars):', JSON.stringify(normalised).slice(0, 1000));
       return NextResponse.json(
         { error: `AI response validation failed: ${validation.reason}. Please try again.` },
         { status: 502 },
