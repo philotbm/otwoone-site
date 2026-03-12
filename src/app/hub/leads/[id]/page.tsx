@@ -761,6 +761,11 @@ export default function LeadDetailPage() {
   const [scopeReady,       setScopeReady]       = useState<boolean | null>(null);
   const [readinessReason,  setReadinessReason]  = useState("");
 
+  // Workflow state
+  const [overrideScopeWarning, setOverrideScopeWarning] = useState(false);
+  const [contactStrategy,      setContactStrategy]      = useState<"call" | null>(null);
+  const [showCallModal,        setShowCallModal]        = useState(false);
+
   const fetchLead = useCallback(async () => {
     setLoading(true);
     try {
@@ -2037,18 +2042,58 @@ export default function LeadDetailPage() {
         {briefEligible && (
           <div className="lg:col-span-2">
             <Section title="Project Brief">
-              <p className="text-xs text-gray-600 -mt-1 mb-1">
-                Paste the client&apos;s scoping reply, auto-fill the structured brief, review scope readiness, then draft or clarify.
-              </p>
-              <div className="flex items-center gap-3 mb-4 px-3 py-2 rounded-lg bg-indigo-500/5 border border-indigo-500/10">
-                <span className="text-xs text-indigo-300/80">
-                  {!briefReply.trim() ? "① Paste scoping reply" :
-                   !briefSummary.trim() ? "② Auto-fill brief" :
-                   scopeReady === false && !briefProposal.trim() ? "③ Review scope — clarify or proceed" :
-                   !briefProposal.trim() ? "③ Generate proposal" :
-                   "④ Review & send proposal"}
-                </span>
-              </div>
+
+              {/* ── Workflow progress header ─────────────────────────────── */}
+              {(() => {
+                const hasReply   = briefReply.trim().length > 0;
+                const hasBrief   = briefSummary.trim().length > 0;
+                const reviewed   = scopeReady !== null;
+                const canProceed = scopeReady === true || overrideScopeWarning;
+                const hasPrompt  = briefPromptOutput.trim().length > 0;
+                const hasDraft   = briefProposal.trim().length > 0;
+                const isSent     = status === "proposal_sent" || status === "deposit_requested" || status === "deposit_received" || status === "converted";
+
+                type StepState = "done" | "active" | "upcoming";
+                const steps: Array<{ label: string; state: StepState }> = [
+                  { label: "Client reply received",      state: hasReply ? "done" : "active" },
+                  { label: "Structured brief generated",  state: hasBrief ? "done" : hasReply ? "active" : "upcoming" },
+                  { label: "Scope review completed",      state: reviewed && canProceed ? "done" : hasBrief ? "active" : "upcoming" },
+                  { label: "Choose next action",          state: canProceed ? "done" : (reviewed && !canProceed) ? "active" : "upcoming" },
+                  { label: "Proposal prompt generated",   state: hasPrompt ? "done" : canProceed ? "active" : "upcoming" },
+                  { label: "Proposal draft prepared",     state: hasDraft ? "done" : hasPrompt ? "active" : "upcoming" },
+                  { label: "Ready to send proposal",      state: isSent ? "done" : hasDraft ? "active" : "upcoming" },
+                ];
+
+                return (
+                  <div className="mb-5 px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
+                    <div className="space-y-1.5">
+                      {steps.map((s, i) => (
+                        <div key={i} className="flex items-center gap-2.5">
+                          <span className={cx(
+                            "w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold shrink-0",
+                            s.state === "done"   && "bg-green-500/20 text-green-400",
+                            s.state === "active"  && "bg-indigo-500/20 text-indigo-400",
+                            s.state === "upcoming" && "bg-white/5 text-gray-600",
+                          )}>
+                            {s.state === "done" ? "✓" : s.state === "active" ? "→" : (i + 1)}
+                          </span>
+                          <span className={cx(
+                            "text-xs",
+                            s.state === "done"   && "text-green-400/80",
+                            s.state === "active"  && "text-indigo-300 font-medium",
+                            s.state === "upcoming" && "text-gray-600",
+                          )}>
+                            {s.label}
+                            {s.label === "Scope review completed" && reviewed && !scopeReady && !overrideScopeWarning && (
+                              <span className="ml-2 text-amber-400 font-normal">— clarification recommended</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {briefLoading ? (
                 <div className="py-4 text-center">
@@ -2099,15 +2144,16 @@ export default function LeadDetailPage() {
                     )}
                   </div>
 
-                  {/* ── Readiness assessment (advisory) ────────────────── */}
+                  {/* ── Readiness assessment + next-step actions ────────── */}
                   {scopeReady !== null && (
-                    <div className={cx(
-                      "px-4 py-3 rounded-lg border",
-                      scopeReady
-                        ? "bg-green-500/5 border-green-500/20"
-                        : "bg-amber-500/5 border-amber-500/20"
-                    )}>
-                      <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="space-y-3">
+                      {/* Status banner */}
+                      <div className={cx(
+                        "px-4 py-3 rounded-lg border",
+                        scopeReady
+                          ? "bg-green-500/5 border-green-500/20"
+                          : "bg-amber-500/5 border-amber-500/20"
+                      )}>
                         <div className="flex items-center gap-2">
                           <span className={cx(
                             "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
@@ -2119,19 +2165,51 @@ export default function LeadDetailPage() {
                           </span>
                           <span className="text-xs text-gray-400">{readinessReason}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {!scopeReady && briefFollowUp.trim() && (
+                        {overrideScopeWarning && !scopeReady && (
+                          <p className="text-[10px] text-amber-400/70 mt-2">⚠ Operator override active — proceeding despite clarification recommendation</p>
+                        )}
+                      </div>
+
+                      {/* Next-step actions (shown when needs clarification and not yet overridden) */}
+                      {!scopeReady && !overrideScopeWarning && (
+                        <div className="px-4 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-3">Choose next action</p>
+                          <div className="flex flex-wrap gap-2">
+                            {/* A) Start clarification */}
+                            {briefFollowUp.trim() && (
+                              <button
+                                type="button"
+                                onClick={startClarificationFromAutofill}
+                                disabled={roundSaving === "new"}
+                                className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 transition-colors disabled:opacity-50"
+                              >
+                                Start clarification round
+                              </button>
+                            )}
+                            {/* B) Proceed anyway */}
                             <button
                               type="button"
-                              onClick={startClarificationFromAutofill}
-                              disabled={roundSaving === "new"}
-                              className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 transition-colors disabled:opacity-50"
+                              onClick={() => setOverrideScopeWarning(true)}
+                              className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 transition-colors"
                             >
-                              Start clarification round
+                              Proceed to proposal anyway
                             </button>
-                          )}
+                            {/* C) Speak to client */}
+                            <button
+                              type="button"
+                              onClick={() => setShowCallModal(true)}
+                              className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors"
+                            >
+                              Speak to client
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {/* Contact strategy indicator */}
+                      {contactStrategy === "call" && (
+                        <p className="text-[10px] text-indigo-400/70">📞 Contact strategy set: direct call / meeting</p>
+                      )}
                     </div>
                   )}
 
@@ -2252,13 +2330,20 @@ export default function LeadDetailPage() {
                     </div>
                   </div>
 
-                  {/* ── D. Proposal prompt ──────────────────────────────── */}
+                  {/* ── D. Proposal prompt (gated: ready OR override) ───── */}
                   <div className="pt-3 border-t border-white/5">
+                    {/* Transition indicator */}
+                    {(scopeReady === true || overrideScopeWarning) && briefSummary.trim() && (
+                      <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-green-500/5 border border-green-500/10">
+                        <span className="text-[10px] text-green-400 font-medium">✓ Brief confirmed</span>
+                        <span className="text-[10px] text-gray-500">→ Generate proposal prompt</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal prompt</span>
                       <button
                         type="button"
-                        disabled={!briefSummary.trim()}
+                        disabled={!briefSummary.trim() || (scopeReady === false && !overrideScopeWarning)}
                         onClick={() => {
                           setBriefPromptOutput(buildBriefPrompt());
                           setBriefPromptCopied(false);
@@ -2268,6 +2353,9 @@ export default function LeadDetailPage() {
                         Generate proposal prompt
                       </button>
                     </div>
+                    {scopeReady === false && !overrideScopeWarning && briefSummary.trim() && !briefPromptOutput && (
+                      <p className="text-xs text-amber-400/60">Scope needs clarification. Override or clarify to unlock proposal generation.</p>
+                    )}
                     {!briefSummary.trim() && !briefPromptOutput && (
                       <p className="text-xs text-gray-700">Fill in the structured brief above to generate a proposal prompt.</p>
                     )}
@@ -2344,6 +2432,77 @@ export default function LeadDetailPage() {
                 </div>
               )}
             </Section>
+
+            {/* ── Discovery call modal ────────────────────────────── */}
+            {showCallModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                <div className="bg-[#141519] border border-white/10 rounded-xl w-full max-w-lg mx-4 overflow-hidden">
+                  <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
+                    <h3 className="text-sm font-medium text-gray-200">Speak to client</h3>
+                    <button
+                      type="button"
+                      onClick={() => setShowCallModal(false)}
+                      className="text-gray-500 hover:text-gray-300 text-lg leading-none"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="px-5 py-4 space-y-4">
+                    <p className="text-xs text-gray-400">Choose how to reach the client. The email text will be copied to your clipboard.</p>
+
+                    {/* Option 1 — Booking link */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const name = lead?.contact_name?.split(" ")[0] ?? "there";
+                        const text = `Hi ${name},\n\nThanks for the detailed replies \u2014 a quick call will help clarify a few points and avoid unnecessary back-and-forth.\n\nYou can pick a time that suits you here:\n[Microsoft Bookings link]\n\nBest\nPhil`;
+                        navigator.clipboard.writeText(text);
+                        setContactStrategy("call");
+                        setShowCallModal(false);
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"
+                    >
+                      <span className="text-xs font-medium text-gray-200 group-hover:text-indigo-300">Send booking link</span>
+                      <p className="text-[10px] text-gray-500 mt-0.5">Microsoft Bookings — client picks a time</p>
+                    </button>
+
+                    {/* Option 2 — Teams call */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const name = lead?.contact_name?.split(" ")[0] ?? "there";
+                        const text = `Hi ${name},\n\nThanks for the information so far. It might be easier to run through a few details on a quick call.\n\nWould you be available for a 15\u201320 minute Microsoft Teams call this week?\n\nIf so, let me know a time that suits and I\u2019ll send a meeting invite.\n\nBest\nPhil`;
+                        navigator.clipboard.writeText(text);
+                        setContactStrategy("call");
+                        setShowCallModal(false);
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"
+                    >
+                      <span className="text-xs font-medium text-gray-200 group-hover:text-indigo-300">Offer Microsoft Teams call</span>
+                      <p className="text-[10px] text-gray-500 mt-0.5">15–20 minute video call — you send the invite</p>
+                    </button>
+
+                    {/* Option 3 — Phone call */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const name = lead?.contact_name?.split(" ")[0] ?? "there";
+                        const text = `Hi ${name},\n\nThanks for the detailed replies so far. A quick call might be the easiest way to clarify a few things.\n\nIf you\u2019d prefer, I\u2019m happy to give you a quick ring to run through it.\n\nJust let me know a time that suits you and the best number to reach you on.\n\nBest\nPhil`;
+                        navigator.clipboard.writeText(text);
+                        setContactStrategy("call");
+                        setShowCallModal(false);
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"
+                    >
+                      <span className="text-xs font-medium text-gray-200 group-hover:text-indigo-300">Offer phone call</span>
+                      <p className="text-[10px] text-gray-500 mt-0.5">For less technical clients — you ring them</p>
+                    </button>
+
+                    <p className="text-[10px] text-gray-600 pt-2 border-t border-white/5">Email text will be copied to clipboard. Send via your email client.</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
