@@ -248,6 +248,47 @@ Rules:
 - Consider Irish/EU context for compliance (GDPR, cookie consent, data residency)
 - Keep recommendations actionable and specific to the project`;
 
+// ── Structured error helper ─────────────────────────────────────────────────
+
+type FailStage = 'config' | 'input' | 'weak_scope' | 'ai_call' | 'extraction' | 'normalisation' | 'validation' | 'persistence';
+
+function failResponse(stage: FailStage, message: string, status: number) {
+  const composed = `Research failed at ${stage}: ${message}`;
+  console.error(`[research:${stage}] ${message}`);
+  return NextResponse.json({ error: composed, stage, message }, { status });
+}
+
+// ── Weak-scope detection ────────────────────────────────────────────────────
+
+const WEAK_SCOPE_THRESHOLD = 80; // characters — anything shorter is too vague
+
+function isWeakScope(context: string): boolean {
+  // Strip whitespace/newlines and check raw content length
+  const stripped = context.replace(/\s+/g, ' ').trim();
+  if (stripped.length < WEAK_SCOPE_THRESHOLD) return true;
+
+  // Check for placeholder-only content (e.g. just headings with no substance)
+  const withoutHeadings = stripped.replace(/#{1,4}\s+[^\n]+/g, '').trim();
+  if (withoutHeadings.length < WEAK_SCOPE_THRESHOLD) return true;
+
+  return false;
+}
+
+function emptyResearch(): TechnicalResearch {
+  const empty = { summary: '', items: [] };
+  return {
+    summary: 'Insufficient project scope to perform meaningful technical research. Add more client context and try again.',
+    recommendations: [],
+    assumptions: [],
+    unknowns: ['Project scope is too vague to identify specific technical requirements.'],
+    integrations: { ...empty },
+    infrastructure: { ...empty },
+    third_party_services: { ...empty },
+    compliance: { ...empty },
+    operating_cost_estimate: { ...empty },
+  };
+}
+
 // ── Route handler ────────────────────────────────────────────────────────────
 
 /**
@@ -260,57 +301,76 @@ Rules:
  *   merged_context: string (required)
  *
  * Returns { research: TechnicalResearch, updated_at: string }
+ * On failure returns { error: string, stage: FailStage, message: string }
  */
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return NextResponse.json(
-      { error: 'ANTHROPIC_API_KEY is not configured.' },
-      { status: 500 },
-    );
+    return failResponse('config', 'ANTHROPIC_API_KEY is not configured.', 500);
   }
 
   let body: { merged_context?: string };
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
+    return failResponse('input', 'Invalid request body.', 400);
   }
 
   const mergedContext = body.merged_context?.trim();
   if (!mergedContext) {
-    return NextResponse.json({ error: 'merged_context is required.' }, { status: 400 });
+    return failResponse('input', 'merged_context is required.', 400);
+  }
+
+  // ── Weak-scope fallback: return safe empty research instead of wasting an AI call
+  if (isWeakScope(mergedContext)) {
+    const research = emptyResearch();
+    const now = new Date().toISOString();
+
+    const { error: dbError } = await supabaseServer
+      .from('lead_briefs')
+      .upsert(
+        { lead_id: id, technical_research: research, technical_research_updated_at: now },
+        { onConflict: 'lead_id' },
+      );
+
+    if (dbError) {
+      return failResponse('persistence', dbError.message, 500);
+    }
+
+    return NextResponse.json({ research, updated_at: now, weak_scope: true });
   }
 
   try {
     const anthropic = new Anthropic({ apiKey });
 
-    const message = await anthropic.messages.create({
-      model: RESEARCH_MODEL,
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: mergedContext }],
-    });
+    let rawText: string;
+    try {
+      const aiMessage = await anthropic.messages.create({
+        model: RESEARCH_MODEL,
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: mergedContext }],
+      });
 
-    const rawText = message.content
-      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-      .map((block) => block.text)
-      .join('');
+      rawText = aiMessage.content
+        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+    } catch (aiErr) {
+      const detail = aiErr instanceof Error ? aiErr.message : 'Unknown AI error';
+      return failResponse('ai_call', detail, 502);
+    }
 
     // Step 1: Extract JSON from response
     let parsed: unknown;
     try {
       parsed = extractAndParseJSON(rawText);
     } catch (parseErr) {
-      console.error('[research:extraction] Failed to extract/parse JSON from AI response.');
-      console.error('[research:extraction] Parse error:', parseErr instanceof Error ? parseErr.message : parseErr);
-      console.error('[research:extraction] Raw response (first 1000 chars):', rawText.slice(0, 1000));
-      return NextResponse.json(
-        { error: 'Failed to parse AI response. Please try again.' },
-        { status: 502 },
-      );
+      const detail = parseErr instanceof Error ? parseErr.message : 'JSON extraction failed';
+      console.error(`[research:extraction] Raw response (first 1000 chars): ${rawText.slice(0, 1000)}`);
+      return failResponse('extraction', detail, 502);
     }
 
     // Step 2: Normalise minor LLM shape variations
@@ -318,24 +378,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     try {
       normalised = normaliseResearch(parsed);
     } catch (normErr) {
-      console.error('[research:normalisation] Failed to normalise AI response.');
-      console.error('[research:normalisation] Error:', normErr instanceof Error ? normErr.message : normErr);
-      console.error('[research:normalisation] Parsed payload (first 1000 chars):', JSON.stringify(parsed).slice(0, 1000));
-      return NextResponse.json(
-        { error: 'Failed to normalise AI response. Please try again.' },
-        { status: 502 },
-      );
+      const detail = normErr instanceof Error ? normErr.message : 'Normalisation failed';
+      console.error(`[research:normalisation] Parsed payload (first 1000 chars): ${JSON.stringify(parsed).slice(0, 1000)}`);
+      return failResponse('normalisation', detail, 502);
     }
 
     // Step 3: Strict validation
     const validation = validateResearch(normalised);
     if (!validation.valid) {
-      console.error('[research:validation] Validation failed:', validation.reason);
-      console.error('[research:validation] Normalised payload (first 1000 chars):', JSON.stringify(normalised).slice(0, 1000));
-      return NextResponse.json(
-        { error: `AI response validation failed: ${validation.reason}. Please try again.` },
-        { status: 502 },
-      );
+      console.error(`[research:validation] Normalised payload (first 1000 chars): ${JSON.stringify(normalised).slice(0, 1000)}`);
+      return failResponse('validation', validation.reason, 502);
     }
 
     const research = validation.research;
@@ -354,17 +406,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
 
     if (dbError) {
-      console.error('[research] DB upsert error:', dbError.message);
-      return NextResponse.json(
-        { error: 'Failed to save research results.' },
-        { status: 500 },
-      );
+      return failResponse('persistence', dbError.message, 500);
     }
 
     return NextResponse.json({ research, updated_at: now });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'AI request failed.';
-    console.error('[research] Unexpected error:', message);
-    return NextResponse.json({ error: message }, { status: 502 });
+    const detail = err instanceof Error ? err.message : 'Unexpected error';
+    return failResponse('ai_call', detail, 502);
   }
 }

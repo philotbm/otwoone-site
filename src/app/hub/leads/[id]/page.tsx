@@ -3193,7 +3193,7 @@ export default function LeadDetailPage() {
                 >
                   {researchLoading ? "Researching…" : technicalResearch ? "Update research" : "Research stack"}
                 </button>
-                {researchError && <span className="text-[10px] text-red-400">{researchError}</span>}
+                {researchError && <span className="text-[10px] text-red-400 block mt-1">{researchError}</span>}
               </div>
 
               {/* ── Editable structured brief fields ──────────────────── */}
