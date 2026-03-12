@@ -1213,6 +1213,153 @@ export default function LeadDetailPage() {
     return sections.join("\n\n");
   }, [lead, briefReply, rounds, intakePath, contactStrategy, briefSummary, briefType, briefSolution, briefIntegrations, briefTimeline, briefBudget, briefRisks]);
 
+  // ── Pricing Engine (deterministic commercial recommendation) ─────────────────
+
+  type DeliveryClass = "Brochure site" | "Business website" | "Growth website" | "Custom workflow build" | "Ops platform" | "Needs review";
+  type PricingFit = "Tight" | "Feasible" | "Premium" | "Needs review";
+  type RecommendedPackage = "Foundation" | "Growth" | "Accelerator" | "Custom System" | "Needs review";
+  type PriceBand = "€3k–€5k" | "€5k–€8k" | "€8k–€12k" | "€12k+" | "Needs custom quote";
+
+  type PricingRecommendation = {
+    deliveryClass: DeliveryClass;
+    pricingFit: PricingFit;
+    package: RecommendedPackage;
+    priceBand: PriceBand;
+    rationale: string;
+    confidence: "high" | "medium" | "low";
+  };
+
+  const pricingRecommendation = useMemo((): PricingRecommendation | null => {
+    if (!lead) return null;
+
+    // ── Signal extraction ──────────────────────────────────────────
+    const complexity = lead.complexity_score ?? 0;
+    const totalScore = lead.total_score ?? 0;
+    const budget = lead.budget ?? "";
+    const engagement = lead.engagement_type ?? "";
+    const timeline = lead.timeline ?? "";
+
+    // Text analysis helpers — lowercase all brief fields for keyword detection
+    const allAnalysis = [briefSummary, briefType, briefSolution, briefIntegrations, briefFeatures, briefPages, briefRisks].join(" ").toLowerCase();
+
+    // Complexity signal keywords
+    const hasWorkflowSignals = /\b(workflow|booking|dashboard|crm|portal|automation|scheduling|inventory|login|auth|user.?account|admin.?panel|multi.?step|ops|operational)\b/.test(allAnalysis);
+    const hasIntegrationSignals = /\b(api|integrat|stripe|payment|oauth|webhook|third.?party|zapier|hubspot|salesforce|xero|quickbooks|mailchimp)\b/.test(allAnalysis);
+    const hasEcommerceSignals = /\b(e.?commerce|shop|store|cart|checkout|product.?catalog|woocommerce|shopify)\b/.test(allAnalysis);
+    const hasBrochureSignals = /\b(brochure|landing.?page|one.?page|simple|informational|static|portfolio)\b/.test(allAnalysis);
+    const hasGrowthSignals = /\b(blog|seo|content.?manage|cms|lead.?gen|marketing|growth|funnel|conversion)\b/.test(allAnalysis);
+
+    // Count complexity signals
+    const complexitySignals = [hasWorkflowSignals, hasIntegrationSignals, hasEcommerceSignals].filter(Boolean).length;
+
+    // Budget parsing
+    const budgetTier: number = budget === "under_3k" ? 1 : budget === "3k_5k" ? 2 : budget === "5k_15k" ? 3 : budget === "15k_40k" ? 4 : budget === "40k_plus" ? 5 : 0;
+
+    // ── Delivery class determination ────────────────────────────────
+    let deliveryClass: DeliveryClass;
+    if (!briefType.trim() && !briefSolution.trim() && complexitySignals === 0) {
+      deliveryClass = "Needs review";
+    } else if (hasWorkflowSignals && (complexity >= 4 || complexitySignals >= 2)) {
+      deliveryClass = "Ops platform";
+    } else if (hasWorkflowSignals || (hasIntegrationSignals && complexity >= 3)) {
+      deliveryClass = "Custom workflow build";
+    } else if (hasEcommerceSignals || (hasIntegrationSignals && hasGrowthSignals)) {
+      deliveryClass = "Growth website";
+    } else if (hasGrowthSignals || (complexity >= 3 && !hasBrochureSignals)) {
+      deliveryClass = "Business website";
+    } else if (hasBrochureSignals || complexity <= 2) {
+      deliveryClass = "Brochure site";
+    } else {
+      deliveryClass = "Business website"; // safe default
+    }
+
+    // ── Package recommendation ──────────────────────────────────────
+    let pkg: RecommendedPackage;
+    if (deliveryClass === "Needs review") {
+      pkg = "Needs review";
+    } else if (deliveryClass === "Ops platform") {
+      pkg = "Custom System";
+    } else if (deliveryClass === "Custom workflow build") {
+      pkg = "Accelerator";
+    } else if (deliveryClass === "Growth website") {
+      pkg = "Growth";
+    } else if (deliveryClass === "Business website") {
+      pkg = complexity >= 3 ? "Growth" : "Foundation";
+    } else {
+      pkg = "Foundation";
+    }
+
+    // ── Indicative price band ───────────────────────────────────────
+    let priceBand: PriceBand;
+    if (deliveryClass === "Needs review") {
+      priceBand = "Needs custom quote";
+    } else if (pkg === "Custom System") {
+      priceBand = "€12k+";
+    } else if (pkg === "Accelerator") {
+      priceBand = "€8k–€12k";
+    } else if (pkg === "Growth") {
+      priceBand = "€5k–€8k";
+    } else {
+      priceBand = "€3k–€5k";
+    }
+
+    // ── Pricing fit (budget vs recommendation) ──────────────────────
+    let pricingFit: PricingFit;
+    if (budgetTier === 0) {
+      pricingFit = "Needs review"; // unknown budget
+    } else if (pkg === "Foundation" && budgetTier >= 2) {
+      pricingFit = budgetTier >= 3 ? "Premium" : "Feasible";
+    } else if (pkg === "Growth" && budgetTier >= 3) {
+      pricingFit = budgetTier >= 4 ? "Premium" : "Feasible";
+    } else if (pkg === "Accelerator" && budgetTier >= 3) {
+      pricingFit = budgetTier >= 4 ? "Feasible" : "Tight";
+    } else if (pkg === "Custom System" && budgetTier >= 4) {
+      pricingFit = budgetTier >= 5 ? "Feasible" : "Tight";
+    } else if (pkg === "Custom System" && budgetTier < 4) {
+      pricingFit = "Tight";
+    } else if (budgetTier >= 2) {
+      pricingFit = "Feasible";
+    } else {
+      pricingFit = "Tight";
+    }
+
+    // ── Confidence ──────────────────────────────────────────────────
+    const hasAnalysis = briefSummary.trim() || briefType.trim();
+    const hasScoring = totalScore > 0;
+    const confidence: "high" | "medium" | "low" = (hasAnalysis && hasScoring && budgetTier > 0) ? "high" : (hasAnalysis || hasScoring) ? "medium" : "low";
+
+    // ── Rationale ───────────────────────────────────────────────────
+    const parts: string[] = [];
+    if (deliveryClass !== "Needs review") {
+      parts.push(`Classified as ${deliveryClass.toLowerCase()} based on ${complexitySignals > 0 ? "project signals" : "scope analysis"}.`);
+    } else {
+      parts.push("Insufficient analysis to classify — run AI analysis or complete more client inputs.");
+    }
+    if (pricingFit === "Tight") {
+      parts.push("Client budget may be tight for the recommended scope.");
+    } else if (pricingFit === "Premium") {
+      parts.push("Budget comfortably covers the recommended scope.");
+    }
+    if (engagement === "tech_advice" || engagement === "ongoing_support") {
+      parts.push(`Engagement type (${ENGAGEMENT_LABELS[engagement] ?? engagement}) may warrant retainer pricing instead.`);
+    }
+    if (timeline === "asap") {
+      parts.push("Urgent timeline — consider rush premium.");
+    }
+    if (briefRisks.trim()) {
+      parts.push("Risks identified in analysis — review before confirming price.");
+    }
+
+    return {
+      deliveryClass,
+      pricingFit,
+      package: pkg,
+      priceBand,
+      rationale: parts.join(" "),
+      confidence,
+    };
+  }, [lead, briefSummary, briefType, briefSolution, briefIntegrations, briefFeatures, briefPages, briefRisks]);
+
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
   async function saveBrief() {
@@ -2911,6 +3058,86 @@ export default function LeadDetailPage() {
           </div>
         )}
 
+        {/* ════════════════════════════════════════════════════════════════
+            PRICING ENGINE — commercial recommendation from analysis
+            ════════════════════════════════════════════════════════════════ */}
+        {briefAccessible && pricingRecommendation && (
+          <div className="lg:col-span-2">
+            <Section title="Pricing Engine">
+              <div className="space-y-4">
+
+                {/* ── Confidence indicator ─────────────────────────────── */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wide">Recommendation confidence</span>
+                  <span className={cx(
+                    "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
+                    pricingRecommendation.confidence === "high"   && "bg-green-500/15 text-green-400",
+                    pricingRecommendation.confidence === "medium" && "bg-amber-500/15 text-amber-400",
+                    pricingRecommendation.confidence === "low"    && "bg-red-500/15 text-red-400",
+                  )}>
+                    {pricingRecommendation.confidence}
+                  </span>
+                </div>
+
+                {/* ── Output grid ─────────────────────────────────────── */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {/* Delivery class */}
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Delivery class</p>
+                    <p className="text-sm font-medium text-gray-200">{pricingRecommendation.deliveryClass}</p>
+                  </div>
+                  {/* Recommended package */}
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Recommended package</p>
+                    <p className={cx(
+                      "text-sm font-medium",
+                      pricingRecommendation.package === "Foundation"    && "text-blue-400",
+                      pricingRecommendation.package === "Growth"        && "text-emerald-400",
+                      pricingRecommendation.package === "Accelerator"   && "text-amber-400",
+                      pricingRecommendation.package === "Custom System" && "text-purple-400",
+                      pricingRecommendation.package === "Needs review"  && "text-gray-500",
+                    )}>
+                      {pricingRecommendation.package}
+                    </p>
+                  </div>
+                  {/* Indicative price band */}
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Indicative price band</p>
+                    <p className="text-sm font-semibold text-gray-100">{pricingRecommendation.priceBand}</p>
+                  </div>
+                  {/* Pricing fit */}
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Pricing fit</p>
+                    <p className={cx(
+                      "text-sm font-medium",
+                      pricingRecommendation.pricingFit === "Premium"      && "text-green-400",
+                      pricingRecommendation.pricingFit === "Feasible"     && "text-emerald-400",
+                      pricingRecommendation.pricingFit === "Tight"        && "text-amber-400",
+                      pricingRecommendation.pricingFit === "Needs review" && "text-gray-500",
+                    )}>
+                      {pricingRecommendation.pricingFit}
+                    </p>
+                  </div>
+                </div>
+
+                {/* ── Commercial rationale ─────────────────────────────── */}
+                <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Commercial rationale</p>
+                  <p className="text-xs text-gray-400 leading-relaxed">{pricingRecommendation.rationale}</p>
+                </div>
+
+                {/* ── Source signals ───────────────────────────────────── */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-[10px] text-gray-600">
+                    Signals: {lead?.engagement_type ? `${ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type}` : "no engagement type"} · {lead?.budget ? `${BUDGET_LABELS[lead.budget] ?? lead.budget}` : "no budget"} · complexity {lead?.complexity_score ?? "?"}/5 · total {lead?.total_score != null ? `${Number(lead.total_score).toFixed(1)}/5` : "?/5"}
+                  </span>
+                </div>
+
+              </div>
+            </Section>
+          </div>
+        )}
+
         {/* Internal notes (full width) */}
         <div className="lg:col-span-2">
           <Section title="Internal notes">
@@ -3025,9 +3252,14 @@ export default function LeadDetailPage() {
                 {/* ── Proposal prompt ─────────────────────────────────── */}
                 <div className="pt-3 border-t border-white/5">
                   {(scopeReady === true || overrideScopeWarning) && briefSummary.trim() && (
-                    <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-green-500/5 border border-green-500/10">
+                    <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-green-500/5 border border-green-500/10 flex-wrap">
                       <span className="text-[10px] text-green-400 font-medium">✓ Brief confirmed</span>
                       <span className="text-[10px] text-gray-500">→ Generate proposal prompt</span>
+                      {pricingRecommendation && pricingRecommendation.package !== "Needs review" && (
+                        <span className="text-[10px] text-gray-500 ml-1">
+                          · Pricing: <span className="text-gray-400 font-medium">{pricingRecommendation.package}</span> ({pricingRecommendation.priceBand})
+                        </span>
+                      )}
                     </div>
                   )}
                   <div className="flex items-center justify-between mb-2">
