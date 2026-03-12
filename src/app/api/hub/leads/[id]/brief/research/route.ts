@@ -260,14 +260,32 @@ function failResponse(stage: FailStage, message: string, status: number) {
 
 // ── Weak-scope detection ────────────────────────────────────────────────────
 
-const WEAK_SCOPE_THRESHOLD = 80; // characters — anything shorter is too vague
+const WEAK_SCOPE_THRESHOLD = 120; // characters — anything shorter *may* be too vague
+
+const TECHNICAL_KEYWORDS: readonly string[] = [
+  // Integrations
+  'api', 'integration', 'webhook', 'stripe', 'revolut', 'oauth', 'zapier',
+  // System
+  'dashboard', 'portal', 'admin', 'workflow', 'booking', 'automation', 'crm', 'analytics',
+  // Infrastructure
+  'hosting', 'server', 'database', 'migration', 'authentication',
+];
+
+const TECHNICAL_KEYWORDS_RE = new RegExp(
+  `\\b(?:${TECHNICAL_KEYWORDS.join('|')})\\b`,
+  'i',
+);
 
 function isWeakScope(context: string): boolean {
-  // Strip whitespace/newlines and check raw content length
   const stripped = context.replace(/\s+/g, ' ').trim();
+
+  // If any technical keyword is present the scope is meaningful — always run research
+  if (TECHNICAL_KEYWORDS_RE.test(stripped)) return false;
+
+  // No keywords: fall back to length check
   if (stripped.length < WEAK_SCOPE_THRESHOLD) return true;
 
-  // Check for placeholder-only content (e.g. just headings with no substance)
+  // Also catch heading-only content with no real substance
   const withoutHeadings = stripped.replace(/#{1,4}\s+[^\n]+/g, '').trim();
   if (withoutHeadings.length < WEAK_SCOPE_THRESHOLD) return true;
 
