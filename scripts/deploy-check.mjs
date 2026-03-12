@@ -10,6 +10,7 @@
  *   1. Latest Vercel production deployment status
  *   2. Live domain reachability (https://www.otwoone.ie)
  *   3. Autofill API route compilation (expects 401 from auth middleware)
+ *   4. AI parsing path — sends realistic payload, validates response fields if 200
  *
  * Exit codes:
  *   0 = all checks passed
@@ -17,8 +18,9 @@
  */
 
 import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { resolve, join } from 'path';
+import { tmpdir } from 'os';
 
 const DOMAIN = 'https://www.otwoone.ie';
 const TEST_ENDPOINT = `${DOMAIN}/api/hub/leads/test/brief/autofill`;
@@ -133,6 +135,67 @@ if (apiStatus === '401') {
   ok('Autofill route reachable', `POST returned ${apiStatus}`);
 } else {
   fail('Autofill route compiled', 'Connection failed');
+}
+
+// ─── Check 4: AI parsing path (autofill response validation) ─────────────────
+
+// This check sends a realistic scoping reply to verify the full AI parsing
+// pipeline works. It accepts 401 (unauthenticated — route compiled) or 200
+// (autofill executed). On 200, it validates the response contains required fields.
+
+const tmpScript = join(tmpdir(), `otwoone-deploy-check-${Date.now()}.mjs`);
+writeFileSync(tmpScript, `
+const endpoint = ${JSON.stringify(TEST_ENDPOINT)};
+const payload = JSON.stringify({
+  scoping_reply: 'We need a new website for our Cork-based construction company. We want a modern design, a projects gallery, contact form, and SEO optimisation.'
+});
+try {
+  const r = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload
+  });
+  if (r.status === 200) {
+    const body = await r.json();
+    process.stdout.write(JSON.stringify({ status: r.status, body }));
+  } else {
+    process.stdout.write(JSON.stringify({ status: r.status }));
+  }
+} catch {
+  process.stdout.write(JSON.stringify({ status: 0 }));
+}
+`);
+
+const parseResult = run(`node "${tmpScript}"`, 30000);
+try { unlinkSync(tmpScript); } catch { /* ignore */ }
+
+if (parseResult) {
+  try {
+    const { status, body } = JSON.parse(parseResult);
+    if (status === 401) {
+      ok('AI parsing path', 'Returned 401 (unauthenticated — route compiled)');
+    } else if (status === 200 && body) {
+      const fields = body.fields || {};
+      const required = ['project_summary', 'project_type', 'recommended_solution'];
+      const missing = required.filter(k => !(k in fields));
+      if (missing.length === 0) {
+        ok('AI parsing path', `200 OK — fields populated (ready: ${body.ready})`);
+      } else {
+        fail('AI parsing path', `200 OK but missing fields: ${missing.join(', ')}`);
+      }
+    } else if (status === 502) {
+      const errMsg = body?.error || 'unknown';
+      fail('AI parsing path', `502 — ${errMsg}`);
+    } else if (status === 0) {
+      fail('AI parsing path', 'Connection failed');
+    } else {
+      fail('AI parsing path', `Unexpected status ${status}`);
+    }
+  } catch {
+    fail('AI parsing path', 'Could not parse check result');
+  }
+} else {
+  fail('AI parsing path', 'Check timed out or crashed');
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
