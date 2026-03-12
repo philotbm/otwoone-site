@@ -201,6 +201,8 @@ type ExecutionBatch = {
   }>;
 };
 
+type IntakePath = 'clarification_email' | 'discovery_call' | 'proceed_to_brief';
+
 type LeadBrief = {
   id: string;
   lead_id: string;
@@ -220,6 +222,7 @@ type LeadBrief = {
   contact_strategy: string | null;
   scope_ready: boolean | null;
   readiness_reason: string | null;
+  intake_path: IntakePath | null;
   created_at: string;
   updated_at: string;
 };
@@ -769,6 +772,7 @@ export default function LeadDetailPage() {
   const [overrideScopeWarning, setOverrideScopeWarning] = useState(false);
   const [contactStrategy,      setContactStrategy]      = useState<"bookings" | "teams" | "phone" | null>(null);
   const [showCallModal,        setShowCallModal]        = useState(false);
+  const [intakePath,           setIntakePath]           = useState<IntakePath | null>(null);
 
   const fetchLead = useCallback(async () => {
     setLoading(true);
@@ -890,6 +894,9 @@ export default function LeadDetailPage() {
         if (b.scope_ready === true) setScopeReady(true);
         else if (b.scope_ready === false) setScopeReady(false);
         if (b.readiness_reason) setReadinessReason(b.readiness_reason);
+        if (b.intake_path === "clarification_email" || b.intake_path === "discovery_call" || b.intake_path === "proceed_to_brief") {
+          setIntakePath(b.intake_path);
+        }
       }
     } finally {
       setBriefLoading(false);
@@ -925,6 +932,7 @@ export default function LeadDetailPage() {
         contact_strategy: contactStrategy,
         scope_ready: scopeReady,
         readiness_reason: readinessReason,
+        intake_path: intakePath,
       }),
     });
     setBriefSaving(false);
@@ -1014,6 +1022,90 @@ export default function LeadDetailPage() {
     } finally {
       setRoundSaving(null);
     }
+  }
+
+  // ── Select intake path (persists immediately) ─────────────────────────────────
+
+  async function selectIntakePath(path: IntakePath) {
+    setIntakePath(path);
+    await safeFetch(`/api/hub/leads/${id}/brief`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intake_path: path }),
+    });
+  }
+
+  // ── Build discovery call prep prompt ──────────────────────────────────────────
+
+  function buildDiscoveryCallPrep(): string {
+    if (!lead) return "";
+    const lines: string[] = [];
+    lines.push("## Discovery Call Preparation Pack");
+    lines.push("");
+    lines.push("### Client overview");
+    lines.push(`Name: ${lead.contact_name ?? "Unknown"}`);
+    if (lead.company_name) lines.push(`Company: ${lead.company_name}`);
+    if (lead.company_website) lines.push(`Website: ${lead.company_website}`);
+    if (lead.engagement_type) lines.push(`Engagement: ${ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type}`);
+    if (lead.budget) lines.push(`Budget: ${BUDGET_LABELS[lead.budget] ?? lead.budget}`);
+    if (lead.timeline) lines.push(`Timeline: ${TIMELINE_LABELS[lead.timeline] ?? lead.timeline}`);
+    lines.push("");
+    if (briefSummary.trim()) {
+      lines.push("### AI brief summary");
+      lines.push(briefSummary.trim());
+      lines.push("");
+    }
+    if (readinessReason) {
+      lines.push(`### Readiness assessment: ${scopeReady ? "Ready" : "Needs clarification"}`);
+      lines.push(readinessReason);
+      lines.push("");
+    }
+    if (briefFollowUp.trim()) {
+      lines.push("### Key questions to ask on the call");
+      lines.push(briefFollowUp.trim());
+      lines.push("");
+    }
+    if (briefRisks.trim()) {
+      lines.push("### Risks & unknowns to discuss");
+      lines.push(briefRisks.trim());
+      lines.push("");
+    }
+    lines.push("### Suggested call agenda");
+    lines.push("1. Introductions and rapport building");
+    lines.push("2. Confirm project goals and vision");
+    lines.push("3. Walk through scope gaps / follow-up questions");
+    lines.push("4. Discuss timeline and budget expectations");
+    lines.push("5. Agree on next steps");
+    return lines.join("\n");
+  }
+
+  // ── Build clarification email pack ────────────────────────────────────────────
+
+  function buildClarificationEmailContent(): string {
+    if (!lead) return "";
+    const firstName = (lead.contact_name ?? "").split(" ")[0] || "there";
+    const lines: string[] = [];
+    lines.push(`Hi ${firstName},`);
+    lines.push("");
+    lines.push("Thanks for getting back to me with the scoping details — really helpful to see where you're at.");
+    lines.push("");
+    lines.push("I've reviewed everything and have a few follow-up questions before I put together a formal proposal:");
+    lines.push("");
+    if (briefFollowUp.trim()) {
+      const questions = briefFollowUp.trim().split(/\n/).filter(q => q.trim());
+      questions.forEach((q, i) => {
+        const cleaned = q.replace(/^\d+[\.\)]\s*/, "").replace(/^[-•]\s*/, "").trim();
+        if (cleaned) lines.push(`${i + 1}. ${cleaned}`);
+      });
+    } else {
+      lines.push("1. [Follow-up question]");
+    }
+    lines.push("");
+    lines.push("No rush — whenever suits. Once I have these, I'll have everything I need to draft the proposal.");
+    lines.push("");
+    lines.push("Best,");
+    lines.push("Phil");
+    return lines.join("\n");
   }
 
   // ── Build proposal prompt (from structured brief) ──────────────────────────
@@ -2066,18 +2158,24 @@ export default function LeadDetailPage() {
                 const hasReply   = briefReply.trim().length > 0;
                 const hasBrief   = briefSummary.trim().length > 0;
                 const reviewed   = scopeReady !== null;
-                const canProceed = scopeReady === true || overrideScopeWarning;
+                const hasPath    = intakePath !== null;
+                const canProceed = hasPath && (intakePath === "proceed_to_brief" || overrideScopeWarning || scopeReady);
                 const hasPrompt  = briefPromptOutput.trim().length > 0;
                 const hasDraft   = briefProposal.trim().length > 0;
                 const isSent     = status === "proposal_sent" || status === "deposit_requested" || status === "deposit_received" || status === "converted";
 
+                const pathLabel = intakePath === "clarification_email" ? "✉️ Clarification email"
+                  : intakePath === "discovery_call" ? "📞 Discovery call"
+                  : intakePath === "proceed_to_brief" ? "✅ Proceed to brief"
+                  : "Choose intake path";
+
                 type StepState = "done" | "active" | "upcoming";
                 const steps: Array<{ label: string; state: StepState }> = [
                   { label: "Client reply received",      state: hasReply ? "done" : "active" },
-                  { label: "Structured brief generated",  state: hasBrief ? "done" : hasReply ? "active" : "upcoming" },
-                  { label: "Scope review completed",      state: reviewed && canProceed ? "done" : hasBrief ? "active" : "upcoming" },
-                  { label: "Choose next action",          state: canProceed ? "done" : (reviewed && !canProceed) ? "active" : "upcoming" },
-                  { label: "Proposal prompt generated",   state: hasPrompt ? "done" : canProceed ? "active" : "upcoming" },
+                  { label: "Intake analysis",             state: hasBrief && reviewed ? "done" : hasBrief ? "active" : hasReply ? "active" : "upcoming" },
+                  { label: pathLabel,                     state: hasPath ? "done" : reviewed ? "active" : "upcoming" },
+                  { label: "Structured brief finalised",  state: canProceed && hasBrief ? "done" : hasPath ? "active" : "upcoming" },
+                  { label: "Proposal prompt generated",   state: hasPrompt ? "done" : (canProceed && hasBrief) ? "active" : "upcoming" },
                   { label: "Proposal draft prepared",     state: hasDraft ? "done" : hasPrompt ? "active" : "upcoming" },
                   { label: "Ready to send proposal",      state: isSent ? "done" : hasDraft ? "active" : "upcoming" },
                 ];
@@ -2162,10 +2260,10 @@ export default function LeadDetailPage() {
                     )}
                   </div>
 
-                  {/* ── Readiness assessment + next-step actions ────────── */}
+                  {/* ── Readiness assessment + intake path selector ──── */}
                   {scopeReady !== null && (
                     <div className="space-y-3">
-                      {/* Status banner */}
+                      {/* Readiness banner */}
                       <div className={cx(
                         "px-4 py-3 rounded-lg border",
                         scopeReady
@@ -2188,43 +2286,156 @@ export default function LeadDetailPage() {
                         )}
                       </div>
 
-                      {/* Next-step actions (shown when needs clarification and not yet overridden) */}
-                      {!scopeReady && !overrideScopeWarning && (
-                        <div className="px-4 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-3">Choose next action</p>
-                          <div className="flex flex-wrap gap-2">
-                            {/* A) Start clarification */}
-                            {briefFollowUp.trim() && (
-                              <button
-                                type="button"
-                                onClick={startClarificationFromAutofill}
-                                disabled={roundSaving === "new"}
-                                className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 transition-colors disabled:opacity-50"
-                              >
-                                Start clarification round
-                              </button>
+                      {/* Choose next action — intake path selector */}
+                      <div className="px-4 py-4 rounded-lg border border-white/10 bg-white/[0.02]">
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-3">
+                          Choose next action
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => selectIntakePath("clarification_email")}
+                            className={cx(
+                              "px-3 py-3 rounded-lg text-xs font-medium border transition-all text-left",
+                              intakePath === "clarification_email"
+                                ? "border-amber-500 bg-amber-500/10 text-amber-200"
+                                : "border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300"
                             )}
-                            {/* B) Proceed anyway */}
+                          >
+                            <span className="block font-semibold mb-0.5">✉️ Send clarification email</span>
+                            <span className="block text-[10px] opacity-70">Email targeted questions to the client</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => selectIntakePath("discovery_call")}
+                            className={cx(
+                              "px-3 py-3 rounded-lg text-xs font-medium border transition-all text-left",
+                              intakePath === "discovery_call"
+                                ? "border-blue-500 bg-blue-500/10 text-blue-200"
+                                : "border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300"
+                            )}
+                          >
+                            <span className="block font-semibold mb-0.5">📞 Discovery call</span>
+                            <span className="block text-[10px] opacity-70">Schedule a call to discuss in depth</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => selectIntakePath("proceed_to_brief")}
+                            className={cx(
+                              "px-3 py-3 rounded-lg text-xs font-medium border transition-all text-left",
+                              intakePath === "proceed_to_brief"
+                                ? "border-green-500 bg-green-500/10 text-green-200"
+                                : "border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300"
+                            )}
+                          >
+                            <span className="block font-semibold mb-0.5">✅ Proceed to brief</span>
+                            <span className="block text-[10px] opacity-70">Scope is clear — draft proposal</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* ── Clarification Email Pack ─────────────────────── */}
+                      {intakePath === "clarification_email" && (
+                        <div className="px-4 py-4 rounded-lg border border-amber-500/20 bg-amber-500/5 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] text-amber-400 uppercase tracking-wide font-medium">
+                              Clarification email draft
+                            </p>
                             <button
                               type="button"
-                              onClick={() => setOverrideScopeWarning(true)}
-                              className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                              onClick={() => {
+                                navigator.clipboard.writeText(buildClarificationEmailContent());
+                                setBriefPromptCopied(true);
+                                setTimeout(() => setBriefPromptCopied(false), 2000);
+                              }}
+                              className="px-2.5 py-1 rounded text-[10px] font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 transition-colors"
                             >
-                              Proceed to proposal anyway
+                              {briefPromptCopied ? "Copied ✓" : "Copy email"}
                             </button>
-                            {/* C) Speak to client */}
+                          </div>
+                          <textarea
+                            readOnly
+                            value={buildClarificationEmailContent()}
+                            rows={12}
+                            className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono resize-y focus:outline-none leading-relaxed"
+                          />
+                          <div className="flex items-center gap-2 flex-wrap">
                             <button
                               type="button"
-                              onClick={() => setShowCallModal(true)}
-                              className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors"
+                              onClick={startClarificationFromAutofill}
+                              disabled={roundSaving === "new" || !briefFollowUp.trim()}
+                              className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             >
-                              Speak to client
+                              Create clarification round
                             </button>
+                            <span className="text-[10px] text-gray-600">Saves questions to the clarification tracker below</span>
                           </div>
                         </div>
                       )}
 
-                      {/* Contact strategy indicator */}
+                      {/* ── Discovery Call Pack ──────────────────────────── */}
+                      {intakePath === "discovery_call" && (
+                        <div className="px-4 py-4 rounded-lg border border-blue-500/20 bg-blue-500/5 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] text-blue-400 uppercase tracking-wide font-medium">
+                              Discovery call preparation pack
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(buildDiscoveryCallPrep());
+                                setBriefPromptCopied(true);
+                                setTimeout(() => setBriefPromptCopied(false), 2000);
+                              }}
+                              className="px-2.5 py-1 rounded text-[10px] font-medium bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors"
+                            >
+                              {briefPromptCopied ? "Copied ✓" : "Copy pack"}
+                            </button>
+                          </div>
+                          <textarea
+                            readOnly
+                            value={buildDiscoveryCallPrep()}
+                            rows={16}
+                            className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono resize-y focus:outline-none leading-relaxed"
+                          />
+                          <div className="space-y-2">
+                            <p className="text-[10px] text-blue-400/70 uppercase tracking-wide font-medium">Scheduling (Microsoft-first)</p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <a
+                                href={`https://outlook.office.com/calendar/action/compose?subject=Discovery+Call+-+${encodeURIComponent(lead?.company_name ?? lead?.contact_name ?? "Client")}&body=${encodeURIComponent("Hi " + ((lead?.contact_name ?? "").split(" ")[0] || "there") + ",\n\nI'd like to schedule a quick discovery call to discuss your project in more detail. Would any of the following times work?\n\n• [Option 1]\n• [Option 2]\n• [Option 3]\n\nBest,\nPhil")}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-blue-600/80 hover:bg-blue-600 text-white transition-colors inline-block"
+                              >
+                                Open Outlook Calendar
+                              </a>
+                              <a
+                                href={`https://teams.microsoft.com/l/meeting/new?subject=Discovery+Call+-+${encodeURIComponent(lead?.company_name ?? lead?.contact_name ?? "Client")}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-colors inline-block"
+                              >
+                                New Teams Meeting
+                              </a>
+                            </div>
+                          </div>
+                          <div className="pt-2 border-t border-blue-500/10">
+                            <p className="text-[10px] text-gray-500">After the call, update the brief fields below and click <strong className="text-gray-400">Proceed to brief</strong> to move forward.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Proceed to Brief — just confirms ─────────────── */}
+                      {intakePath === "proceed_to_brief" && (
+                        <div className="px-4 py-3 rounded-lg border border-green-500/20 bg-green-500/5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-green-400">✓ Proceeding directly to proposal.</span>
+                            <span className="text-[10px] text-gray-500">Complete the structured brief below, then generate the proposal prompt.</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Contact strategy indicator (legacy) */}
                       {contactStrategy && (
                         <p className="text-[10px] text-indigo-400/70">
                           📞 Contact strategy: {contactStrategy === "bookings" ? "Microsoft Bookings link sent" : contactStrategy === "teams" ? "Microsoft Teams call offered" : "Phone call offered"}

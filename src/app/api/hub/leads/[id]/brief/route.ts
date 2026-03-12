@@ -18,6 +18,7 @@ const ALLOWED_TEXT_FIELDS = [
   'proposal_draft',
   'contact_strategy',
   'readiness_reason',
+  'intake_path',
 ] as const;
 
 const ALLOWED_BOOL_FIELDS = [
