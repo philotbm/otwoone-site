@@ -162,6 +162,48 @@ Rules:
 - If clarification rounds are provided, incorporate the new information and re-assess readiness`;
 
 /**
+ * Extract and parse the first JSON object from a Claude response that may
+ * include markdown code fences or leading/trailing explanatory text.
+ */
+function extractAndParseJSON(raw: string): AutofillResponse {
+  let text = raw.trim();
+
+  // Strip markdown code fences: ```json ... ``` or ``` ... ```
+  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (fenceMatch) {
+    text = fenceMatch[1].trim();
+  }
+
+  // Try direct parse first (covers clean responses and fence-stripped ones)
+  try {
+    return JSON.parse(text) as AutofillResponse;
+  } catch {
+    // Fall through to extraction
+  }
+
+  // Extract the first top-level JSON object via brace matching
+  const start = text.indexOf('{');
+  if (start === -1) {
+    throw new Error('No JSON object found in response');
+  }
+  let depth = 0;
+  let end = -1;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') depth--;
+    if (depth === 0) {
+      end = i;
+      break;
+    }
+  }
+  if (end === -1) {
+    throw new Error('Unterminated JSON object in response');
+  }
+
+  return JSON.parse(text.slice(start, end + 1)) as AutofillResponse;
+}
+
+/**
  * POST /api/hub/leads/[id]/brief/autofill
  *
  * Hub-protected (middleware). Calls Claude to auto-fill structured brief
@@ -230,15 +272,18 @@ export async function POST(req: NextRequest, { params }: Params) {
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    const text = message.content
+    const rawText = message.content
       .filter((block): block is Anthropic.TextBlock => block.type === 'text')
       .map((block) => block.text)
       .join('');
 
     let parsed: AutofillResponse;
     try {
-      parsed = JSON.parse(text) as AutofillResponse;
-    } catch {
+      parsed = extractAndParseJSON(rawText);
+    } catch (parseErr) {
+      console.error('[autofill] Failed to parse AI response.');
+      console.error('[autofill] Raw response:', rawText);
+      console.error('[autofill] Parse error:', parseErr instanceof Error ? parseErr.message : parseErr);
       return NextResponse.json(
         { error: 'Failed to parse AI response. Please try again.' },
         { status: 502 },
@@ -246,9 +291,24 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     // Validate shape
+    const requiredFields: (keyof AutofillFields)[] = [
+      'project_summary', 'project_type', 'recommended_solution',
+      'suggested_pages', 'suggested_features', 'suggested_integrations',
+      'timeline_estimate', 'budget_positioning', 'risks_and_unknowns',
+      'follow_up_questions',
+    ];
+    const missingKeys = requiredFields.filter((k) => !(k in parsed.fields));
     if (!parsed.fields || typeof parsed.ready !== 'boolean') {
+      console.error('[autofill] Unexpected response shape:', JSON.stringify(parsed).slice(0, 500));
       return NextResponse.json(
         { error: 'Unexpected AI response format. Please try again.' },
+        { status: 502 },
+      );
+    }
+    if (missingKeys.length > 0) {
+      console.error('[autofill] Missing required fields:', missingKeys.join(', '));
+      return NextResponse.json(
+        { error: `AI response missing fields: ${missingKeys.join(', ')}. Please try again.` },
         { status: 502 },
       );
     }
