@@ -197,13 +197,21 @@ function validateResearch(data: unknown): { valid: true; research: TechnicalRese
 
 // ── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You perform technical due-diligence research on project scopes to help operators understand the stack, services, compliance considerations, and operating costs.
+const SYSTEM_PROMPT = `You MUST respond with valid JSON only.
+Do NOT include:
+- markdown
+- explanations
+- headings
+- commentary
+- code fences
+- text before or after the JSON
+Your entire response must be a single JSON object that matches this schema.
+
+You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You perform technical due-diligence research on project scopes to help operators understand the stack, services, compliance considerations, and operating costs.
 
 You will receive a merged client context containing all available information about a project. Research the full technical stack required, but only include technologies that are clearly relevant to the analysed scope. Avoid generic "kitchen sink" tool lists.
 
-Respond with valid JSON only. No markdown, no code fences, no explanation outside the JSON.
-
-JSON schema:
+Your response must be exactly this JSON structure:
 {
   "summary": "2-3 sentence overall technical research summary",
   "recommendations": ["array of recommended stack choices, e.g. 'Use Vercel for hosting with edge functions'"],
@@ -246,7 +254,9 @@ Rules:
 - Never fabricate pricing — if not publicly available, state "Commercial license required" or "Quote required"
 - For operating costs, break down by service and provide a total monthly range
 - Consider Irish/EU context for compliance (GDPR, cookie consent, data residency)
-- Keep recommendations actionable and specific to the project`;
+- Keep recommendations actionable and specific to the project
+
+If you cannot determine a field, return an empty value that still respects the schema (empty string for strings, empty array for arrays, empty items array for categories).`;
 
 // ── Structured error helper ─────────────────────────────────────────────────
 
