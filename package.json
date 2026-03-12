@@ -7,10 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "db:push": "npx supabase db push",
+    "db:status": "npx supabase migration list",
     "smoke": "node scripts/smoke.mjs",
     "smoke:cleanup": "node scripts/smoke-cleanup.mjs",
     "preflight": "node scripts/preflight.mjs",
-    "deploy:check": "node scripts/deploy-check.mjs"
+    "deploy:check": "node scripts/deploy-check.mjs",
+    "check": "npm run typecheck && npm run build && npm run deploy:check"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -27,6 +31,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "supabase": "^2.78.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

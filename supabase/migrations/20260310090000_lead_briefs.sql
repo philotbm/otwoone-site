@@ -32,7 +32,13 @@ CREATE INDEX IF NOT EXISTS lead_briefs_lead_id_idx
   ON lead_briefs (lead_id);
 
 -- Auto-update updated_at (reuses the existing set_updated_at trigger function)
-CREATE TRIGGER set_updated_at_lead_briefs
-  BEFORE UPDATE ON lead_briefs
-  FOR EACH ROW
-  EXECUTE FUNCTION set_updated_at();
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'set_updated_at_lead_briefs'
+  ) THEN
+    CREATE TRIGGER set_updated_at_lead_briefs
+      BEFORE UPDATE ON lead_briefs
+      FOR EACH ROW
+      EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
