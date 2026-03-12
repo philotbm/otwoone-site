@@ -36,42 +36,62 @@ type TechnicalResearch = {
 
 // ── JSON extraction (mirrors autofill/route.ts pattern) ──────────────────────
 
+/**
+ * Extract and parse JSON from a Claude response that may include
+ * explanatory text, markdown fences, or leading/trailing commentary.
+ *
+ * Extraction priority:
+ *   1. ```json fenced block (greedy — outermost fence pair)
+ *   2. Generic ``` fenced block
+ *   3. First '{' to last '}' substring
+ *   4. Full response text as-is
+ *
+ * Only after extraction does JSON.parse run.
+ */
 function extractAndParseJSON(raw: string): TechnicalResearch {
-  let text = raw.trim();
+  const text = raw.trim();
+  let candidate: string | null = null;
 
-  // Strip markdown code fences: ```json ... ``` or ``` ... ```
-  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-  if (fenceMatch) {
-    text = fenceMatch[1].trim();
+  // 1. ```json fenced block (greedy match to outermost closing fence)
+  const jsonFenceMatch = text.match(/```json\s*\n([\s\S]*)\n\s*```/);
+  if (jsonFenceMatch) {
+    candidate = jsonFenceMatch[1].trim();
   }
 
-  // Try direct parse first
-  try {
-    return JSON.parse(text) as TechnicalResearch;
-  } catch {
-    // Fall through to extraction
-  }
-
-  // Extract the first top-level JSON object via brace matching
-  const start = text.indexOf('{');
-  if (start === -1) {
-    throw new Error('No JSON object found in response');
-  }
-  let depth = 0;
-  let end = -1;
-  for (let i = start; i < text.length; i++) {
-    if (text[i] === '{') depth++;
-    else if (text[i] === '}') depth--;
-    if (depth === 0) {
-      end = i;
-      break;
+  // 2. Generic ``` fenced block
+  if (!candidate) {
+    const genericFenceMatch = text.match(/```\s*\n([\s\S]*)\n\s*```/);
+    if (genericFenceMatch) {
+      candidate = genericFenceMatch[1].trim();
     }
   }
-  if (end === -1) {
-    throw new Error('Unterminated JSON object in response');
+
+  // 3. First '{' to last '}' substring
+  if (!candidate) {
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      candidate = text.slice(firstBrace, lastBrace + 1);
+    }
   }
 
-  return JSON.parse(text.slice(start, end + 1)) as TechnicalResearch;
+  // 4. Full response text as-is
+  if (!candidate) {
+    candidate = text;
+  }
+
+  try {
+    return JSON.parse(candidate) as TechnicalResearch;
+  } catch (parseErr) {
+    // Log both raw and extracted candidate for debugging
+    console.error('[research] JSON.parse failed on extracted candidate.');
+    console.error('[research] Parse error:', parseErr instanceof Error ? parseErr.message : parseErr);
+    console.error('[research] Candidate payload (first 1000 chars):', candidate.slice(0, 1000));
+    if (candidate !== text) {
+      console.error('[research] Full raw response (first 1000 chars):', text.slice(0, 1000));
+    }
+    throw new Error('Failed to parse JSON from AI response');
+  }
 }
 
 // ── Strict runtime validation ────────────────────────────────────────────────
