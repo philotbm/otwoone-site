@@ -968,16 +968,18 @@ export default function LeadDetailPage() {
     }
 
     const { fields, ready, readiness_reason } = result.data;
-    setBriefSummary(fields.project_summary ?? "");
-    setBriefType(fields.project_type ?? "");
-    setBriefSolution(fields.recommended_solution ?? "");
-    setBriefPages(fields.suggested_pages ?? "");
-    setBriefFeatures(fields.suggested_features ?? "");
-    setBriefIntegrations(fields.suggested_integrations ?? "");
-    setBriefTimeline(fields.timeline_estimate ?? "");
-    setBriefBudget(fields.budget_positioning ?? "");
-    setBriefRisks(fields.risks_and_unknowns ?? "");
-    setBriefFollowUp(fields.follow_up_questions ?? "");
+    // Coerce to string — Claude may return arrays/objects for some fields
+    const str = (v: unknown) => (v == null ? "" : typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : String(v));
+    setBriefSummary(str(fields.project_summary));
+    setBriefType(str(fields.project_type));
+    setBriefSolution(str(fields.recommended_solution));
+    setBriefPages(str(fields.suggested_pages));
+    setBriefFeatures(str(fields.suggested_features));
+    setBriefIntegrations(str(fields.suggested_integrations));
+    setBriefTimeline(str(fields.timeline_estimate));
+    setBriefBudget(str(fields.budget_positioning));
+    setBriefRisks(str(fields.risks_and_unknowns));
+    setBriefFollowUp(str(fields.follow_up_questions));
     setScopeReady(ready);
     setReadinessReason(readiness_reason);
   }
@@ -1024,23 +1026,24 @@ export default function LeadDetailPage() {
     if (lead.timeline) lines.push(`Timeline: ${TIMELINE_LABELS[lead.timeline] ?? lead.timeline}`);
     lines.push("");
 
-    // Structured brief
+    // Structured brief (defensive String() to handle non-string values from AI autofill)
+    const s = (v: unknown) => String(v ?? "").trim();
     lines.push("## Reviewed project brief");
-    if (briefSummary.trim()) lines.push(`**Project summary:** ${briefSummary.trim()}`);
-    if (briefType.trim()) lines.push(`**Project type:** ${briefType.trim()}`);
-    if (briefSolution.trim()) lines.push(`**Recommended solution:** ${briefSolution.trim()}`);
-    if (briefPages.trim()) lines.push(`**Suggested pages:** ${briefPages.trim()}`);
-    if (briefFeatures.trim()) lines.push(`**Suggested features:** ${briefFeatures.trim()}`);
-    if (briefIntegrations.trim()) lines.push(`**Suggested integrations:** ${briefIntegrations.trim()}`);
-    if (briefTimeline.trim()) lines.push(`**Timeline estimate:** ${briefTimeline.trim()}`);
-    if (briefBudget.trim()) lines.push(`**Budget positioning:** ${briefBudget.trim()}`);
-    if (briefRisks.trim()) lines.push(`**Risks & unknowns:** ${briefRisks.trim()}`);
+    if (s(briefSummary)) lines.push(`**Project summary:** ${s(briefSummary)}`);
+    if (s(briefType)) lines.push(`**Project type:** ${s(briefType)}`);
+    if (s(briefSolution)) lines.push(`**Recommended solution:** ${s(briefSolution)}`);
+    if (s(briefPages)) lines.push(`**Suggested pages:** ${s(briefPages)}`);
+    if (s(briefFeatures)) lines.push(`**Suggested features:** ${s(briefFeatures)}`);
+    if (s(briefIntegrations)) lines.push(`**Suggested integrations:** ${s(briefIntegrations)}`);
+    if (s(briefTimeline)) lines.push(`**Timeline estimate:** ${s(briefTimeline)}`);
+    if (s(briefBudget)) lines.push(`**Budget positioning:** ${s(briefBudget)}`);
+    if (s(briefRisks)) lines.push(`**Risks & unknowns:** ${s(briefRisks)}`);
     lines.push("");
 
     // Original scoping reply for context
-    if (briefReply.trim()) {
+    if (s(briefReply)) {
       lines.push("## Original client scoping reply (for context)");
-      lines.push(briefReply.trim());
+      lines.push(s(briefReply));
       lines.push("");
     }
 
