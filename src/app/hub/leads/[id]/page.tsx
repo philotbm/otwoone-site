@@ -1798,27 +1798,57 @@ export default function LeadDetailPage() {
     return Math.round(val);
   }
 
-  /** Parse "€X–€Y/month" or "€X/month" or "$X-$Y" style pricing strings into {low, high} */
+  /**
+   * Parse monthly cost from pricing strings like "€0–€25/month", "€25/mo", "$10-$20 per month".
+   * IMPORTANT: Only matches values with explicit monthly context (month, mo, /m, monthly).
+   * Rejects values that look like per-user, per-event, annual, or one-time costs.
+   * Applies a sanity cap of €500/month per individual item to avoid misparses.
+   */
+  const MONTHLY_COST_CAP = 500; // €/month — individual item sanity cap
+
   function parseMonthlyCost(pricing?: string): { low: number; high: number } | null {
     if (!pricing) return null;
-    // Match patterns like €0–€25, €25/month, $10-$20/mo, €0 – €25
+    const text = pricing.toLowerCase();
+
+    // Reject pricing strings that are clearly not monthly recurring
+    if (/\b(per\s*user|per\s*seat|per\s*event|per\s*request|one.?time|annual|yearly|per\s*year|\/year)\b/i.test(text)) {
+      return null;
+    }
+
+    // Require explicit monthly context somewhere in the string
+    const hasMonthlyContext = /\/(month|mo|m)\b|per\s*month|monthly/i.test(pricing);
+    if (!hasMonthlyContext) return null;
+
+    // Range: €0–€25/month, €10-€20/mo, $5 – $15/month
     const rangeMatch = pricing.match(/[€$]\s*(\d[\d,]*(?:\.\d+)?)\s*[-–—]\s*[€$]?\s*(\d[\d,]*(?:\.\d+)?)/);
     if (rangeMatch) {
       const low = parseFloat(rangeMatch[1].replace(/,/g, ""));
       const high = parseFloat(rangeMatch[2].replace(/,/g, ""));
-      if (!isNaN(low) && !isNaN(high)) return { low, high };
+      if (!isNaN(low) && !isNaN(high) && high <= MONTHLY_COST_CAP) {
+        return { low, high };
+      }
+      // If high exceeds cap, still return capped value if low is reasonable
+      if (!isNaN(low) && low <= MONTHLY_COST_CAP) {
+        return { low, high: Math.min(high, MONTHLY_COST_CAP) };
+      }
+      return null;
     }
-    // Single value: €25/month
+
+    // Single value: €25/month, $10/mo
     const singleMatch = pricing.match(/[€$]\s*(\d[\d,]*(?:\.\d+)?)/);
     if (singleMatch) {
       const val = parseFloat(singleMatch[1].replace(/,/g, ""));
-      if (!isNaN(val)) return { low: val, high: val };
+      if (!isNaN(val) && val <= MONTHLY_COST_CAP) return { low: val, high: val };
+      return null;
     }
+
     return null;
   }
 
   const runningCosts = useMemo((): RunningCostsResult | null => {
-    const research = brief?.technical_research;
+    // Use technicalResearch state directly — always the latest from research route.
+    // brief?.technical_research can be stale until next fetchBrief call.
+    const research = technicalResearch;
     if (!research) return null;
 
     const items: RunningCostItem[] = [];
@@ -1863,25 +1893,36 @@ export default function LeadDetailPage() {
       }
     }
 
+    // Deduplicate by name (same service can appear in multiple categories)
+    const seen = new Set<string>();
+    const deduped: RunningCostItem[] = [];
+    for (const item of items) {
+      const key = item.name.toLowerCase().trim();
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(item);
+      }
+    }
+
     // If still no items, return null — no monthly operating cost to show
-    if (items.length === 0) return null;
+    if (deduped.length === 0) return null;
 
     // Round individual item costs for clean display
-    for (const item of items) {
+    for (const item of deduped) {
       item.low = roundCost(item.low);
       item.high = roundCost(item.high);
     }
 
-    const totalLow = roundCost(items.reduce((sum, i) => sum + i.low, 0));
-    const totalHigh = roundCost(items.reduce((sum, i) => sum + i.high, 0));
+    const totalLow = roundCost(deduped.reduce((sum, i) => sum + i.low, 0));
+    const totalHigh = roundCost(deduped.reduce((sum, i) => sum + i.high, 0));
 
-    const rationale = `${items.length} recurring cost${items.length !== 1 ? "s" : ""} extracted from technical research. ` +
+    const rationale = `${deduped.length} recurring cost${deduped.length !== 1 ? "s" : ""} extracted from technical research. ` +
       `Infrastructure/tool costs: €${totalLow.toLocaleString()}–€${totalHigh.toLocaleString()}/month. ` +
       `OTwoOne support retainer: €${OTWOONE_SUPPORT_RETAINER}/month. ` +
       `Total: €${(totalLow + OTWOONE_SUPPORT_RETAINER).toLocaleString()}–€${(totalHigh + OTWOONE_SUPPORT_RETAINER).toLocaleString()}/month.`;
 
     return {
-      items,
+      items: deduped,
       support_retainer: OTWOONE_SUPPORT_RETAINER,
       total_low: totalLow,
       total_high: totalHigh,
@@ -1889,7 +1930,7 @@ export default function LeadDetailPage() {
       total_with_retainer_high: totalHigh + OTWOONE_SUPPORT_RETAINER,
       rationale,
     };
-  }, [brief?.technical_research]);
+  }, [technicalResearch]);
 
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
@@ -2100,6 +2141,8 @@ export default function LeadDetailPage() {
     if (!complexityAutoReady) return;
     if (!briefAccessible) return;
     if (complexityLoading) return;
+    // Suppress during unified recompute — applyRevision() runs complexity explicitly
+    if (revisionApplying) return;
     // Need at least brief summary or research to produce meaningful scores
     if (!briefSummary.trim() && !researchUpdatedAt) return;
 
@@ -2109,7 +2152,7 @@ export default function LeadDetailPage() {
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [complexityFingerprint, complexityAutoReady, briefAccessible]);
+  }, [complexityFingerprint, complexityAutoReady, briefAccessible, revisionApplying]);
 
   // ── Unified recompute: Apply revised information ────────────────────────────
   // Persists revision_context, then re-runs the full downstream chain in sequence:
@@ -2203,24 +2246,57 @@ export default function LeadDetailPage() {
     if (autofillResult.ok) {
       const { fields, ready, readiness_reason } = autofillResult.data;
       const str = (v: unknown) => (v == null ? "" : typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : String(v));
-      setBriefSummary(str(fields.project_summary));
-      setBriefType(str(fields.project_type));
-      setBriefSolution(str(fields.recommended_solution));
-      setBriefPages(str(fields.suggested_pages));
-      setBriefFeatures(str(fields.suggested_features));
-      setBriefIntegrations(str(fields.suggested_integrations));
-      setBriefTimeline(str(fields.timeline_estimate));
-      setBriefBudget(str(fields.budget_positioning));
-      setBriefRisks(str(fields.risks_and_unknowns));
-      setBriefFollowUp(str(fields.follow_up_questions));
+      const newSummary = str(fields.project_summary);
+      const newType = str(fields.project_type);
+      const newSolution = str(fields.recommended_solution);
+      const newPages = str(fields.suggested_pages);
+      const newFeatures = str(fields.suggested_features);
+      const newIntegrations = str(fields.suggested_integrations);
+      const newTimeline = str(fields.timeline_estimate);
+      const newBudget = str(fields.budget_positioning);
+      const newRisks = str(fields.risks_and_unknowns);
+      const newFollowUp = str(fields.follow_up_questions);
+
+      setBriefSummary(newSummary);
+      setBriefType(newType);
+      setBriefSolution(newSolution);
+      setBriefPages(newPages);
+      setBriefFeatures(newFeatures);
+      setBriefIntegrations(newIntegrations);
+      setBriefTimeline(newTimeline);
+      setBriefBudget(newBudget);
+      setBriefRisks(newRisks);
+      setBriefFollowUp(newFollowUp);
       setScopeReady(ready);
       setReadinessReason(readiness_reason);
+
+      // 3b. Persist updated brief fields to DB so complexity route reads fresh data
+      await safeFetch(`/api/hub/leads/${id}/brief`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_summary: newSummary || null,
+          project_type: newType || null,
+          recommended_solution: newSolution || null,
+          suggested_pages: newPages || null,
+          suggested_features: newFeatures || null,
+          suggested_integrations: newIntegrations || null,
+          timeline_estimate: newTimeline || null,
+          budget_positioning: newBudget || null,
+          risks_and_unknowns: newRisks || null,
+          follow_up_questions: newFollowUp || null,
+          scope_ready: ready,
+          readiness_reason: readiness_reason,
+        }),
+      });
     }
 
-    // 4. Complexity auto-triggers via the fingerprint useEffect
-    //    (briefSummary / briefType / briefFeatures / briefIntegrations / researchUpdatedAt changed)
-    //    Build Pricing cascades from complexityResult via useMemo
-    //    Monthly Operating Cost cascades from research via useMemo
+    // 4. Run complexity explicitly — do NOT rely on debounce effect which may fire
+    //    from intermediate state during the chain. This ensures complexity reads the
+    //    final refreshed DB state (latest research + latest brief + latest revision_context).
+    await runComplexity();
+    //    Build Pricing cascades from complexityResult via useMemo.
+    //    Monthly Operating Cost already updated from technicalResearch state set in step 2.
 
     setRevisionApplying(false);
     setRevisionDraft(""); // clear draft after successful apply
