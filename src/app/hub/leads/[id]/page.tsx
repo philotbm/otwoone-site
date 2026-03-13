@@ -1759,9 +1759,9 @@ export default function LeadDetailPage() {
     ? (buildPriceOverride.trim() && !isNaN(Number(buildPriceOverride)) ? Number(buildPriceOverride) : buildPricing.recommended_build_price)
     : 0;
 
-  // ── Running Costs Engine (deterministic, consumes research output) ───────────
+  // ── Monthly Operating Cost Engine (deterministic, consumes research output) ───────────
   // Extracts infrastructure / tool costs from technical research and adds
-  // OTwoOne support retainer to produce a total monthly running cost estimate.
+  // OTwoOne support retainer to produce a total monthly operating cost.
 
   const OTWOONE_SUPPORT_RETAINER = 295; // €/month
 
@@ -1782,6 +1782,11 @@ export default function LeadDetailPage() {
     total_with_retainer_high: number;
     rationale: string;
   };
+
+  /** Round to nearest whole euro for clean operator display */
+  function roundCost(val: number): number {
+    return Math.round(val);
+  }
 
   /** Parse "€X–€Y/month" or "€X/month" or "$X-$Y" style pricing strings into {low, high} */
   function parseMonthlyCost(pricing?: string): { low: number; high: number } | null {
@@ -1848,11 +1853,17 @@ export default function LeadDetailPage() {
       }
     }
 
-    // If still no items, return null — no running costs to show
+    // If still no items, return null — no monthly operating cost to show
     if (items.length === 0) return null;
 
-    const totalLow = items.reduce((sum, i) => sum + i.low, 0);
-    const totalHigh = items.reduce((sum, i) => sum + i.high, 0);
+    // Round individual item costs for clean display
+    for (const item of items) {
+      item.low = roundCost(item.low);
+      item.high = roundCost(item.high);
+    }
+
+    const totalLow = roundCost(items.reduce((sum, i) => sum + i.low, 0));
+    const totalHigh = roundCost(items.reduce((sum, i) => sum + i.high, 0));
 
     const rationale = `${items.length} recurring cost${items.length !== 1 ? "s" : ""} extracted from technical research. ` +
       `Infrastructure/tool costs: €${totalLow.toLocaleString()}–€${totalHigh.toLocaleString()}/month. ` +
@@ -2023,7 +2034,7 @@ export default function LeadDetailPage() {
 
   // ── Run Complexity Engine (consumes upstream structured outputs) ────────────
 
-  async function runComplexity() {
+  const runComplexity = useCallback(async () => {
     setComplexityLoading(true);
     setComplexityError("");
 
@@ -2045,7 +2056,50 @@ export default function LeadDetailPage() {
     }
 
     setComplexityResult(result.data);
-  }
+  }, [id, mergedClientContext]);
+
+  // ── Auto-run Complexity when upstream structured outputs change ─────────────
+  // Triggers when: brief fields saved, research updated, or clarification rounds change.
+  // Uses a fingerprint of key upstream values to detect meaningful changes.
+  // Debounced via a short timeout so rapid saves don't fire multiple API calls.
+
+  const complexityFingerprint = useMemo(() => {
+    const parts = [
+      briefSummary.trim().slice(0, 100),
+      briefType.trim(),
+      briefFeatures.trim().slice(0, 100),
+      briefIntegrations.trim().slice(0, 100),
+      researchUpdatedAt ?? "",
+      rounds.filter(r => r.status === "replied" || r.status === "closed").length.toString(),
+    ];
+    return parts.join("|");
+  }, [briefSummary, briefType, briefFeatures, briefIntegrations, researchUpdatedAt, rounds]);
+
+  // Track whether initial load is complete to avoid running on mount
+  const [complexityAutoReady, setComplexityAutoReady] = useState(false);
+  useEffect(() => {
+    // Mark ready after initial brief load completes (brief exists or is null after fetch)
+    if (briefAccessible && !briefLoading) {
+      const timer = setTimeout(() => setComplexityAutoReady(true), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [briefAccessible, briefLoading]);
+
+  useEffect(() => {
+    // Only auto-run after initial load, when there's enough upstream data
+    if (!complexityAutoReady) return;
+    if (!briefAccessible) return;
+    if (complexityLoading) return;
+    // Need at least brief summary or research to produce meaningful scores
+    if (!briefSummary.trim() && !researchUpdatedAt) return;
+
+    const timer = setTimeout(() => {
+      runComplexity();
+    }, 600); // debounce — wait for rapid field changes to settle
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [complexityFingerprint, complexityAutoReady, briefAccessible]);
 
   async function startClarificationFromAutofill() {
     if (!briefFollowUp.trim()) return;
@@ -2207,14 +2261,14 @@ export default function LeadDetailPage() {
         lines.push("");
       }
 
-      // Running costs (if available, provides ongoing monthly cost context)
+      // Monthly operating cost (if available, provides ongoing monthly cost context)
       if (runningCosts) {
-        lines.push("## Running costs (monthly)");
+        lines.push("## Monthly operating cost");
         for (const item of runningCosts.items) {
           lines.push(`- ${item.name}: €${item.low}${item.low !== item.high ? `–€${item.high}` : ""}/mo (${item.relevance})`);
         }
         lines.push(`- OTwoOne support retainer: €${runningCosts.support_retainer}/mo`);
-        lines.push(`Total monthly: €${runningCosts.total_with_retainer_low.toLocaleString()}–€${runningCosts.total_with_retainer_high.toLocaleString()}`);
+        lines.push(`Total monthly operating cost: €${runningCosts.total_with_retainer_low.toLocaleString()}–€${runningCosts.total_with_retainer_high.toLocaleString()}`);
         lines.push("");
       }
 
@@ -3170,7 +3224,7 @@ export default function LeadDetailPage() {
                     { label: "Analysis", done: analysisDone },
                     { label: "Complexity", done: complexityDone },
                     { label: "Build Pricing", done: buildPricingDone },
-                    { label: "Running Costs", done: runningCostsDone },
+                    { label: "Monthly Operating Cost", done: runningCostsDone },
                     { label: "Proposal", done: proposalDone },
                   ];
 
@@ -4008,11 +4062,11 @@ export default function LeadDetailPage() {
         )}
 
         {/* ════════════════════════════════════════════════════════════════
-            RUNNING COSTS — recurring monthly costs from research + support retainer
+            MONTHLY OPERATING COST — recurring infrastructure + support retainer
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && runningCosts && (
           <div className="lg:col-span-2">
-            <Section title="Running Costs">
+            <Section title="Monthly Operating Cost">
               <div className="space-y-4">
 
                 {/* ── Totals ──────────────────────────────────────────── */}
@@ -4074,7 +4128,7 @@ export default function LeadDetailPage() {
 
                 {/* ── Rationale ───────────────────────────────────────── */}
                 <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Running costs rationale</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Operating cost rationale</p>
                   <p className="text-xs text-gray-400 leading-relaxed">{runningCosts.rationale}</p>
                 </div>
 
@@ -4219,7 +4273,7 @@ export default function LeadDetailPage() {
                       )}
                       {runningCosts && (
                         <span className="text-[10px] text-gray-500 ml-1">
-                          · Running: <span className="text-gray-400 font-medium">€{runningCosts.total_with_retainer_low.toLocaleString()}{runningCosts.total_with_retainer_low !== runningCosts.total_with_retainer_high ? `–€${runningCosts.total_with_retainer_high.toLocaleString()}` : ""}/mo</span>
+                          · Monthly: <span className="text-gray-400 font-medium">€{runningCosts.total_with_retainer_low.toLocaleString()}{runningCosts.total_with_retainer_low !== runningCosts.total_with_retainer_high ? `–€${runningCosts.total_with_retainer_high.toLocaleString()}` : ""}/mo</span>
                         </span>
                       )}
                     </div>
