@@ -1759,6 +1759,117 @@ export default function LeadDetailPage() {
     ? (buildPriceOverride.trim() && !isNaN(Number(buildPriceOverride)) ? Number(buildPriceOverride) : buildPricing.recommended_build_price)
     : 0;
 
+  // ── Running Costs Engine (deterministic, consumes research output) ───────────
+  // Extracts infrastructure / tool costs from technical research and adds
+  // OTwoOne support retainer to produce a total monthly running cost estimate.
+
+  const OTWOONE_SUPPORT_RETAINER = 295; // €/month
+
+  type RunningCostItem = {
+    name: string;
+    low: number;
+    high: number;
+    source: string; // category it came from
+    relevance: string;
+  };
+
+  type RunningCostsResult = {
+    items: RunningCostItem[];
+    support_retainer: number;
+    total_low: number;
+    total_high: number;
+    total_with_retainer_low: number;
+    total_with_retainer_high: number;
+    rationale: string;
+  };
+
+  /** Parse "€X–€Y/month" or "€X/month" or "$X-$Y" style pricing strings into {low, high} */
+  function parseMonthlyCost(pricing?: string): { low: number; high: number } | null {
+    if (!pricing) return null;
+    // Match patterns like €0–€25, €25/month, $10-$20/mo, €0 – €25
+    const rangeMatch = pricing.match(/[€$]\s*(\d[\d,]*(?:\.\d+)?)\s*[-–—]\s*[€$]?\s*(\d[\d,]*(?:\.\d+)?)/);
+    if (rangeMatch) {
+      const low = parseFloat(rangeMatch[1].replace(/,/g, ""));
+      const high = parseFloat(rangeMatch[2].replace(/,/g, ""));
+      if (!isNaN(low) && !isNaN(high)) return { low, high };
+    }
+    // Single value: €25/month
+    const singleMatch = pricing.match(/[€$]\s*(\d[\d,]*(?:\.\d+)?)/);
+    if (singleMatch) {
+      const val = parseFloat(singleMatch[1].replace(/,/g, ""));
+      if (!isNaN(val)) return { low: val, high: val };
+    }
+    return null;
+  }
+
+  const runningCosts = useMemo((): RunningCostsResult | null => {
+    const research = brief?.technical_research;
+    if (!research) return null;
+
+    const items: RunningCostItem[] = [];
+
+    // Primary source: operating_cost_estimate category
+    if (research.operating_cost_estimate?.items?.length) {
+      for (const item of research.operating_cost_estimate.items) {
+        const cost = parseMonthlyCost(item.pricing);
+        if (cost) {
+          items.push({
+            name: item.name,
+            low: cost.low,
+            high: cost.high,
+            source: "operating_cost_estimate",
+            relevance: item.relevance ?? "likely",
+          });
+        }
+      }
+    }
+
+    // Fallback: if operating_cost_estimate is empty, extract from infrastructure + third_party_services
+    if (items.length === 0) {
+      const fallbackCategories: Array<{ key: string; cat: typeof research.infrastructure }> = [
+        { key: "infrastructure", cat: research.infrastructure },
+        { key: "third_party_services", cat: research.third_party_services },
+      ];
+      for (const { key, cat } of fallbackCategories) {
+        if (cat?.items?.length) {
+          for (const item of cat.items) {
+            const cost = parseMonthlyCost(item.pricing);
+            if (cost && (cost.low > 0 || cost.high > 0)) {
+              items.push({
+                name: item.name,
+                low: cost.low,
+                high: cost.high,
+                source: key,
+                relevance: item.relevance ?? "likely",
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // If still no items, return null — no running costs to show
+    if (items.length === 0) return null;
+
+    const totalLow = items.reduce((sum, i) => sum + i.low, 0);
+    const totalHigh = items.reduce((sum, i) => sum + i.high, 0);
+
+    const rationale = `${items.length} recurring cost${items.length !== 1 ? "s" : ""} extracted from technical research. ` +
+      `Infrastructure/tool costs: €${totalLow.toLocaleString()}–€${totalHigh.toLocaleString()}/month. ` +
+      `OTwoOne support retainer: €${OTWOONE_SUPPORT_RETAINER}/month. ` +
+      `Total: €${(totalLow + OTWOONE_SUPPORT_RETAINER).toLocaleString()}–€${(totalHigh + OTWOONE_SUPPORT_RETAINER).toLocaleString()}/month.`;
+
+    return {
+      items,
+      support_retainer: OTWOONE_SUPPORT_RETAINER,
+      total_low: totalLow,
+      total_high: totalHigh,
+      total_with_retainer_low: totalLow + OTWOONE_SUPPORT_RETAINER,
+      total_with_retainer_high: totalHigh + OTWOONE_SUPPORT_RETAINER,
+      rationale,
+    };
+  }, [brief?.technical_research]);
+
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
   async function saveBrief() {
@@ -2093,6 +2204,17 @@ export default function LeadDetailPage() {
           lines.push(`Client budget: €${buildPricing.client_budget_low!.toLocaleString()} – €${buildPricing.client_budget_high.toLocaleString()}`);
         }
         lines.push(`Commercial strategy: ${buildPricing.commercial_strategy}`);
+        lines.push("");
+      }
+
+      // Running costs (if available, provides ongoing monthly cost context)
+      if (runningCosts) {
+        lines.push("## Running costs (monthly)");
+        for (const item of runningCosts.items) {
+          lines.push(`- ${item.name}: €${item.low}${item.low !== item.high ? `–€${item.high}` : ""}/mo (${item.relevance})`);
+        }
+        lines.push(`- OTwoOne support retainer: €${runningCosts.support_retainer}/mo`);
+        lines.push(`Total monthly: €${runningCosts.total_with_retainer_low.toLocaleString()}–€${runningCosts.total_with_retainer_high.toLocaleString()}`);
         lines.push("");
       }
 
@@ -3039,6 +3161,7 @@ export default function LeadDetailPage() {
                   const analysisDone = briefSummary.trim().length > 0 && briefType.trim().length > 0;
                   const complexityDone = complexityResult !== null && complexityResult.complexity_score > 0;
                   const buildPricingDone = buildPricing !== null;
+                  const runningCostsDone = runningCosts !== null;
                   const proposalDone = briefProposal.trim().length > 0;
 
                   const steps = [
@@ -3047,6 +3170,7 @@ export default function LeadDetailPage() {
                     { label: "Analysis", done: analysisDone },
                     { label: "Complexity", done: complexityDone },
                     { label: "Build Pricing", done: buildPricingDone },
+                    { label: "Running Costs", done: runningCostsDone },
                     { label: "Proposal", done: proposalDone },
                   ];
 
@@ -3883,6 +4007,82 @@ export default function LeadDetailPage() {
           </div>
         )}
 
+        {/* ════════════════════════════════════════════════════════════════
+            RUNNING COSTS — recurring monthly costs from research + support retainer
+            ════════════════════════════════════════════════════════════════ */}
+        {briefAccessible && runningCosts && (
+          <div className="lg:col-span-2">
+            <Section title="Running Costs">
+              <div className="space-y-4">
+
+                {/* ── Totals ──────────────────────────────────────────── */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="px-3 py-3 rounded-lg border border-violet-500/15 bg-violet-500/[0.03]">
+                    <p className="text-[10px] text-violet-400/70 uppercase tracking-wide mb-1">Total monthly cost</p>
+                    <p className="text-xl font-bold text-violet-300">
+                      €{runningCosts.total_with_retainer_low.toLocaleString()}
+                      {runningCosts.total_with_retainer_low !== runningCosts.total_with_retainer_high && (
+                        <span className="text-sm font-normal text-violet-400"> – €{runningCosts.total_with_retainer_high.toLocaleString()}</span>
+                      )}
+                    </p>
+                    <p className="text-[10px] text-violet-400/50 mt-0.5">/month incl. support retainer</p>
+                  </div>
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Infrastructure / tools</p>
+                    <p className="text-sm font-semibold text-gray-100">
+                      €{runningCosts.total_low.toLocaleString()}
+                      {runningCosts.total_low !== runningCosts.total_high && ` – €${runningCosts.total_high.toLocaleString()}`}
+                    </p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">/month</p>
+                  </div>
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">OTwoOne support</p>
+                    <p className="text-sm font-semibold text-gray-100">€{runningCosts.support_retainer}</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">/month retainer</p>
+                  </div>
+                </div>
+
+                {/* ── Line items ──────────────────────────────────────── */}
+                <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Cost breakdown</p>
+                  <div className="space-y-1.5">
+                    {runningCosts.items.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className={cx(
+                            "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                            item.relevance === "required" && "bg-emerald-400",
+                            item.relevance === "likely" && "bg-amber-400",
+                            item.relevance === "optional" && "bg-gray-500",
+                          )} />
+                          <span className="text-gray-300 truncate">{item.name}</span>
+                        </div>
+                        <span className="text-gray-400 ml-2 flex-shrink-0">
+                          €{item.low.toLocaleString()}{item.low !== item.high && ` – €${item.high.toLocaleString()}`}/mo
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between text-xs pt-1.5 border-t border-white/5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0" />
+                        <span className="text-violet-300 font-medium">OTwoOne support retainer</span>
+                      </div>
+                      <span className="text-violet-300 font-medium ml-2 flex-shrink-0">€{runningCosts.support_retainer}/mo</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Rationale ───────────────────────────────────────── */}
+                <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Running costs rationale</p>
+                  <p className="text-xs text-gray-400 leading-relaxed">{runningCosts.rationale}</p>
+                </div>
+
+              </div>
+            </Section>
+          </div>
+        )}
+
         {/* Internal notes (full width, collapsed by default) */}
         <div className="lg:col-span-2">
           <div className="rounded-xl border border-white/[0.06] bg-[#12131a] overflow-hidden">
@@ -4015,6 +4215,11 @@ export default function LeadDetailPage() {
                       {buildPricing && (
                         <span className="text-[10px] text-gray-500 ml-1">
                           · Build price: <span className="text-gray-400 font-medium">€{effectiveBuildPrice.toLocaleString()}</span> ({buildPricing.recommended_build_days}d)
+                        </span>
+                      )}
+                      {runningCosts && (
+                        <span className="text-[10px] text-gray-500 ml-1">
+                          · Running: <span className="text-gray-400 font-medium">€{runningCosts.total_with_retainer_low.toLocaleString()}{runningCosts.total_with_retainer_low !== runningCosts.total_with_retainer_high ? `–€${runningCosts.total_with_retainer_high.toLocaleString()}` : ""}/mo</span>
                         </span>
                       )}
                     </div>
