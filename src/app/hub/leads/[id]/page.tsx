@@ -223,6 +223,7 @@ type LeadBrief = {
   scope_ready: boolean | null;
   readiness_reason: string | null;
   intake_path: IntakePath | null;
+  revision_context: string | null;
   technical_research: TechnicalResearch | null;
   technical_research_updated_at: string | null;
   created_at: string;
@@ -915,6 +916,9 @@ export default function LeadDetailPage() {
   const [researchError,    setResearchError]    = useState("");
   const [technicalResearch, setTechnicalResearch] = useState<TechnicalResearch | null>(null);
   const [researchUpdatedAt, setResearchUpdatedAt] = useState<string | null>(null);
+  const [revisionContext,   setRevisionContext]   = useState("");
+  const [revisionDraft,     setRevisionDraft]     = useState("");
+  const [revisionApplying,  setRevisionApplying]  = useState(false);
   const [complexityResult,  setComplexityResult]  = useState<ComplexityResult | null>(null);
   const [complexityLoading, setComplexityLoading] = useState(false);
   const [complexityError,   setComplexityError]   = useState("");
@@ -1052,6 +1056,7 @@ export default function LeadDetailPage() {
         if (b.intake_path === "clarification_email" || b.intake_path === "discovery_call" || b.intake_path === "proceed_to_brief") {
           setIntakePath(b.intake_path);
         }
+        if (b.revision_context) setRevisionContext(b.revision_context);
         if (b.technical_research) setTechnicalResearch(b.technical_research as TechnicalResearch);
         if (b.technical_research_updated_at) setResearchUpdatedAt(b.technical_research_updated_at);
       }
@@ -1353,7 +1358,12 @@ export default function LeadDetailPage() {
       sections.push("## Discovery call notes\n" + lead.lead_details.internal_notes);
     }
 
-    // 9. Existing brief analysis (if any fields populated)
+    // 9. Revised information (operator-entered requirement changes / call notes)
+    if (revisionContext.trim()) {
+      sections.push("## Revised information\nIMPORTANT: The following updated requirements supersede any conflicting earlier information.\n" + revisionContext.trim());
+    }
+
+    // 10. Existing brief analysis (if any fields populated)
     const briefFields: string[] = [];
     if (briefSummary.trim()) briefFields.push(`Project summary: ${briefSummary.trim()}`);
     if (briefType.trim()) briefFields.push(`Project type: ${briefType.trim()}`);
@@ -1365,7 +1375,7 @@ export default function LeadDetailPage() {
     if (briefFields.length > 0) sections.push("## Existing brief analysis\n" + briefFields.join("\n"));
 
     return sections.join("\n\n");
-  }, [lead, briefReply, rounds, intakePath, contactStrategy, briefSummary, briefType, briefSolution, briefIntegrations, briefTimeline, briefBudget, briefRisks]);
+  }, [lead, briefReply, rounds, intakePath, contactStrategy, briefSummary, briefType, briefSolution, briefIntegrations, briefTimeline, briefBudget, briefRisks, revisionContext]);
 
   // ── Pricing Engine (deterministic commercial recommendation) ─────────────────
 
@@ -1919,10 +1929,10 @@ export default function LeadDetailPage() {
 
   // ── Auto-fill brief from AI ──────────────────────────────────────────────────
 
-  async function autofillBrief(includeRounds = false) {
-    // Confirm if fields already populated
+  async function autofillBrief(includeRounds = false, skipConfirm = false) {
+    // Confirm if fields already populated (skip during unified recompute)
     const hasContent = briefSummary.trim() || briefType.trim() || briefSolution.trim();
-    if (hasContent && !window.confirm("This will overwrite the current brief fields with AI analysis. Continue?")) return;
+    if (!skipConfirm && hasContent && !window.confirm("This will overwrite the current brief fields with AI analysis. Continue?")) return;
 
     setAutofillLoading(true);
     setAutofillError("");
@@ -2006,8 +2016,8 @@ export default function LeadDetailPage() {
     setReadinessReason(readiness_reason);
   }
 
-  async function runResearch() {
-    if (technicalResearch && !window.confirm("This will overwrite the current research with a fresh analysis. Continue?")) return;
+  async function runResearch(skipConfirm = false) {
+    if (!skipConfirm && technicalResearch && !window.confirm("This will overwrite the current research with a fresh analysis. Continue?")) return;
 
     setResearchLoading(true);
     setResearchError("");
@@ -2100,6 +2110,121 @@ export default function LeadDetailPage() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [complexityFingerprint, complexityAutoReady, briefAccessible]);
+
+  // ── Unified recompute: Apply revised information ────────────────────────────
+  // Persists revision_context, then re-runs the full downstream chain in sequence:
+  // research → analysis (autofill) → complexity auto-triggers → build pricing + monthly cost cascade
+
+  async function applyRevision() {
+    const text = revisionDraft.trim();
+    if (!text) return;
+
+    setRevisionApplying(true);
+
+    // 1. Persist revision_context
+    setRevisionContext(text);
+    const saveResult = await safeFetch<{ brief: LeadBrief }>(`/api/hub/leads/${id}/brief`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_context: text }),
+    });
+    if (saveResult.ok) {
+      setBrief(saveResult.data.brief);
+    }
+
+    // 2. Re-run technical research (consumes updated mergedClientContext which now includes revision_context)
+    // Note: mergedClientContext will update on next render due to revisionContext state change.
+    // We need to pass the updated context explicitly since state won't have propagated yet.
+    setResearchLoading(true);
+    setResearchError("");
+    const researchResult = await safeFetch<{ research: TechnicalResearch; updated_at: string }>(
+      `/api/hub/leads/${id}/brief/research`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Build inline context with revision text appended, since state hasn't propagated yet
+        body: JSON.stringify({ merged_context: mergedClientContext + "\n\n## Revised information\nIMPORTANT: The following updated requirements supersede any conflicting earlier information.\n" + text }),
+      },
+    );
+    setResearchLoading(false);
+    if (researchResult.ok) {
+      setTechnicalResearch(researchResult.data.research);
+      setResearchUpdatedAt(researchResult.data.updated_at);
+    }
+
+    // 3. Re-run consultant brief analysis (consumes updated context + research)
+    setAutofillLoading(true);
+    setAutofillError("");
+    const answeredRounds = rounds.filter((r) => r.status === "replied" || r.status === "closed");
+    const autofillBody: Record<string, unknown> = {
+      scoping_reply: briefReply || "(No direct scoping reply — see merged context)",
+      merged_context: mergedClientContext + "\n\n## Revised information\nIMPORTANT: The following updated requirements supersede any conflicting earlier information.\n" + text,
+    };
+    if (answeredRounds.length > 0) {
+      autofillBody.clarification_rounds = answeredRounds.map((r) => ({
+        round_number: r.round_number,
+        questions: r.questions,
+        client_reply: r.client_reply,
+      }));
+    }
+    if (pricingRecommendation && pricingRecommendation.deliveryClass !== "Needs review") {
+      autofillBody.pricing_signals = {
+        deliveryClass: pricingRecommendation.deliveryClass,
+        package: pricingRecommendation.package,
+        priceBand: pricingRecommendation.priceBand,
+        pricingFit: pricingRecommendation.pricingFit,
+        rationale: pricingRecommendation.rationale,
+        confidence: pricingRecommendation.confidence,
+        isCustomSplit: pricingRecommendation.isCustomSplit,
+      };
+    }
+    // Complexity signals from current result (will be refreshed after autofill completes)
+    if (complexityResult && complexityResult.complexity_score > 0) {
+      autofillBody.complexity_signals = {
+        complexity_score: complexityResult.complexity_score,
+        complexity_class: complexityResult.complexity_class,
+        detected_signals: complexityResult.detected_signals,
+        build_components: complexityResult.build_components,
+        estimated_days_low: complexityResult.estimated_days_low,
+        estimated_days_high: complexityResult.estimated_days_high,
+        complexity_rationale: complexityResult.complexity_rationale,
+      };
+    }
+    const autofillResult = await safeFetch<{
+      fields: Record<string, string>;
+      ready: boolean;
+      readiness_reason: string;
+    }>(`/api/hub/leads/${id}/brief/autofill`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(autofillBody),
+    });
+    setAutofillLoading(false);
+    if (autofillResult.ok) {
+      const { fields, ready, readiness_reason } = autofillResult.data;
+      const str = (v: unknown) => (v == null ? "" : typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : String(v));
+      setBriefSummary(str(fields.project_summary));
+      setBriefType(str(fields.project_type));
+      setBriefSolution(str(fields.recommended_solution));
+      setBriefPages(str(fields.suggested_pages));
+      setBriefFeatures(str(fields.suggested_features));
+      setBriefIntegrations(str(fields.suggested_integrations));
+      setBriefTimeline(str(fields.timeline_estimate));
+      setBriefBudget(str(fields.budget_positioning));
+      setBriefRisks(str(fields.risks_and_unknowns));
+      setBriefFollowUp(str(fields.follow_up_questions));
+      setScopeReady(ready);
+      setReadinessReason(readiness_reason);
+    }
+
+    // 4. Complexity auto-triggers via the fingerprint useEffect
+    //    (briefSummary / briefType / briefFeatures / briefIntegrations / researchUpdatedAt changed)
+    //    Build Pricing cascades from complexityResult via useMemo
+    //    Monthly Operating Cost cascades from research via useMemo
+
+    setRevisionApplying(false);
+    setRevisionDraft(""); // clear draft after successful apply
+  }
 
   async function startClarificationFromAutofill() {
     if (!briefFollowUp.trim()) return;
@@ -3548,6 +3673,55 @@ export default function LeadDetailPage() {
         </div>
 
         {/* ════════════════════════════════════════════════════════════════
+            REVISED INFORMATION — operator-entered requirement changes
+            Treated as first-class upstream input for downstream recompute
+            ════════════════════════════════════════════════════════════════ */}
+        {briefAccessible && (
+          <div className="lg:col-span-2">
+            <Section title="Revised Information">
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500 -mt-1">
+                  Enter updated requirements, changed scope, or latest call notes. Applying will recompute all downstream workflow stages automatically.
+                </p>
+
+                {/* ── Persisted revision context ────────────────────────── */}
+                {revisionContext.trim() && (
+                  <div className="px-4 py-3 rounded-lg bg-amber-500/[0.04] border border-amber-500/15">
+                    <p className="text-[10px] text-amber-400/70 uppercase tracking-wide mb-1">Current revised information</p>
+                    <p className="text-xs text-gray-300 whitespace-pre-wrap leading-relaxed">{revisionContext}</p>
+                  </div>
+                )}
+
+                {/* ── Draft new revision ────────────────────────────────── */}
+                <textarea
+                  value={revisionDraft}
+                  onChange={(e) => setRevisionDraft(e.target.value)}
+                  placeholder="e.g. Client confirmed they no longer need FlightAware API integration. Manual flight entry is acceptable. Budget reduced to €5k–€10k range."
+                  rows={3}
+                  className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed"
+                />
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={!revisionDraft.trim() || revisionApplying}
+                    onClick={applyRevision}
+                    className="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    {revisionApplying ? "Recomputing workflow…" : "Apply update"}
+                  </button>
+                  {revisionApplying && (
+                    <span className="text-[10px] text-amber-400/70">
+                      Running: research → analysis → complexity → pricing → operating cost
+                    </span>
+                  )}
+                </div>
+              </div>
+            </Section>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════
             SYSTEM ANALYSIS — merged context analysis + structured brief
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && (
@@ -3602,7 +3776,7 @@ export default function LeadDetailPage() {
                 <button
                   type="button"
                   disabled={!mergedClientContext.trim() || researchLoading}
-                  onClick={runResearch}
+                  onClick={() => runResearch()}
                   className="px-3 py-1 rounded-lg text-[10px] font-medium bg-violet-600/60 hover:bg-violet-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   {researchLoading ? "Researching…" : technicalResearch ? "Update research" : "Research stack"}

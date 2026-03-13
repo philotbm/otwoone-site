@@ -195,6 +195,7 @@ function assembleUpstreamText(
       'project_summary', 'project_type', 'recommended_solution',
       'suggested_pages', 'suggested_features', 'suggested_integrations',
       'timeline_estimate', 'budget_positioning', 'risks_and_unknowns',
+      'revision_context',
     ];
     const briefParts: string[] = [];
     for (const f of briefFields) {
@@ -206,6 +207,12 @@ function assembleUpstreamText(
     if (briefParts.length > 0) {
       sections.push(briefParts.join(' '));
       sourcesUsed.push('consultant_brief');
+    }
+    // Revision context is a first-class upstream input
+    const revCtx = briefRow['revision_context'];
+    if (typeof revCtx === 'string' && revCtx.trim().length > 10) {
+      sections.push(revCtx.trim());
+      if (!sourcesUsed.includes('revision_context')) sourcesUsed.push('revision_context');
     }
   }
 
@@ -356,6 +363,7 @@ function buildRationale(
     technical_research: 'technical research',
     intake_clarifiers: 'intake clarifiers',
     lead_scoring: 'lead scoring',
+    revision_context: 'revised information',
     raw_context_fallback: 'raw client context (fallback)',
   };
 
@@ -420,7 +428,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Brief row (consultant brief fields + technical research)
   const { data: briefRow } = await supabaseServer
     .from('lead_briefs')
-    .select('project_summary, project_type, recommended_solution, suggested_pages, suggested_features, suggested_integrations, timeline_estimate, budget_positioning, risks_and_unknowns, technical_research')
+    .select('project_summary, project_type, recommended_solution, suggested_pages, suggested_features, suggested_integrations, timeline_estimate, budget_positioning, risks_and_unknowns, revision_context, technical_research')
     .eq('lead_id', id)
     .maybeSingle();
 

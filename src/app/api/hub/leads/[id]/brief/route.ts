@@ -19,6 +19,7 @@ const ALLOWED_TEXT_FIELDS = [
   'contact_strategy',
   'readiness_reason',
   'intake_path',
+  'revision_context',
 ] as const;
 
 const ALLOWED_BOOL_FIELDS = [
