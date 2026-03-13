@@ -254,6 +254,32 @@ type TechnicalResearch = {
   operating_cost_estimate: ResearchCategory;
 };
 
+// ── Complexity Engine types ──────────────────────────────────────────────────
+
+type ComplexitySignal = {
+  key: string;
+  weight: number;
+  evidence: string;
+};
+
+type ComplexityBuildComponent = {
+  key: string;
+  label: string;
+  days_low: number;
+  days_high: number;
+};
+
+type ComplexityResult = {
+  complexity_score: number;
+  complexity_class: string;
+  detected_signals: ComplexitySignal[];
+  build_components: ComplexityBuildComponent[];
+  estimated_days_low: number;
+  estimated_days_high: number;
+  complexity_rationale: string;
+  upstream_sources_used: string[];
+};
+
 type ProjectContext = {
   id: string;
   project_id: string;
@@ -889,6 +915,9 @@ export default function LeadDetailPage() {
   const [researchError,    setResearchError]    = useState("");
   const [technicalResearch, setTechnicalResearch] = useState<TechnicalResearch | null>(null);
   const [researchUpdatedAt, setResearchUpdatedAt] = useState<string | null>(null);
+  const [complexityResult,  setComplexityResult]  = useState<ComplexityResult | null>(null);
+  const [complexityLoading, setComplexityLoading] = useState(false);
+  const [complexityError,   setComplexityError]   = useState("");
   const [scopeReady,       setScopeReady]       = useState<boolean | null>(null);
   const [readinessReason,  setReadinessReason]  = useState("");
 
@@ -1635,6 +1664,101 @@ export default function LeadDetailPage() {
   // ── Decision signals ─────────────────────────────────────────────────────────
   const decisionSignals = useDecisionSignals(lead, pricingRecommendation, stage1Recommendation);
 
+  // ── Build Pricing Engine (deterministic, consumes complexity output) ────────
+  // Locked day rate constant
+  const OTWOONE_DAY_RATE = 565;
+
+  // Budget range mapping (client stated budget → numeric range in euros)
+  const BUDGET_RANGES: Record<string, { low: number; high: number }> = {
+    under_3k:  { low: 0,     high: 3000 },
+    "3k_5k":   { low: 3000,  high: 5000 },
+    "5k_15k":  { low: 5000,  high: 15000 },
+    "15k_40k": { low: 15000, high: 40000 },
+    "40k_plus":{ low: 40000, high: 80000 },
+  };
+
+  type BuildPricingResult = {
+    complexity_score: number;
+    complexity_class: string;
+    estimated_days_low: number;
+    estimated_days_high: number;
+    recommended_build_days: number;
+    day_rate: number;
+    recommended_build_price: number;
+    confidence_range_low: number;
+    confidence_range_high: number;
+    client_budget_low: number | null;
+    client_budget_high: number | null;
+    budget_gap_low: number | null;
+    budget_gap_high: number | null;
+    commercial_strategy: string;
+    pricing_rationale: string;
+  };
+
+  const buildPricing = useMemo((): BuildPricingResult | null => {
+    // Continuity: only compute when complexity result exists
+    if (!complexityResult || complexityResult.complexity_score === 0) return null;
+
+    const daysLow = complexityResult.estimated_days_low;
+    const daysHigh = complexityResult.estimated_days_high;
+    const recommendedDays = Math.round((daysLow + daysHigh) / 2);
+    const recommendedPrice = recommendedDays * OTWOONE_DAY_RATE;
+    const confidenceLow = daysLow * OTWOONE_DAY_RATE;
+    const confidenceHigh = daysHigh * OTWOONE_DAY_RATE;
+
+    // Client budget extraction
+    const budgetKey = lead?.budget ?? "";
+    const budgetRange = BUDGET_RANGES[budgetKey] ?? null;
+    const clientBudgetLow = budgetRange?.low ?? null;
+    const clientBudgetHigh = budgetRange?.high ?? null;
+
+    // Budget gap (positive = over budget, negative = under budget)
+    const budgetGapLow = clientBudgetLow !== null ? recommendedPrice - clientBudgetHigh! : null;
+    const budgetGapHigh = clientBudgetHigh !== null ? recommendedPrice - clientBudgetLow! : null;
+
+    // Commercial strategy (deterministic)
+    let commercialStrategy: string;
+    if (clientBudgetHigh === null) {
+      commercialStrategy = "No stated budget — custom quote required";
+    } else if (recommendedPrice <= clientBudgetHigh) {
+      commercialStrategy = "Within stated budget";
+    } else if (recommendedPrice <= clientBudgetHigh * 1.3) {
+      commercialStrategy = "Scope adjustment or phased MVP recommended";
+    } else {
+      commercialStrategy = "Full scope exceeds stated budget; consider phased delivery";
+    }
+
+    // Rationale referencing complexity signals
+    const signalNames = complexityResult.detected_signals.map(s => s.key.replace(/_/g, " ")).join(", ");
+    const rationale = `${recommendedDays} recommended build days (midpoint of ${daysLow}–${daysHigh}) at €${OTWOONE_DAY_RATE}/day = €${recommendedPrice.toLocaleString()}. ` +
+      `Complexity ${complexityResult.complexity_score}/100 (${complexityResult.complexity_class.replace(/_/g, " ")}). ` +
+      (signalNames ? `Detected signals: ${signalNames}.` : "No complexity signals detected.");
+
+    return {
+      complexity_score: complexityResult.complexity_score,
+      complexity_class: complexityResult.complexity_class,
+      estimated_days_low: daysLow,
+      estimated_days_high: daysHigh,
+      recommended_build_days: recommendedDays,
+      day_rate: OTWOONE_DAY_RATE,
+      recommended_build_price: recommendedPrice,
+      confidence_range_low: confidenceLow,
+      confidence_range_high: confidenceHigh,
+      client_budget_low: clientBudgetLow,
+      client_budget_high: clientBudgetHigh,
+      budget_gap_low: budgetGapLow,
+      budget_gap_high: budgetGapHigh,
+      commercial_strategy: commercialStrategy,
+      pricing_rationale: rationale,
+    };
+  }, [complexityResult, lead?.budget]);
+
+  // Operator override for build price
+  const [buildPriceOverride, setBuildPriceOverride] = useState<string>("");
+  const effectiveBuildPrice = buildPricing
+    ? (buildPriceOverride.trim() && !isNaN(Number(buildPriceOverride)) ? Number(buildPriceOverride) : buildPricing.recommended_build_price)
+    : 0;
+
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
   async function saveBrief() {
@@ -1681,7 +1805,7 @@ export default function LeadDetailPage() {
     setAutofillLoading(true);
     setAutofillError("");
 
-    // Always send merged context as primary input; keep scoping_reply for backward compat
+    // Send merged context + upstream signals for consultant brief synthesis
     const body: Record<string, unknown> = {
       scoping_reply: briefReply || "(No direct scoping reply — see merged context)",
       merged_context: mergedClientContext,
@@ -1695,6 +1819,35 @@ export default function LeadDetailPage() {
         questions: r.questions,
         client_reply: r.client_reply,
       }));
+    }
+
+    // Pass pricing engine signals so the consultant brief is commercially grounded
+    if (pricingRecommendation && pricingRecommendation.deliveryClass !== "Needs review") {
+      body.pricing_signals = {
+        deliveryClass: pricingRecommendation.deliveryClass,
+        package: pricingRecommendation.package,
+        priceBand: pricingRecommendation.priceBand,
+        pricingFit: pricingRecommendation.pricingFit,
+        rationale: pricingRecommendation.rationale,
+        confidence: pricingRecommendation.confidence,
+        isCustomSplit: pricingRecommendation.isCustomSplit,
+        ...(pricingRecommendation.commercialPosture && { commercialPosture: pricingRecommendation.commercialPosture }),
+        ...(pricingRecommendation.fullScopeEstimate && { fullScopeEstimate: pricingRecommendation.fullScopeEstimate }),
+        ...(pricingRecommendation.phase1Path && { phase1Path: pricingRecommendation.phase1Path }),
+      };
+    }
+
+    // Pass complexity engine signals so the consultant brief reflects effort/scope reality
+    if (complexityResult && complexityResult.complexity_score > 0) {
+      body.complexity_signals = {
+        complexity_score: complexityResult.complexity_score,
+        complexity_class: complexityResult.complexity_class,
+        detected_signals: complexityResult.detected_signals,
+        build_components: complexityResult.build_components,
+        estimated_days_low: complexityResult.estimated_days_low,
+        estimated_days_high: complexityResult.estimated_days_high,
+        complexity_rationale: complexityResult.complexity_rationale,
+      };
     }
 
     const result = await safeFetch<{
@@ -1755,6 +1908,32 @@ export default function LeadDetailPage() {
 
     setTechnicalResearch(result.data.research);
     setResearchUpdatedAt(result.data.updated_at);
+  }
+
+  // ── Run Complexity Engine (consumes upstream structured outputs) ────────────
+
+  async function runComplexity() {
+    setComplexityLoading(true);
+    setComplexityError("");
+
+    const result = await safeFetch<ComplexityResult>(
+      `/api/hub/leads/${id}/brief/complexity`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Send raw context as fallback only — route prioritises DB-stored structured outputs
+        body: JSON.stringify({ merged_context: mergedClientContext }),
+      },
+    );
+
+    setComplexityLoading(false);
+
+    if (!result.ok) {
+      setComplexityError(result.error);
+      return;
+    }
+
+    setComplexityResult(result.data);
   }
 
   async function startClarificationFromAutofill() {
@@ -1866,35 +2045,90 @@ export default function LeadDetailPage() {
     return lines.join("\n");
   }
 
-  // ── Build proposal prompt (from merged context + structured brief) ──────────
+  // ── Build proposal prompt (consultant brief is primary, raw context is supporting) ──
 
   function buildBriefPrompt(): string {
     if (!lead) return "";
     const lines: string[] = [];
-
-    lines.push("You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You are drafting a professional proposal based on a reviewed project brief and the full client context.");
-    lines.push("");
-
-    // Full merged context gives the AI everything
-    if (mergedClientContext) {
-      lines.push("## Full client context");
-      lines.push(mergedClientContext);
-      lines.push("");
-    }
-
-    // Structured brief (defensive String() to handle non-string values from AI autofill)
     const s = (v: unknown) => String(v ?? "").trim();
-    lines.push("## Reviewed project brief");
-    if (s(briefSummary)) lines.push(`**Project summary:** ${s(briefSummary)}`);
-    if (s(briefType)) lines.push(`**Project type:** ${s(briefType)}`);
-    if (s(briefSolution)) lines.push(`**Recommended solution:** ${s(briefSolution)}`);
-    if (s(briefPages)) lines.push(`**Suggested pages:** ${s(briefPages)}`);
-    if (s(briefFeatures)) lines.push(`**Suggested features:** ${s(briefFeatures)}`);
-    if (s(briefIntegrations)) lines.push(`**Suggested integrations:** ${s(briefIntegrations)}`);
-    if (s(briefTimeline)) lines.push(`**Timeline estimate:** ${s(briefTimeline)}`);
-    if (s(briefBudget)) lines.push(`**Budget positioning:** ${s(briefBudget)}`);
-    if (s(briefRisks)) lines.push(`**Risks & unknowns:** ${s(briefRisks)}`);
+
+    // Detect whether a consultant brief exists (at least summary + solution populated)
+    const hasConsultantBrief = s(briefSummary).length > 15 && s(briefSolution).length > 15;
+
+    lines.push("You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You are drafting a professional proposal based on a reviewed consultant brief.");
     lines.push("");
+
+    if (hasConsultantBrief) {
+      // ── PRIMARY: Consultant brief drives the proposal ──────────────────
+      lines.push("## Consultant brief (primary source of truth)");
+      lines.push("This brief was produced by synthesising client intake, technical research, and pricing analysis. Use it as the main basis for the proposal.");
+      lines.push("");
+      if (s(briefSummary)) lines.push(`**Project summary:** ${s(briefSummary)}`);
+      if (s(briefType)) lines.push(`**Project type:** ${s(briefType)}`);
+      if (s(briefSolution)) lines.push(`**Recommended solution:** ${s(briefSolution)}`);
+      if (s(briefPages)) lines.push(`**Suggested pages:** ${s(briefPages)}`);
+      if (s(briefFeatures)) lines.push(`**Suggested features:** ${s(briefFeatures)}`);
+      if (s(briefIntegrations)) lines.push(`**Suggested integrations:** ${s(briefIntegrations)}`);
+      if (s(briefTimeline)) lines.push(`**Timeline estimate:** ${s(briefTimeline)}`);
+      if (s(briefBudget)) lines.push(`**Budget positioning:** ${s(briefBudget)}`);
+      if (s(briefRisks)) lines.push(`**Risks & unknowns:** ${s(briefRisks)}`);
+      lines.push("");
+
+      // Complexity assessment (if available, grounds effort/scope expectations)
+      if (complexityResult && complexityResult.complexity_score > 0) {
+        lines.push("## Complexity assessment");
+        lines.push(`Score: ${complexityResult.complexity_score}/100 (${complexityResult.complexity_class.replace(/_/g, " ")}) | Effort: ${complexityResult.estimated_days_low}–${complexityResult.estimated_days_high} days`);
+        if (complexityResult.detected_signals.length > 0) {
+          lines.push(`Signals: ${complexityResult.detected_signals.map(s => s.key.replace(/_/g, " ")).join(", ")}`);
+        }
+        lines.push("");
+      }
+
+      // Pricing intelligence (if available, further grounds the proposal)
+      if (pricingRecommendation && pricingRecommendation.deliveryClass !== "Needs review") {
+        lines.push("## Pricing intelligence");
+        lines.push(`Delivery class: ${pricingRecommendation.deliveryClass} | Package: ${pricingRecommendation.package} (${pricingRecommendation.priceBand}) | Budget fit: ${pricingRecommendation.pricingFit}`);
+        if (pricingRecommendation.isCustomSplit) {
+          if (pricingRecommendation.commercialPosture) lines.push(`Commercial posture: ${pricingRecommendation.commercialPosture}`);
+          if (pricingRecommendation.fullScopeEstimate) lines.push(`Full scope: ${pricingRecommendation.fullScopeEstimate}`);
+          if (pricingRecommendation.phase1Path) lines.push(`Phase 1 path: ${pricingRecommendation.phase1Path}`);
+        }
+        lines.push("");
+      }
+
+      // Supporting context (secondary — for client-specific tone and details)
+      if (mergedClientContext) {
+        lines.push("## Supporting client context");
+        lines.push("Use this for client-specific details (name, tone, stated preferences) but rely on the consultant brief above for scope and commercial decisions.");
+        lines.push(mergedClientContext);
+        lines.push("");
+      }
+    } else {
+      // ── FALLBACK: No consultant brief — use raw context directly ────────
+      lines.push("Note: No reviewed consultant brief is available. Produce the proposal from the client context below.");
+      lines.push("");
+      if (mergedClientContext) {
+        lines.push("## Client context");
+        lines.push(mergedClientContext);
+        lines.push("");
+      }
+      // Include whatever brief fields exist
+      const briefLines: string[] = [];
+      if (s(briefSummary)) briefLines.push(`**Project summary:** ${s(briefSummary)}`);
+      if (s(briefType)) briefLines.push(`**Project type:** ${s(briefType)}`);
+      if (s(briefSolution)) briefLines.push(`**Recommended solution:** ${s(briefSolution)}`);
+      if (s(briefPages)) briefLines.push(`**Suggested pages:** ${s(briefPages)}`);
+      if (s(briefFeatures)) briefLines.push(`**Suggested features:** ${s(briefFeatures)}`);
+      if (s(briefIntegrations)) briefLines.push(`**Suggested integrations:** ${s(briefIntegrations)}`);
+      if (s(briefTimeline)) briefLines.push(`**Timeline estimate:** ${s(briefTimeline)}`);
+      if (s(briefBudget)) briefLines.push(`**Budget positioning:** ${s(briefBudget)}`);
+      if (s(briefRisks)) briefLines.push(`**Risks & unknowns:** ${s(briefRisks)}`);
+      if (briefLines.length > 0) {
+        lines.push("## Partial brief fields");
+        lines.push(...briefLines);
+        lines.push("");
+      }
+    }
 
     // Required output
     lines.push("## Required output");
@@ -2803,6 +3037,7 @@ export default function LeadDetailPage() {
                   const qualDone = intakePath !== null;
                   const contextDone = briefReply.trim().length > 0 || rounds.length > 0;
                   const analysisDone = briefSummary.trim().length > 0 && briefType.trim().length > 0;
+                  const complexityDone = complexityResult !== null && complexityResult.complexity_score > 0;
                   const pricingDone = pricingRecommendation !== null && pricingRecommendation.deliveryClass !== "Needs review";
                   const proposalDone = briefProposal.trim().length > 0;
 
@@ -2810,6 +3045,7 @@ export default function LeadDetailPage() {
                     { label: "Qualification", done: qualDone },
                     { label: "Client Context", done: contextDone },
                     { label: "Analysis", done: analysisDone },
+                    { label: "Complexity", done: complexityDone },
                     { label: "Pricing", done: pricingDone },
                     { label: "Proposal", done: proposalDone },
                   ];
@@ -3193,7 +3429,16 @@ export default function LeadDetailPage() {
                 >
                   {researchLoading ? "Researching…" : technicalResearch ? "Update research" : "Research stack"}
                 </button>
+                <button
+                  type="button"
+                  disabled={complexityLoading}
+                  onClick={runComplexity}
+                  className="px-3 py-1 rounded-lg text-[10px] font-medium bg-cyan-600/60 hover:bg-cyan-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  {complexityLoading ? "Scoring…" : complexityResult ? "Refresh complexity" : "Score complexity"}
+                </button>
                 {researchError && <span className="text-[10px] text-red-400 block mt-1">{researchError}</span>}
+                {complexityError && <span className="text-[10px] text-red-400 block mt-1">{complexityError}</span>}
               </div>
 
               {/* ── Editable structured brief fields ──────────────────── */}
@@ -3568,6 +3813,200 @@ export default function LeadDetailPage() {
                   <span className="text-[10px] text-gray-600">
                     Signals: {lead?.engagement_type ? `${ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type}` : "no engagement type"} · {lead?.budget ? `${BUDGET_LABELS[lead.budget] ?? lead.budget}` : "no budget"}{decisionSignals ? ` · input ${decisionSignals.inputQuality.toLowerCase()} · scope ${decisionSignals.scopeMaturity.toLowerCase()}` : ""}
                   </span>
+                </div>
+
+              </div>
+            </Section>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════
+            COMPLEXITY ENGINE — 0–100 scoring from upstream workflow outputs
+            ════════════════════════════════════════════════════════════════ */}
+        {briefAccessible && complexityResult && (
+          <div className="lg:col-span-2">
+            <Section title="Complexity Engine">
+              <div className="space-y-4">
+
+                {/* ── Score + class ─────────────────────────────────────── */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="px-3 py-3 rounded-lg border border-cyan-500/15 bg-cyan-500/[0.03]">
+                    <p className="text-[10px] text-cyan-400/70 uppercase tracking-wide mb-1">Complexity score</p>
+                    <p className="text-xl font-bold text-cyan-300">{complexityResult.complexity_score}<span className="text-sm text-cyan-400/60">/100</span></p>
+                  </div>
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Complexity class</p>
+                    <p className={cx(
+                      "text-sm font-medium",
+                      complexityResult.complexity_class === "brochure_site" && "text-blue-400",
+                      complexityResult.complexity_class === "dynamic_website" && "text-emerald-400",
+                      complexityResult.complexity_class === "web_application" && "text-amber-400",
+                      complexityResult.complexity_class === "system_platform" && "text-orange-400",
+                      complexityResult.complexity_class === "operational_platform" && "text-red-400",
+                    )}>
+                      {complexityResult.complexity_class.replace(/_/g, " ")}
+                    </p>
+                  </div>
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Estimated effort</p>
+                    <p className="text-sm font-semibold text-gray-100">{complexityResult.estimated_days_low}–{complexityResult.estimated_days_high} days</p>
+                  </div>
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Signals detected</p>
+                    <p className="text-sm font-medium text-gray-200">{complexityResult.detected_signals.length}</p>
+                  </div>
+                </div>
+
+                {/* ── Detected signals ─────────────────────────────────── */}
+                {complexityResult.detected_signals.length > 0 && (
+                  <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Detected signals</p>
+                    <div className="flex flex-wrap gap-2">
+                      {complexityResult.detected_signals.map((s) => (
+                        <span key={s.key} className="px-2 py-1 rounded text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                          {s.key.replace(/_/g, " ")} <span className="text-cyan-400/50">+{s.weight}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Build components ─────────────────────────────────── */}
+                {complexityResult.build_components.length > 0 && (
+                  <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Build components</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {complexityResult.build_components.map((c) => (
+                        <div key={c.key} className="text-[11px] text-gray-400">
+                          <span className="text-gray-300">{c.label}</span>
+                          <span className="text-gray-600 ml-1">{c.days_low}–{c.days_high}d</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Rationale ────────────────────────────────────────── */}
+                <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Complexity rationale</p>
+                  <p className="text-xs text-gray-400 leading-relaxed">{complexityResult.complexity_rationale}</p>
+                </div>
+
+                {/* ── Upstream sources ─────────────────────────────────── */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] text-gray-600">Sources:</span>
+                  {complexityResult.upstream_sources_used.map((s) => (
+                    <span key={s} className="px-2 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-gray-500">
+                      {s.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+
+              </div>
+            </Section>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════
+            BUILD PRICING — deterministic price from complexity engine output
+            ════════════════════════════════════════════════════════════════ */}
+        {briefAccessible && buildPricing && (
+          <div className="lg:col-span-2">
+            <Section title="Build Pricing">
+              <div className="space-y-4">
+
+                {/* ── Core pricing ─────────────────────────────────────── */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="px-3 py-3 rounded-lg border border-emerald-500/15 bg-emerald-500/[0.03]">
+                    <p className="text-[10px] text-emerald-400/70 uppercase tracking-wide mb-1">Recommended price</p>
+                    <p className="text-xl font-bold text-emerald-300">€{(effectiveBuildPrice).toLocaleString()}</p>
+                    {buildPriceOverride.trim() && !isNaN(Number(buildPriceOverride)) && (
+                      <p className="text-[10px] text-emerald-400/50 mt-0.5">Override active (was €{buildPricing.recommended_build_price.toLocaleString()})</p>
+                    )}
+                  </div>
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Build days</p>
+                    <p className="text-sm font-semibold text-gray-100">{buildPricing.recommended_build_days} days</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">range: {buildPricing.estimated_days_low}–{buildPricing.estimated_days_high}</p>
+                  </div>
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Day rate</p>
+                    <p className="text-sm font-semibold text-gray-100">€{buildPricing.day_rate}</p>
+                  </div>
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Confidence range</p>
+                    <p className="text-sm font-medium text-gray-200">€{buildPricing.confidence_range_low.toLocaleString()} – €{buildPricing.confidence_range_high.toLocaleString()}</p>
+                  </div>
+                </div>
+
+                {/* ── Budget comparison ────────────────────────────────── */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Client budget</p>
+                    <p className="text-sm font-medium text-gray-200">
+                      {buildPricing.client_budget_low !== null
+                        ? `€${buildPricing.client_budget_low.toLocaleString()} – €${buildPricing.client_budget_high!.toLocaleString()}`
+                        : "Not stated"}
+                    </p>
+                  </div>
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Budget gap</p>
+                    <p className={cx(
+                      "text-sm font-medium",
+                      buildPricing.budget_gap_low !== null && buildPricing.budget_gap_low <= 0 && "text-green-400",
+                      buildPricing.budget_gap_low !== null && buildPricing.budget_gap_low > 0 && buildPricing.budget_gap_low <= buildPricing.recommended_build_price * 0.3 && "text-amber-400",
+                      buildPricing.budget_gap_low !== null && buildPricing.budget_gap_low > buildPricing.recommended_build_price * 0.3 && "text-red-400",
+                      buildPricing.budget_gap_low === null && "text-gray-500",
+                    )}>
+                      {buildPricing.budget_gap_low !== null
+                        ? buildPricing.budget_gap_low <= 0
+                          ? "Within budget"
+                          : `+€${buildPricing.budget_gap_low.toLocaleString()} over top`
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Commercial strategy</p>
+                    <p className={cx(
+                      "text-sm font-medium",
+                      buildPricing.commercial_strategy.includes("Within") && "text-green-400",
+                      buildPricing.commercial_strategy.includes("Scope adjustment") && "text-amber-400",
+                      buildPricing.commercial_strategy.includes("exceeds") && "text-red-400",
+                      buildPricing.commercial_strategy.includes("No stated") && "text-gray-400",
+                    )}>
+                      {buildPricing.commercial_strategy}
+                    </p>
+                  </div>
+                </div>
+
+                {/* ── Operator override ────────────────────────────────── */}
+                <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
+                  <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Override build price (optional)</label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">€</span>
+                    <input
+                      type="text"
+                      value={buildPriceOverride}
+                      onChange={(e) => setBuildPriceOverride(e.target.value)}
+                      placeholder={String(buildPricing.recommended_build_price)}
+                      className="w-40 bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
+                    />
+                    {buildPriceOverride.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setBuildPriceOverride("")}
+                        className="text-[10px] text-gray-500 hover:text-gray-300"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Rationale ────────────────────────────────────────── */}
+                <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Pricing rationale</p>
+                  <p className="text-xs text-gray-400 leading-relaxed">{buildPricing.pricing_rationale}</p>
                 </div>
 
               </div>

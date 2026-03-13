@@ -55,6 +55,33 @@ type TechnicalResearch = {
   operating_cost_estimate: ResearchCategory;
 };
 
+// ── Pricing signal types (from frontend pricing engine) ──────────────────────
+
+type PricingSignals = {
+  deliveryClass: string;
+  package: string;
+  priceBand: string;
+  pricingFit: string;
+  rationale: string;
+  confidence: string;
+  isCustomSplit: boolean;
+  commercialPosture?: string;
+  fullScopeEstimate?: string;
+  phase1Path?: string;
+};
+
+// ── Complexity signal types (from Complexity Engine) ─────────────────────────
+
+type ComplexitySignals = {
+  complexity_score: number;
+  complexity_class: string;
+  detected_signals: { key: string; weight: number; evidence: string }[];
+  build_components: { key: string; label: string; days_low: number; days_high: number }[];
+  estimated_days_low: number;
+  estimated_days_high: number;
+  complexity_rationale: string;
+};
+
 // ── Research synthesis: converts raw research into concise prompt context ─────
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -111,6 +138,60 @@ function synthesiseResearch(research: TechnicalResearch): string {
   return lines.join('\n');
 }
 
+// ── Pricing synthesis: converts pricing engine output into prompt context ─────
+
+function synthesisePricing(pricing: PricingSignals): string {
+  const lines: string[] = ['## Pricing & complexity intelligence'];
+
+  lines.push(`**Delivery class:** ${pricing.deliveryClass}`);
+  lines.push(`**Recommended package:** ${pricing.package} (${pricing.priceBand})`);
+  lines.push(`**Budget fit:** ${pricing.pricingFit}`);
+
+  if (pricing.isCustomSplit) {
+    if (pricing.commercialPosture) lines.push(`**Commercial posture:** ${pricing.commercialPosture}`);
+    if (pricing.fullScopeEstimate) lines.push(`**Full scope estimate:** ${pricing.fullScopeEstimate}`);
+    if (pricing.phase1Path) lines.push(`**Phase 1 / MVP path:** ${pricing.phase1Path}`);
+  }
+
+  if (pricing.rationale) {
+    lines.push(`**Rationale:** ${pricing.rationale}`);
+  }
+
+  return lines.join('\n');
+}
+
+// ── Complexity synthesis: converts complexity engine output into prompt context ─
+
+function synthesiseComplexity(cx: ComplexitySignals): string {
+  const lines: string[] = ['## Complexity assessment'];
+
+  lines.push(`**Score:** ${cx.complexity_score}/100 (${cx.complexity_class.replace(/_/g, ' ')})`);
+  lines.push(`**Estimated effort:** ${cx.estimated_days_low}–${cx.estimated_days_high} days`);
+
+  if (cx.detected_signals.length > 0) {
+    const signalNames = cx.detected_signals.map((s) => `${s.key.replace(/_/g, ' ')} (+${s.weight})`);
+    lines.push(`**Detected signals:** ${signalNames.join(', ')}`);
+  }
+
+  if (cx.build_components.length > 0) {
+    const compNames = cx.build_components.map((c) => `${c.label} (${c.days_low}–${c.days_high}d)`);
+    lines.push(`**Build components:** ${compNames.join(', ')}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Validate that complexity signals have enough content to be useful.
+ */
+function isUsableComplexity(data: unknown): data is ComplexitySignals {
+  if (!data || typeof data !== 'object') return false;
+  const c = data as Record<string, unknown>;
+  if (typeof c.complexity_score !== 'number') return false;
+  if (c.complexity_score === 0 && (!Array.isArray(c.detected_signals) || (c.detected_signals as unknown[]).length === 0)) return false;
+  return true;
+}
+
 /**
  * Validate that an object looks like a TechnicalResearch with enough content
  * to be useful. Returns false for empty/weak-scope research.
@@ -121,6 +202,17 @@ function isUsableResearch(data: unknown): data is TechnicalResearch {
   if (typeof r.summary !== 'string') return false;
   // Weak-scope research has a specific summary pattern — skip it
   if (r.summary.startsWith('Insufficient project scope')) return false;
+  return true;
+}
+
+/**
+ * Validate that pricing signals have enough content to be useful.
+ */
+function isUsablePricing(data: unknown): data is PricingSignals {
+  if (!data || typeof data !== 'object') return false;
+  const p = data as Record<string, unknown>;
+  if (typeof p.deliveryClass !== 'string' || p.deliveryClass === 'Needs review') return false;
+  if (typeof p.package !== 'string' || p.package === 'Needs review') return false;
   return true;
 }
 
@@ -224,9 +316,19 @@ function buildPrompt(
   return lines.join('\n');
 }
 
-const SYSTEM_PROMPT = `You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You analyse client scoping replies and clarification responses to produce structured project briefs.
+// ── Consultant Brief Engine: system prompt ───────────────────────────────────
+// This prompt drives the synthesis layer that produces consultant-grade briefs
+// from upstream workflow outputs (intake, research, pricing signals).
 
-You will receive client details, their scoping reply, and optionally clarification round Q&A. You may also receive a "Prior technical research" section containing stack recommendations, integration findings, infrastructure direction, compliance notes, and cost estimates produced by an earlier research step.
+const SYSTEM_PROMPT = `You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. Your role is to produce a structured, consultant-grade project brief by synthesising all available upstream intelligence.
+
+You will receive some or all of the following inputs:
+1. Client context (intake details, scoping reply, clarification rounds)
+2. Prior technical research (stack direction, integrations, infrastructure, compliance, costs)
+3. Complexity assessment (0–100 score, complexity class, detected signals, build components, effort estimate)
+4. Pricing & commercial intelligence (delivery class, recommended package, budget fit, commercial posture)
+
+Your job is to SYNTHESISE these into a coherent, commercially grounded brief — not to repeat raw form data.
 
 When prior technical research is present:
 - Use it to inform recommended_solution (align with researched stack direction)
@@ -234,24 +336,45 @@ When prior technical research is present:
 - Factor researched cost estimates into budget_positioning
 - Incorporate researched risks and unknowns into risks_and_unknowns
 - Let infrastructure findings shape timeline_estimate where relevant
-- Do NOT blindly copy research \u2014 synthesise it into your brief recommendations
 
-When prior technical research is absent, produce the brief using only the client context provided.
+When a complexity assessment is present:
+- Use the complexity class and score to calibrate the scale of recommended_solution (e.g. a 75/100 system_platform needs phased delivery, not a single sprint)
+- Reference detected signals and build components when describing suggested_features
+- Use the effort estimate to ground timeline_estimate (e.g. if 30–40 days, that implies 6–8 weeks minimum)
+- Factor build components into risks_and_unknowns where appropriate (e.g. booking system + API integration = integration testing risk)
+
+When pricing & commercial intelligence is present:
+- Align project_type with the determined delivery class (e.g. if delivery class is "Custom workflow build", do not classify as "brochure site")
+- Ground budget_positioning in the pricing engine's recommendation — if the engine says budget is "Tight" for the recommended scope, say so clearly
+- If a phased/MVP approach is recommended, reflect this in recommended_solution and timeline_estimate
+- If a custom quote is required, note this in budget_positioning rather than guessing a number
+- Use the delivery class to calibrate the ambition level of suggested_features and suggested_pages
+
+When inputs are absent, produce the brief using only what is available. Never fabricate research findings or pricing data.
+
+SYNTHESIS RULES:
+- Write as a consultant who has reviewed all evidence, not as a form processor
+- project_summary must describe the actual business need and proposed solution, not parrot intake form values
+- recommended_solution must be specific to this project — include stack choices, architecture direction, and phasing if relevant
+- suggested_integrations must name specific tools/services, not generic categories
+- budget_positioning must be commercially honest — if scope exceeds budget, say so with a constructive path forward
+- risks_and_unknowns must include delivery risks, not just client information gaps
+- Avoid outputs like "no; just_me; web_app" or other raw form fragments — always translate into natural consultant language
 
 Respond with valid JSON only. No markdown, no code fences, no explanation outside the JSON.
 
 JSON schema:
 {
   "fields": {
-    "project_summary": "2\u20133 sentence overview of what the client needs",
-    "project_type": "e.g. brochure site, web app, e-commerce, landing page, redesign",
-    "recommended_solution": "what OTwoOne should build and how",
-    "suggested_pages": "list of pages/sections to include",
-    "suggested_features": "key features and functionality",
-    "suggested_integrations": "third-party tools, APIs, or services to integrate",
-    "timeline_estimate": "realistic delivery window",
-    "budget_positioning": "where this sits relative to stated budget and what is achievable",
-    "risks_and_unknowns": "anything unclear, missing, or risky",
+    "project_summary": "2\u20133 sentence overview synthesising the business need and proposed direction",
+    "project_type": "delivery classification aligned with complexity analysis (e.g. custom workflow build, growth website, ops platform)",
+    "recommended_solution": "specific technical and strategic recommendation for what OTwoOne should build, including stack direction and phasing if applicable",
+    "suggested_pages": "pages/sections/views to include, appropriate to the delivery class",
+    "suggested_features": "key features and functionality, calibrated to budget and complexity",
+    "suggested_integrations": "specific third-party tools, APIs, or services — from research where available",
+    "timeline_estimate": "realistic delivery window accounting for complexity and phasing",
+    "budget_positioning": "commercially grounded assessment of budget vs scope, with constructive recommendations",
+    "risks_and_unknowns": "delivery risks, technical unknowns, commercial caveats, and unresolved client questions",
     "follow_up_questions": "specific questions to ask the client before proceeding (empty string if none needed)"
   },
   "ready": true/false,
@@ -311,13 +434,18 @@ function extractAndParseJSON(raw: string): AutofillResponse {
 /**
  * POST /api/hub/leads/[id]/brief/autofill
  *
- * Hub-protected (middleware). Calls Claude to auto-fill structured brief
- * fields from the client's scoping reply, optional clarification rounds,
- * and prior technical research when available.
+ * Consultant Brief Engine. Synthesises a structured, consultant-grade brief
+ * from all available upstream workflow outputs:
+ * - client intake context + clarification rounds
+ * - prior technical research (from lead_briefs)
+ * - pricing & complexity signals (from frontend pricing engine)
  *
  * Body:
- *   scoping_reply: string (required)
+ *   scoping_reply?: string
+ *   merged_context?: string
  *   clarification_rounds?: Array<{ round_number, questions, client_reply }>
+ *   pricing_signals?: PricingSignals (from frontend pricing engine)
+ *   complexity_signals?: ComplexitySignals (from Complexity Engine)
  *
  * Returns { fields, ready, readiness_reason }
  */
@@ -332,7 +460,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  let body: { scoping_reply?: string; merged_context?: string; clarification_rounds?: ClarificationRoundInput[] };
+  let body: {
+    scoping_reply?: string;
+    merged_context?: string;
+    clarification_rounds?: ClarificationRoundInput[];
+    pricing_signals?: PricingSignals;
+    complexity_signals?: ComplexitySignals;
+  };
   try {
     body = await req.json();
   } catch {
@@ -376,6 +510,20 @@ export async function POST(req: NextRequest, { params }: Params) {
     console.log('[autofill] Injecting prior technical research into prompt.');
   }
 
+  // ── Synthesise pricing signals if provided ─────────────────────────────────
+  let pricingContext = '';
+  if (body.pricing_signals && isUsablePricing(body.pricing_signals)) {
+    pricingContext = synthesisePricing(body.pricing_signals);
+    console.log('[autofill] Injecting pricing signals into prompt.');
+  }
+
+  // ── Synthesise complexity signals if provided ─────────────────────────────
+  let complexityContext = '';
+  if (body.complexity_signals && isUsableComplexity(body.complexity_signals)) {
+    complexityContext = synthesiseComplexity(body.complexity_signals);
+    console.log('[autofill] Injecting complexity assessment into prompt.');
+  }
+
   // Prefer merged context (includes all sources); fall back to legacy scoping reply
   let userPrompt: string;
   if (mergedContext) {
@@ -399,9 +547,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  // ── Append synthesised research to prompt (research-aware when available) ──
+  // ── Append upstream workflow outputs (research + pricing + complexity) ────
+  // These are appended after client context so the AI sees them as structured
+  // intelligence to synthesise into the brief, not raw context to echo.
   if (researchContext) {
     userPrompt += '\n\n' + researchContext;
+  }
+  if (complexityContext) {
+    userPrompt += '\n\n' + complexityContext;
+  }
+  if (pricingContext) {
+    userPrompt += '\n\n' + pricingContext;
   }
 
   try {
