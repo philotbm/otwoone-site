@@ -29,6 +29,101 @@ type AutofillResponse = {
   readiness_reason: string;
 };
 
+// ── Research types (mirrored from research route for synthesis) ───────────────
+
+type ResearchItem = {
+  name: string;
+  description: string;
+  pricing?: string;
+  relevance: 'required' | 'likely' | 'optional';
+};
+
+type ResearchCategory = {
+  items: ResearchItem[];
+  summary: string;
+};
+
+type TechnicalResearch = {
+  summary: string;
+  recommendations: string[];
+  assumptions: string[];
+  unknowns: string[];
+  integrations: ResearchCategory;
+  infrastructure: ResearchCategory;
+  third_party_services: ResearchCategory;
+  compliance: ResearchCategory;
+  operating_cost_estimate: ResearchCategory;
+};
+
+// ── Research synthesis: converts raw research into concise prompt context ─────
+
+const CATEGORY_LABELS: Record<string, string> = {
+  integrations: 'Integrations',
+  infrastructure: 'Infrastructure & hosting',
+  third_party_services: 'Third-party services',
+  compliance: 'Compliance',
+  operating_cost_estimate: 'Operating costs',
+};
+
+function synthesiseResearch(research: TechnicalResearch): string {
+  const lines: string[] = ['## Prior technical research'];
+
+  // Research summary — the most important signal
+  if (research.summary) {
+    lines.push(research.summary);
+    lines.push('');
+  }
+
+  // Stack recommendations — direct, actionable
+  if (research.recommendations?.length > 0) {
+    lines.push('**Stack direction:** ' + research.recommendations.join('; '));
+    lines.push('');
+  }
+
+  // Category summaries + required/likely items (skip optional to avoid bloat)
+  for (const [key, label] of Object.entries(CATEGORY_LABELS)) {
+    const cat = research[key as keyof TechnicalResearch] as ResearchCategory | undefined;
+    if (!cat) continue;
+    const relevantItems = (cat.items ?? []).filter((i) => i.relevance === 'required' || i.relevance === 'likely');
+    if (!cat.summary && relevantItems.length === 0) continue;
+
+    const itemList = relevantItems.map((i) => {
+      const parts = [i.name];
+      if (i.pricing) parts.push(`(${i.pricing})`);
+      return parts.join(' ');
+    });
+
+    if (cat.summary && itemList.length > 0) {
+      lines.push(`**${label}:** ${cat.summary} — ${itemList.join(', ')}`);
+    } else if (cat.summary) {
+      lines.push(`**${label}:** ${cat.summary}`);
+    } else {
+      lines.push(`**${label}:** ${itemList.join(', ')}`);
+    }
+  }
+
+  // Unknowns — the prompt generator should account for these
+  if (research.unknowns?.length > 0) {
+    lines.push('');
+    lines.push('**Open questions from research:** ' + research.unknowns.join('; '));
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Validate that an object looks like a TechnicalResearch with enough content
+ * to be useful. Returns false for empty/weak-scope research.
+ */
+function isUsableResearch(data: unknown): data is TechnicalResearch {
+  if (!data || typeof data !== 'object') return false;
+  const r = data as Record<string, unknown>;
+  if (typeof r.summary !== 'string') return false;
+  // Weak-scope research has a specific summary pattern — skip it
+  if (r.summary.startsWith('Insufficient project scope')) return false;
+  return true;
+}
+
 const ENGAGEMENT_LABELS: Record<string, string> = {
   build_new: 'Build something new',
   improve_existing: 'Improve an existing website or system',
@@ -131,7 +226,17 @@ function buildPrompt(
 
 const SYSTEM_PROMPT = `You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You analyse client scoping replies and clarification responses to produce structured project briefs.
 
-You will receive client details, their scoping reply, and optionally clarification round Q&A. Produce a structured brief and assess whether the scope is clear enough to proceed to proposal.
+You will receive client details, their scoping reply, and optionally clarification round Q&A. You may also receive a "Prior technical research" section containing stack recommendations, integration findings, infrastructure direction, compliance notes, and cost estimates produced by an earlier research step.
+
+When prior technical research is present:
+- Use it to inform recommended_solution (align with researched stack direction)
+- Reference specific researched services/tools in suggested_integrations rather than guessing
+- Factor researched cost estimates into budget_positioning
+- Incorporate researched risks and unknowns into risks_and_unknowns
+- Let infrastructure findings shape timeline_estimate where relevant
+- Do NOT blindly copy research \u2014 synthesise it into your brief recommendations
+
+When prior technical research is absent, produce the brief using only the client context provided.
 
 Respond with valid JSON only. No markdown, no code fences, no explanation outside the JSON.
 
@@ -207,7 +312,8 @@ function extractAndParseJSON(raw: string): AutofillResponse {
  * POST /api/hub/leads/[id]/brief/autofill
  *
  * Hub-protected (middleware). Calls Claude to auto-fill structured brief
- * fields from the client's scoping reply and optional clarification rounds.
+ * fields from the client's scoping reply, optional clarification rounds,
+ * and prior technical research when available.
  *
  * Body:
  *   scoping_reply: string (required)
@@ -257,6 +363,19 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('lead_id', id)
     .maybeSingle();
 
+  // ── Retrieve prior technical research if available ──────────────────────────
+  let researchContext = '';
+  const { data: briefRow } = await supabaseServer
+    .from('lead_briefs')
+    .select('technical_research')
+    .eq('lead_id', id)
+    .maybeSingle();
+
+  if (briefRow?.technical_research && isUsableResearch(briefRow.technical_research)) {
+    researchContext = synthesiseResearch(briefRow.technical_research as TechnicalResearch);
+    console.log('[autofill] Injecting prior technical research into prompt.');
+  }
+
   // Prefer merged context (includes all sources); fall back to legacy scoping reply
   let userPrompt: string;
   if (mergedContext) {
@@ -278,6 +397,11 @@ export async function POST(req: NextRequest, { params }: Params) {
       scopingReply!,
       body.clarification_rounds,
     );
+  }
+
+  // ── Append synthesised research to prompt (research-aware when available) ──
+  if (researchContext) {
+    userPrompt += '\n\n' + researchContext;
   }
 
   try {
