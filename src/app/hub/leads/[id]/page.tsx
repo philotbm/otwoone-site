@@ -2084,15 +2084,15 @@ export default function LeadDetailPage() {
         lines.push("");
       }
 
-      // Pricing intelligence (if available, further grounds the proposal)
-      if (pricingRecommendation && pricingRecommendation.deliveryClass !== "Needs review") {
-        lines.push("## Pricing intelligence");
-        lines.push(`Delivery class: ${pricingRecommendation.deliveryClass} | Package: ${pricingRecommendation.package} (${pricingRecommendation.priceBand}) | Budget fit: ${pricingRecommendation.pricingFit}`);
-        if (pricingRecommendation.isCustomSplit) {
-          if (pricingRecommendation.commercialPosture) lines.push(`Commercial posture: ${pricingRecommendation.commercialPosture}`);
-          if (pricingRecommendation.fullScopeEstimate) lines.push(`Full scope: ${pricingRecommendation.fullScopeEstimate}`);
-          if (pricingRecommendation.phase1Path) lines.push(`Phase 1 path: ${pricingRecommendation.phase1Path}`);
+      // Build pricing (if available, grounds the proposal in deterministic pricing)
+      if (buildPricing) {
+        lines.push("## Build pricing");
+        lines.push(`Recommended: €${effectiveBuildPrice.toLocaleString()} (${buildPricing.recommended_build_days} days × €${buildPricing.day_rate}/day)`);
+        lines.push(`Confidence range: €${buildPricing.confidence_range_low.toLocaleString()} – €${buildPricing.confidence_range_high.toLocaleString()}`);
+        if (buildPricing.client_budget_high !== null) {
+          lines.push(`Client budget: €${buildPricing.client_budget_low!.toLocaleString()} – €${buildPricing.client_budget_high.toLocaleString()}`);
         }
+        lines.push(`Commercial strategy: ${buildPricing.commercial_strategy}`);
         lines.push("");
       }
 
@@ -3038,7 +3038,7 @@ export default function LeadDetailPage() {
                   const contextDone = briefReply.trim().length > 0 || rounds.length > 0;
                   const analysisDone = briefSummary.trim().length > 0 && briefType.trim().length > 0;
                   const complexityDone = complexityResult !== null && complexityResult.complexity_score > 0;
-                  const pricingDone = pricingRecommendation !== null && pricingRecommendation.deliveryClass !== "Needs review";
+                  const buildPricingDone = buildPricing !== null;
                   const proposalDone = briefProposal.trim().length > 0;
 
                   const steps = [
@@ -3046,7 +3046,7 @@ export default function LeadDetailPage() {
                     { label: "Client Context", done: contextDone },
                     { label: "Analysis", done: analysisDone },
                     { label: "Complexity", done: complexityDone },
-                    { label: "Pricing", done: pricingDone },
+                    { label: "Build Pricing", done: buildPricingDone },
                     { label: "Proposal", done: proposalDone },
                   ];
 
@@ -3690,137 +3690,6 @@ export default function LeadDetailPage() {
         )}
 
         {/* ════════════════════════════════════════════════════════════════
-            PRICING ENGINE — commercial recommendation from analysis
-            ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && pricingRecommendation && (
-          <div className="lg:col-span-2">
-            <Section title="Pricing Engine">
-              <div className="space-y-4">
-
-                {/* ── Confidence indicator ─────────────────────────────── */}
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wide">Recommendation confidence</span>
-                  <span className={cx(
-                    "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
-                    pricingRecommendation.confidence === "high"   && "bg-green-500/15 text-green-400",
-                    pricingRecommendation.confidence === "medium" && "bg-amber-500/15 text-amber-400",
-                    pricingRecommendation.confidence === "low"    && "bg-red-500/15 text-red-400",
-                  )}>
-                    {pricingRecommendation.confidence}
-                  </span>
-                </div>
-
-                {/* ── Output grid ─────────────────────────────────────── */}
-                {pricingRecommendation.isCustomSplit ? (
-                  /* Custom-build split pricing: posture + full-scope + phase-1 + fit */
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Commercial posture */}
-                      <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                        <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Commercial posture</p>
-                        <p className={cx(
-                          "text-sm font-medium",
-                          pricingRecommendation.commercialPosture === "Standard package" && "text-blue-400",
-                          pricingRecommendation.commercialPosture === "Custom quote required" && "text-purple-400",
-                          pricingRecommendation.commercialPosture === "Phased MVP recommended" && "text-amber-400",
-                        )}>
-                          {pricingRecommendation.commercialPosture}
-                        </p>
-                      </div>
-                      {/* Delivery class */}
-                      <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                        <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Delivery class</p>
-                        <p className="text-sm font-medium text-gray-200">{pricingRecommendation.deliveryClass}</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {/* Full-scope estimate */}
-                      <div className="px-3 py-3 rounded-lg border border-purple-500/15 bg-purple-500/[0.03]">
-                        <p className="text-[10px] text-purple-400/70 uppercase tracking-wide mb-1">Full-scope estimate</p>
-                        <p className="text-sm font-semibold text-purple-300">{pricingRecommendation.fullScopeEstimate}</p>
-                      </div>
-                      {/* Phase 1 / MVP path */}
-                      <div className="px-3 py-3 rounded-lg border border-amber-500/15 bg-amber-500/[0.03]">
-                        <p className="text-[10px] text-amber-400/70 uppercase tracking-wide mb-1">Phase 1 / MVP path</p>
-                        <p className="text-sm font-semibold text-amber-300">{pricingRecommendation.phase1Path}</p>
-                      </div>
-                      {/* Pricing fit */}
-                      <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                        <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Pricing fit</p>
-                        <p className={cx(
-                          "text-sm font-medium",
-                          pricingRecommendation.pricingFit === "Premium"      && "text-green-400",
-                          pricingRecommendation.pricingFit === "Feasible"     && "text-emerald-400",
-                          pricingRecommendation.pricingFit === "Tight"        && "text-amber-400",
-                          pricingRecommendation.pricingFit === "Needs review" && "text-gray-500",
-                        )}>
-                          {pricingRecommendation.pricingFit}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  /* Standard single-band pricing for simple leads */
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {/* Delivery class */}
-                    <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Delivery class</p>
-                      <p className="text-sm font-medium text-gray-200">{pricingRecommendation.deliveryClass}</p>
-                    </div>
-                    {/* Recommended package */}
-                    <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Recommended package</p>
-                      <p className={cx(
-                        "text-sm font-medium",
-                        pricingRecommendation.package === "Foundation"    && "text-blue-400",
-                        pricingRecommendation.package === "Growth"        && "text-emerald-400",
-                        pricingRecommendation.package === "Accelerator"   && "text-amber-400",
-                        pricingRecommendation.package === "Custom System" && "text-purple-400",
-                        pricingRecommendation.package === "Needs review"  && "text-gray-500",
-                      )}>
-                        {pricingRecommendation.package}
-                      </p>
-                    </div>
-                    {/* Indicative price band */}
-                    <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Indicative price band</p>
-                      <p className="text-sm font-semibold text-gray-100">{pricingRecommendation.priceBand}</p>
-                    </div>
-                    {/* Pricing fit */}
-                    <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Pricing fit</p>
-                      <p className={cx(
-                        "text-sm font-medium",
-                        pricingRecommendation.pricingFit === "Premium"      && "text-green-400",
-                        pricingRecommendation.pricingFit === "Feasible"     && "text-emerald-400",
-                        pricingRecommendation.pricingFit === "Tight"        && "text-amber-400",
-                        pricingRecommendation.pricingFit === "Needs review" && "text-gray-500",
-                      )}>
-                        {pricingRecommendation.pricingFit}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Commercial rationale ─────────────────────────────── */}
-                <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Commercial rationale</p>
-                  <p className="text-xs text-gray-400 leading-relaxed">{pricingRecommendation.rationale}</p>
-                </div>
-
-                {/* ── Source signals ───────────────────────────────────── */}
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-[10px] text-gray-600">
-                    Signals: {lead?.engagement_type ? `${ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type}` : "no engagement type"} · {lead?.budget ? `${BUDGET_LABELS[lead.budget] ?? lead.budget}` : "no budget"}{decisionSignals ? ` · input ${decisionSignals.inputQuality.toLowerCase()} · scope ${decisionSignals.scopeMaturity.toLowerCase()}` : ""}
-                  </span>
-                </div>
-
-              </div>
-            </Section>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════
             COMPLEXITY ENGINE — 0–100 scoring from upstream workflow outputs
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && complexityResult && (
@@ -4143,9 +4012,9 @@ export default function LeadDetailPage() {
                     <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-green-500/5 border border-green-500/10 flex-wrap">
                       <span className="text-[10px] text-green-400 font-medium">✓ Brief confirmed</span>
                       <span className="text-[10px] text-gray-500">→ Generate proposal prompt</span>
-                      {pricingRecommendation && pricingRecommendation.package !== "Needs review" && (
+                      {buildPricing && (
                         <span className="text-[10px] text-gray-500 ml-1">
-                          · Pricing: <span className="text-gray-400 font-medium">{pricingRecommendation.package}</span> ({pricingRecommendation.priceBand})
+                          · Build price: <span className="text-gray-400 font-medium">€{effectiveBuildPrice.toLocaleString()}</span> ({buildPricing.recommended_build_days}d)
                         </span>
                       )}
                     </div>
