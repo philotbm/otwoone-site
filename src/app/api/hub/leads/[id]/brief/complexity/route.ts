@@ -15,7 +15,11 @@ type SignalKey =
   | 'notifications'
   | 'analytics_reporting'
   | 'authentication_roles'
-  | 'infrastructure_deployment_complexity';
+  | 'infrastructure_deployment_complexity'
+  | 'customer_portal'
+  | 'document_upload'
+  | 'workflow_states'
+  | 'multi_step_forms';
 
 type ComplexityClass =
   | 'brochure_site'
@@ -61,6 +65,10 @@ const SIGNAL_WEIGHTS: Record<SignalKey, number> = {
   analytics_reporting: 5,
   authentication_roles: 5,
   infrastructure_deployment_complexity: 5,
+  customer_portal: 12,
+  document_upload: 8,
+  workflow_states: 10,
+  multi_step_forms: 8,
 };
 
 // ── Build component effort mapping ───────────────────────────────────────────
@@ -77,6 +85,10 @@ const BUILD_COMPONENTS: Record<string, { label: string; days_low: number; days_h
   analytics: { label: 'Analytics & reporting', days_low: 2, days_high: 3 },
   testing_qa: { label: 'Testing & QA', days_low: 2, days_high: 3 },
   deployment_launch: { label: 'Deployment & launch', days_low: 2, days_high: 3 },
+  customer_portal: { label: 'Customer portal', days_low: 4, days_high: 6 },
+  document_upload: { label: 'Document upload & storage', days_low: 2, days_high: 4 },
+  workflow_management: { label: 'Workflow & status management', days_low: 3, days_high: 5 },
+  multi_step_forms: { label: 'Multi-step forms', days_low: 2, days_high: 4 },
 };
 
 // ── Complexity class mapping ─────────────────────────────────────────────────
@@ -133,6 +145,22 @@ const SIGNAL_PATTERNS: Record<SignalKey, { patterns: RegExp; evidenceLabel: stri
   infrastructure_deployment_complexity: {
     patterns: /\b(ci.?cd|docker|kubernetes|staging.?environment|production.?deploy|database.?migration|cdn|load.?balanc|scaling|microservice|serverless|edge.?function|cron.?job|background.?job|queue|redis|caching.?layer)\b/i,
     evidenceLabel: 'infrastructure complexity',
+  },
+  customer_portal: {
+    patterns: /\b(customer.?portal|client.?portal|user.?portal|self.?service.?portal|customer.?facing.?portal|customer.?account|client.?account|my.?account|customer.?interface|client.?interface|customer.?area|client.?area|customer.?dashboard|client.?dashboard|online.?portal|service.?portal|member.?portal|patient.?portal)\b/i,
+    evidenceLabel: 'customer portal',
+  },
+  document_upload: {
+    patterns: /\b(document.?upload|file.?upload|upload.?document|upload.?file|file.?storage|document.?storage|attachment|file.?management|document.?management|media.?upload|image.?upload|pdf.?upload|csv.?upload|file.?sharing|s3.?bucket|cloud.?storage|upload.?form)\b/i,
+    evidenceLabel: 'document upload / file storage',
+  },
+  workflow_states: {
+    patterns: /\b(workflow.?state|status.?management|status.?tracking|request.?status|order.?status|state.?machine|approval.?flow|approval.?workflow|review.?workflow|submission.?status|pending.?approved|in.?progress|status.?update|pipeline.?stage|kanban|task.?status|job.?status|ticket.?status|case.?status|stage.?transition|lifecycle.?state)\b/i,
+    evidenceLabel: 'workflow states / status management',
+  },
+  multi_step_forms: {
+    patterns: /\b(multi.?step.?form|wizard.?form|step.?by.?step|form.?wizard|onboarding.?flow|registration.?flow|intake.?form|application.?form|submission.?form|request.?form|operational.?workflow|process.?form|dynamic.?form|conditional.?form)\b/i,
+    evidenceLabel: 'multi-step forms / operational workflows',
   },
 };
 
@@ -339,6 +367,18 @@ function deriveBuildComponents(signals: DetectedSignal[]): BuildComponent[] {
   if (signalKeys.has('analytics_reporting')) {
     components.push({ key: 'analytics', ...BUILD_COMPONENTS.analytics });
   }
+  if (signalKeys.has('customer_portal')) {
+    components.push({ key: 'customer_portal', ...BUILD_COMPONENTS.customer_portal });
+  }
+  if (signalKeys.has('document_upload')) {
+    components.push({ key: 'document_upload', ...BUILD_COMPONENTS.document_upload });
+  }
+  if (signalKeys.has('workflow_states')) {
+    components.push({ key: 'workflow_management', ...BUILD_COMPONENTS.workflow_management });
+  }
+  if (signalKeys.has('multi_step_forms')) {
+    components.push({ key: 'multi_step_forms', ...BUILD_COMPONENTS.multi_step_forms });
+  }
 
   // Testing scales with component count
   if (components.length > 4) {
@@ -383,7 +423,7 @@ function buildRationale(
 /**
  * POST /api/hub/leads/[id]/brief/complexity
  *
- * OTwoOne Complexity Engine (v1.72.0).
+ * OTwoOne Complexity Engine (v1.77.0).
  * Deterministic 0–100 complexity scoring that consumes structured upstream
  * workflow outputs (brief, research, clarifiers, scoring) in priority order.
  * Falls back to raw context only when structured outputs are insufficient.
