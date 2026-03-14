@@ -41,8 +41,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   const sourceType = body.source_type?.trim();
   const notes = body.notes?.trim();
 
-  if (!sourceType || !['call', 'email', 'document', 'other'].includes(sourceType)) {
-    return NextResponse.json({ error: 'source_type must be one of: call, email, document, other' }, { status: 400 });
+  if (!sourceType || !['call', 'email', 'meeting', 'document', 'client_reply', 'internal_note', 'other'].includes(sourceType)) {
+    return NextResponse.json({ error: 'source_type must be one of: call, email, meeting, document, client_reply, internal_note, other' }, { status: 400 });
   }
 
   if (!notes || notes.length < 5) {

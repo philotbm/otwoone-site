@@ -938,11 +938,12 @@ export default function LeadDetailPage() {
   // Iteration log state
   const [iterations,          setIterations]          = useState<LeadIteration[]>([]);
   const [iterationsLoading,   setIterationsLoading]   = useState(false);
-  const [iterSourceType,      setIterSourceType]      = useState<"call" | "email" | "document" | "other">("call");
+  const [iterSourceType,      setIterSourceType]      = useState<"call" | "email" | "meeting" | "document" | "client_reply" | "internal_note" | "other">("call");
   const [iterSourceDate,      setIterSourceDate]      = useState("");
   const [iterNotes,           setIterNotes]           = useState("");
   const [iterSaving,          setIterSaving]          = useState(false);
   const [unifiedRunning,      setUnifiedRunning]      = useState(false);
+  const [expandedIteration,   setExpandedIteration]   = useState<string | null>(null);
 
   // Workflow state
   const [overrideScopeWarning, setOverrideScopeWarning] = useState(false);
@@ -1360,24 +1361,7 @@ export default function LeadDetailPage() {
     if (contactStrategy) workflowLines.push(`Contact strategy: ${contactStrategy === "bookings" ? "Microsoft Bookings" : contactStrategy === "teams" ? "Microsoft Teams" : "Phone call"}`);
     if (workflowLines.length > 0) sections.push("## Workflow state\n" + workflowLines.join("\n"));
 
-    // 6. Scoping reply
-    if (briefReply.trim()) {
-      sections.push("## Client scoping reply\n" + briefReply.trim());
-    }
-
-    // 7. Clarification rounds
-    const answeredRounds = rounds.filter((r) => r.status === "replied" || r.status === "closed");
-    if (answeredRounds.length > 0) {
-      const roundLines = answeredRounds.map((r) => {
-        const parts: string[] = [`### Round ${r.round_number}`];
-        if (r.questions) { parts.push("**Questions asked:**"); parts.push(r.questions); }
-        if (r.client_reply) { parts.push("**Client reply:**"); parts.push(r.client_reply); }
-        return parts.join("\n");
-      });
-      sections.push("## Clarification rounds\n" + roundLines.join("\n\n"));
-    }
-
-    // 8. Discovery notes (from internal notes if discovery path)
+    // 6. Discovery notes (from internal notes if discovery path)
     if (intakePath === "discovery_call" && lead.lead_details?.internal_notes) {
       sections.push("## Discovery call notes\n" + lead.lead_details.internal_notes);
     }
@@ -1399,7 +1383,7 @@ export default function LeadDetailPage() {
     if (briefFields.length > 0) sections.push("## Existing brief analysis\n" + briefFields.join("\n"));
 
     return sections.join("\n\n");
-  }, [lead, briefReply, rounds, intakePath, contactStrategy, briefSummary, briefType, briefSolution, briefIntegrations, briefTimeline, briefBudget, briefRisks, revisionContext]);
+  }, [lead, intakePath, contactStrategy, briefSummary, briefType, briefSolution, briefIntegrations, briefTimeline, briefBudget, briefRisks, revisionContext]);
 
   // ── Pricing Engine (deterministic commercial recommendation) ─────────────────
 
@@ -1765,7 +1749,7 @@ export default function LeadDetailPage() {
     // Rationale referencing complexity signals
     const signalNames = complexityResult.detected_signals.map(s => s.key.replace(/_/g, " ")).join(", ");
     const rationale = `${recommendedDays} recommended build days (midpoint of ${daysLow}–${daysHigh}) at €${OTWOONE_DAY_RATE}/day = €${recommendedPrice.toLocaleString()}. ` +
-      `Complexity ${complexityResult.complexity_score}/100 (${complexityResult.complexity_class.replace(/_/g, " ")}). ` +
+      `Complexity ${Math.min(complexityResult.complexity_score, 100)}/100 (${complexityResult.complexity_class.replace(/_/g, " ")}). ` +
       (signalNames ? `Detected signals: ${signalNames}.` : "No complexity signals detected.");
 
     return {
@@ -2371,18 +2355,10 @@ export default function LeadDetailPage() {
     // 2. Run consultant brief analysis (autofill)
     setAutofillLoading(true);
     setAutofillError("");
-    const answeredRounds = rounds.filter((r) => r.status === "replied" || r.status === "closed");
     const autofillBody: Record<string, unknown> = {
-      scoping_reply: briefReply || "(No direct scoping reply — see merged context)",
+      scoping_reply: "(See merged context)",
       merged_context: contextWithIterations,
     };
-    if (answeredRounds.length > 0) {
-      autofillBody.clarification_rounds = answeredRounds.map((r) => ({
-        round_number: r.round_number,
-        questions: r.questions,
-        client_reply: r.client_reply,
-      }));
-    }
     if (pricingRecommendation && pricingRecommendation.deliveryClass !== "Needs review") {
       autofillBody.pricing_signals = {
         deliveryClass: pricingRecommendation.deliveryClass,
@@ -2640,7 +2616,7 @@ export default function LeadDetailPage() {
       // Complexity assessment (if available, grounds effort/scope expectations)
       if (complexityResult && complexityResult.complexity_score > 0) {
         lines.push("## Complexity assessment");
-        lines.push(`Score: ${complexityResult.complexity_score}/100 (${complexityResult.complexity_class.replace(/_/g, " ")}) | Effort: ${complexityResult.estimated_days_low}–${complexityResult.estimated_days_high} days`);
+        lines.push(`Score: ${Math.min(complexityResult.complexity_score, 100)}/100 (${complexityResult.complexity_class.replace(/_/g, " ")}) | Effort: ${complexityResult.estimated_days_low}–${complexityResult.estimated_days_high} days`);
         if (complexityResult.detected_signals.length > 0) {
           lines.push(`Signals: ${complexityResult.detected_signals.map(s => s.key.replace(/_/g, " ")).join(", ")}`);
         }
@@ -3179,6 +3155,23 @@ export default function LeadDetailPage() {
           </p>
         </div>
 
+        {/* Lead stage (inline header) */}
+        <div className="flex items-center gap-2">
+          <select
+            value={status}
+            onChange={(e) => {
+              const v = e.target.value as LeadStatus;
+              setStatus(v);
+              saveField({ status: v });
+            }}
+            className="bg-[#0e0f14] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-indigo-500/60"
+          >
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s} className="bg-[#0e0f14] text-gray-200">{STATUS_LABELS[s]}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Convert button */}
         {!isConverted && canConvert && (
           <button
@@ -3216,12 +3209,12 @@ export default function LeadDetailPage() {
         />
       </div>
 
-      <div className="px-6 py-6 max-w-4xl mx-auto grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="px-6 py-6 max-w-4xl mx-auto grid grid-cols-1 gap-5">
 
         {/* ════════════════════════════════════════════════════════════════
             CLIENT REQUEST — original intake description
             ════════════════════════════════════════════════════════════════ */}
-        <div className="lg:col-span-2">
+        <div>
           <Section title="Client request">
             <div className="space-y-4">
               {lead.lead_details?.success_definition ? (
@@ -3259,7 +3252,7 @@ export default function LeadDetailPage() {
 
         {/* ── Workflow progress indicator ────────────────────────────────── */}
         {lead && (
-          <div className="lg:col-span-2">
+          <div>
             <div className="px-5 py-3 rounded-xl border border-white/[0.06] bg-[#12131a]">
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mr-2">Workflow</span>
@@ -3274,7 +3267,6 @@ export default function LeadDetailPage() {
 
                   const steps = [
                     { label: "Qualification", done: qualDone },
-                    { label: "Client Context", done: contextDone },
                     { label: "Analysis", done: analysisDone },
                     { label: "Complexity", done: complexityDone },
                     { label: "Build Pricing", done: buildPricingDone },
@@ -3305,7 +3297,7 @@ export default function LeadDetailPage() {
             ANALYSIS ACTION — single-button pipeline trigger
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && (
-          <div className="lg:col-span-2">
+          <div>
             <div className="px-5 py-4 rounded-xl border border-white/[0.06] bg-[#12131a]">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
@@ -3339,320 +3331,15 @@ export default function LeadDetailPage() {
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════════════════════
-            CLIENT CONTEXT — scoping reply, clarifications, raw inputs
-            ════════════════════════════════════════════════════════════════ */}
-        <div className="lg:col-span-2">
-          <Section title="Client Context">
-            <div className="space-y-5">
-
-              {/* ── Scoping reply / call notes ─────────────────────────────── */}
-              <div>
-                <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">
-                  {intakePath === "discovery_call" ? "Client scoping reply / call notes" : "Client\u2019s scoping reply"}
-                </label>
-                <textarea
-                  value={briefReply}
-                  onChange={(e) => setBriefReply(e.target.value)}
-                  placeholder={intakePath === "discovery_call" ? "Paste the client\u2019s reply or discovery call notes here\u2026" : "Paste the client\u2019s reply to your scoping email here\u2026"}
-                  rows={5}
-                  className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
-                />
-              </div>
-
-              {/* ── Clarification rounds ───────────────────────────────────── */}
-              <div className="pt-3 border-t border-white/5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Clarification rounds</span>
-                    <span className="text-xs text-gray-500">·</span>
-                    <span className="text-xs text-gray-500">Scope confidence</span>
-                    {(() => {
-                      const hasRepliedAll = rounds.length > 0 && rounds.every((r) => r.status === "replied" || r.status === "closed");
-                      const hasPending    = rounds.some((r) => r.status === "draft" || r.status === "sent");
-                      const noRounds      = rounds.length === 0;
-
-                      if (noRounds && ["scope_received", "proposal_sent", "deposit_requested", "deposit_received", "converted"].includes(status)) {
-                        return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-green-500/15 text-green-400">Clear</span>;
-                      }
-                      if (noRounds) {
-                        return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-gray-500/15 text-gray-400">Not assessed</span>;
-                      }
-                      if (hasPending) {
-                        return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-yellow-500/15 text-yellow-400">Pending</span>;
-                      }
-                      if (hasRepliedAll) {
-                        return <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-green-500/15 text-green-400">Clear</span>;
-                      }
-                      return null;
-                    })()}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={createRound}
-                    disabled={roundSaving === "new"}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-                  >
-                    {roundSaving === "new" ? "Creating…" : "+ New round"}
-                  </button>
-                </div>
-
-                {roundsLoading && <p className="text-xs text-gray-600 py-2">Loading rounds…</p>}
-
-                {!roundsLoading && rounds.length === 0 && (
-                  <p className="text-xs text-gray-600 py-2">No clarification rounds yet. Scope may already be clear — or start a round if you need to ask follow-ups.</p>
-                )}
-
-                {!roundsLoading && rounds.length > 0 && (
-                  <div className="space-y-3">
-                    {rounds.map((round) => {
-                      const isExpanded = expandedRound === round.id;
-                      const isSaving   = roundSaving === round.id;
-                      return (
-                        <div
-                          key={round.id}
-                          className="border border-white/5 rounded-lg overflow-hidden"
-                        >
-                          {/* Round header */}
-                          <button
-                            type="button"
-                            onClick={() => setExpandedRound(isExpanded ? null : round.id)}
-                            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
-                          >
-                            <div className="flex items-center gap-3">
-                              <span className="w-6 h-6 flex items-center justify-center rounded bg-white/5 text-[10px] font-bold text-gray-400 shrink-0">Q{round.round_number}</span>
-                              <span className="text-xs font-medium text-gray-300">Round {round.round_number}</span>
-                              <span className={cx(
-                                "px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
-                                ROUND_STATUS_COLOUR[round.status]
-                              )}>
-                                {ROUND_STATUS_LABELS[round.status]}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-[10px] text-gray-600">{fmt(round.created_at)}</span>
-                              <span className="text-xs text-gray-600">{isExpanded ? "▲" : "▼"}</span>
-                            </div>
-                          </button>
-
-                          {/* Round body */}
-                          {isExpanded && (
-                            <div className="px-4 pb-4 space-y-4 border-t border-white/5">
-                              {/* Question */}
-                              <div className="pt-3">
-                                <label className="text-xs text-gray-500 block mb-1.5">
-                                  {intakePath === "discovery_call" ? "Discussion points" : "Question"}
-                                </label>
-                                <textarea
-                                  value={draftQuestions[round.id] ?? ""}
-                                  onChange={(e) => setDraftQuestions((prev) => ({ ...prev, [round.id]: e.target.value }))}
-                                  placeholder={intakePath === "discovery_call" ? "Points to discuss on the call…" : "Type your clarification questions here…"}
-                                  rows={4}
-                                  className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none leading-relaxed"
-                                />
-                                <div className="flex items-center gap-2 mt-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => saveRound(round.id, { questions: draftQuestions[round.id] ?? "" })}
-                                    disabled={isSaving}
-                                    className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
-                                  >
-                                    {isSaving ? "Saving…" : "Save question"}
-                                  </button>
-                                </div>
-                              </div>
-
-                              {/* Answer */}
-                              <div>
-                                <label className="text-xs text-gray-500 block mb-1.5">
-                                  {intakePath === "discovery_call" ? "Call notes / client response" : "Answer"}
-                                </label>
-                                <textarea
-                                  value={draftReplies[round.id] ?? ""}
-                                  onChange={(e) => setDraftReplies((prev) => ({ ...prev, [round.id]: e.target.value }))}
-                                  placeholder={intakePath === "discovery_call" ? "Paste call notes or client response…" : "Paste client reply here…"}
-                                  rows={4}
-                                  className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none leading-relaxed"
-                                />
-                                <div className="flex items-center gap-2 mt-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => saveRound(round.id, { client_reply: draftReplies[round.id] ?? "", status: "replied" })}
-                                    disabled={isSaving}
-                                    className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
-                                  >
-                                    {isSaving ? "Saving…" : "Save answer"}
-                                  </button>
-                                </div>
-                              </div>
-
-                              {/* Actions row */}
-                              <div className="flex items-center justify-between pt-3 border-t border-white/5 flex-wrap gap-2">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {/* Generate email */}
-                                  {(draftQuestions[round.id] ?? "").trim() && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const email = buildClarificationEmail({ ...round, questions: draftQuestions[round.id] ?? "" });
-                                        saveRound(round.id, { questions: draftQuestions[round.id], generated_email: email });
-                                      }}
-                                      disabled={isSaving}
-                                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors disabled:opacity-50"
-                                    >
-                                      {isSaving ? "Generating…" : "Generate email"}
-                                    </button>
-                                  )}
-
-                                  {/* Copy email */}
-                                  {round.generated_email && (
-                                    <button
-                                      type="button"
-                                      onClick={() => navigator.clipboard.writeText(round.generated_email!)}
-                                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20 transition-colors"
-                                    >
-                                      Copy email
-                                    </button>
-                                  )}
-
-                                  {/* Open mailto */}
-                                  {round.generated_email && lead?.contact_email && (
-                                    <a
-                                      href={`mailto:${lead.contact_email}?subject=${encodeURIComponent("OTwoOne — a few follow-up questions")}&body=${encodeURIComponent(round.generated_email)}`}
-                                      onClick={() => {
-                                        if (round.status === "draft") saveRound(round.id, { status: "sent" });
-                                      }}
-                                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors inline-block"
-                                    >
-                                      Send via email
-                                    </a>
-                                  )}
-
-                                  {/* Mark sent manually */}
-                                  {round.status === "draft" && (
-                                    <button
-                                      type="button"
-                                      onClick={() => saveRound(round.id, { status: "sent" })}
-                                      disabled={isSaving}
-                                      className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
-                                    >
-                                      {isSaving ? "Updating…" : "Mark sent"}
-                                    </button>
-                                  )}
-
-                                  {/* Close round */}
-                                  {(round.status === "replied" || round.status === "sent") && (
-                                    <button
-                                      type="button"
-                                      onClick={() => saveRound(round.id, { status: "closed" })}
-                                      disabled={isSaving}
-                                      className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
-                                    >
-                                      {isSaving ? "Closing…" : "Close round"}
-                                    </button>
-                                  )}
-                                </div>
-
-                                {/* Delete (draft only) */}
-                                {round.status === "draft" && (
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteRound(round.id)}
-                                    disabled={isSaving}
-                                    className="text-xs text-red-400/60 hover:text-red-400 disabled:opacity-50"
-                                  >
-                                    Delete
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* Generated email preview */}
-                              {round.generated_email && (
-                                <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
-                                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5">Email preview</p>
-                                  <pre className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed font-sans">{round.generated_email}</pre>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* ── Raw customer inputs (collapsible, inside Client Inputs) ── */}
-              {lead && (
-                <div className="pt-3 border-t border-white/5">
-                  <button
-                    type="button"
-                    onClick={() => setShowRawInputs(!showRawInputs)}
-                    className="w-full flex items-center justify-between py-2 text-left hover:opacity-80 transition-opacity"
-                  >
-                    <span className="text-[10px] font-medium tracking-wide text-gray-500 uppercase">Raw customer inputs</span>
-                    <span className="text-xs text-gray-600">{showRawInputs ? "▲ Hide" : "▼ Show"}</span>
-                  </button>
-                  {showRawInputs && (
-                    <div className="pt-2 space-y-3">
-                      <Row label="Email" value={lead.contact_email} />
-                      <Row label="Company" value={lead.company_name} />
-                      <Row label="Website" value={lead.company_website} />
-                      <Row label="Role" value={lead.role} />
-                      <Row label="Engagement type" value={lead.engagement_type?.replace(/_/g, " ") ?? null} />
-                      <Row label="Budget" value={lead.budget?.replace(/_/g, " ") ?? null} />
-                      <Row label="Timeline" value={lead.timeline?.replace(/_/g, " ") ?? null} />
-                      {lead.lead_details?.success_definition && (
-                        <div className="pt-2 border-t border-white/5">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Client request</p>
-                          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
-                        </div>
-                      )}
-                      {lead.lead_details?.current_tools && (
-                        <div className="pt-2 border-t border-white/5">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Current tools</p>
-                          <p className="text-sm text-gray-300 leading-relaxed">{lead.lead_details.current_tools}</p>
-                        </div>
-                      )}
-                      {lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0 && (
-                        <div className="pt-2 border-t border-white/5">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Clarifier answers</p>
-                          {Object.entries(lead.lead_details.clarifier_answers).map(([k, v]) => (
-                            <Row key={k} label={k.replace(/_/g, " ")} value={String(v)} />
-                          ))}
-                        </div>
-                      )}
-                      {lead.lead_details?.raw_submission && Object.keys(lead.lead_details.raw_submission).length > 0 && (
-                        <div className="pt-2 border-t border-white/5">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Raw submission</p>
-                          <pre className="text-xs text-gray-500 leading-relaxed whitespace-pre-wrap font-mono bg-black/20 rounded-lg p-3 max-h-60 overflow-y-auto">
-                            {JSON.stringify(lead.lead_details.raw_submission, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                      {lead.lead_details?.internal_notes && (
-                        <div className="pt-2 border-t border-white/5">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Internal notes</p>
-                          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.internal_notes}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-            </div>
-          </Section>
-        </div>
 
         {/* ════════════════════════════════════════════════════════════════
             SYSTEM ANALYSIS — merged context analysis + structured brief
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && (
-          <div className="lg:col-span-2">
+          <div>
             <Section title="System Analysis">
               <p className="text-xs text-gray-600 -mt-1 mb-3">
-                Merged view of all client inputs and analysis. Driven by enquiry, scoping, clarifications, and brief data.
+                Merged view of all client inputs and analysis. Driven by enquiry data, iterations, and brief data.
               </p>
 
               {/* ── Read-only analysis summary ─────────────────────────── */}
@@ -3684,37 +3371,11 @@ export default function LeadDetailPage() {
                 </div>
               </div>
 
-              {/* Context sources + analysis action */}
+              {/* Context sources */}
               <div className="mt-2 flex items-center gap-3 flex-wrap">
                 <span className="text-[10px] text-gray-600">
-                  Sources: enquiry data{briefReply.trim() ? " · scoping reply" : ""}{rounds.filter(r => r.status === "replied" || r.status === "closed").length > 0 ? ` · ${rounds.filter(r => r.status === "replied" || r.status === "closed").length} clarification round${rounds.filter(r => r.status === "replied" || r.status === "closed").length > 1 ? "s" : ""}` : ""}{intakePath === "discovery_call" && lead?.lead_details?.internal_notes ? " · discovery notes" : ""}
+                  Sources: enquiry data{iterations.length > 0 ? ` · ${iterations.length} iteration${iterations.length > 1 ? "s" : ""}` : ""}{intakePath === "discovery_call" && lead?.lead_details?.internal_notes ? " · discovery notes" : ""}
                 </span>
-                <button
-                  type="button"
-                  disabled={(!briefReply.trim() && !mergedClientContext.trim()) || autofillLoading}
-                  onClick={() => autofillBrief(true)}
-                  className="px-3 py-1 rounded-lg text-[10px] font-medium bg-emerald-600/60 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  {autofillLoading ? "Analysing…" : (briefSummary.trim() || briefType.trim()) ? "Refresh analysis" : "Run AI analysis"}
-                </button>
-                <button
-                  type="button"
-                  disabled={!mergedClientContext.trim() || researchLoading}
-                  onClick={() => runResearch()}
-                  className="px-3 py-1 rounded-lg text-[10px] font-medium bg-violet-600/60 hover:bg-violet-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  {researchLoading ? "Researching…" : technicalResearch ? "Update research" : "Research stack"}
-                </button>
-                <button
-                  type="button"
-                  disabled={complexityLoading}
-                  onClick={runComplexity}
-                  className="px-3 py-1 rounded-lg text-[10px] font-medium bg-cyan-600/60 hover:bg-cyan-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  {complexityLoading ? "Scoring…" : complexityResult ? "Refresh complexity" : "Score complexity"}
-                </button>
-                {researchError && <span className="text-[10px] text-red-400 block mt-1">{researchError}</span>}
-                {complexityError && <span className="text-[10px] text-red-400 block mt-1">{complexityError}</span>}
               </div>
 
               {/* ── Editable structured brief fields ──────────────────── */}
@@ -3870,7 +3531,7 @@ export default function LeadDetailPage() {
             TECHNICAL RESEARCH — stack due-diligence from Research Agent
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && (
-          <div className="lg:col-span-2">
+          <div>
             <Section title="Technical Research">
               {technicalResearch ? (
                 <div className="space-y-4">
@@ -3969,7 +3630,7 @@ export default function LeadDetailPage() {
             COMPLEXITY ENGINE — 0–100 scoring from upstream workflow outputs
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && complexityResult && (
-          <div className="lg:col-span-2">
+          <div>
             <Section title="Complexity Engine">
               <div className="space-y-4">
 
@@ -3977,7 +3638,7 @@ export default function LeadDetailPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="px-3 py-3 rounded-lg border border-cyan-500/15 bg-cyan-500/[0.03]">
                     <p className="text-[10px] text-cyan-400/70 uppercase tracking-wide mb-1">Complexity score</p>
-                    <p className="text-xl font-bold text-cyan-300">{complexityResult.complexity_score}<span className="text-sm text-cyan-400/60">/100</span></p>
+                    <p className="text-xl font-bold text-cyan-300">{Math.min(complexityResult.complexity_score, 100)}<span className="text-sm text-cyan-400/60">/100</span></p>
                   </div>
                   <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
                     <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Complexity class</p>
@@ -4056,7 +3717,7 @@ export default function LeadDetailPage() {
             BUILD PRICING — deterministic price from complexity engine output
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && buildPricing && (
-          <div className="lg:col-span-2">
+          <div>
             <Section title="Build Pricing">
               <div className="space-y-4">
 
@@ -4163,7 +3824,7 @@ export default function LeadDetailPage() {
             MONTHLY OPERATING COST — recurring infrastructure + support retainer
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && (
-          <div className="lg:col-span-2">
+          <div>
             <Section title="Monthly Operating Cost">
               {runningCosts ? (
               <div className="space-y-4">
@@ -4240,48 +3901,52 @@ export default function LeadDetailPage() {
         )}
 
         {/* ════════════════════════════════════════════════════════════════
-            ITERATION LOG — chronological record of new information added
-            ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && iterations.length > 0 && (
-          <div className="lg:col-span-2">
-            <Section title="Iteration log">
-              <div className="space-y-2">
-                {iterations.map((it) => (
-                  <div key={it.id} className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="px-1.5 py-0.5 rounded text-[9px] font-medium uppercase tracking-wider bg-amber-500/10 text-amber-400">{it.source_type}</span>
-                      {it.source_date && <span className="text-[10px] text-gray-500">{it.source_date}</span>}
-                      <span className="text-[10px] text-gray-600 ml-auto">{fmtDateTime(it.created_at)}</span>
-                    </div>
-                    <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">{it.notes}</p>
-                  </div>
-                ))}
-              </div>
-            </Section>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════
-            NEW INFORMATION — add iteration entry and recompute pipeline
+            ADD INFORMATION — add iteration entry and recompute pipeline
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && (
-          <div className="lg:col-span-2">
-            <Section title="New information">
+          <div>
+            <Section title="Add Information">
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 -mt-1">
-                  Add new context from calls, emails, or documents. Submitting will recompute the full analysis pipeline.
+                  Add new context from calls, emails, meetings, or documents. Submitting will recompute the full analysis pipeline.
                 </p>
+
+                {/* Iteration summary card */}
+                {iterations.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pb-3 border-b border-white/5">
+                    <div className="px-3 py-2 rounded-lg border border-amber-500/15 bg-amber-500/[0.03]">
+                      <p className="text-[10px] text-amber-400/70 uppercase tracking-wide">Total inputs</p>
+                      <p className="text-lg font-bold text-amber-300">{iterations.length}</p>
+                    </div>
+                    <div className="px-3 py-2 rounded-lg border border-white/5 bg-white/[0.02]">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide">Latest source</p>
+                      <p className="text-sm font-medium text-gray-300">{iterations[iterations.length - 1].source_type.replace(/_/g, " ")}</p>
+                    </div>
+                    <div className="px-3 py-2 rounded-lg border border-white/5 bg-white/[0.02]">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide">First added</p>
+                      <p className="text-sm font-medium text-gray-300">{new Date(iterations[0].created_at).toLocaleDateString()}</p>
+                    </div>
+                    <div className="px-3 py-2 rounded-lg border border-white/5 bg-white/[0.02]">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide">Last added</p>
+                      <p className="text-sm font-medium text-gray-300">{new Date(iterations[iterations.length - 1].created_at).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Source type</label>
                     <select
                       value={iterSourceType}
-                      onChange={(e) => setIterSourceType(e.target.value as "call" | "email" | "document" | "other")}
+                      onChange={(e) => setIterSourceType(e.target.value as typeof iterSourceType)}
                       className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-amber-500/40"
                     >
                       <option value="call">Call</option>
                       <option value="email">Email</option>
+                      <option value="meeting">Meeting</option>
                       <option value="document">Document</option>
+                      <option value="client_reply">Client reply</option>
+                      <option value="internal_note">Internal note</option>
                       <option value="other">Other</option>
                     </select>
                   </div>
@@ -4317,165 +3982,45 @@ export default function LeadDetailPage() {
             </Section>
           </div>
         )}
-
-        {/* ── Client info, Submission details, Decision signals, Lead stage, Qualification ── */}
-        {/* Client info */}
-        <Section title="Client info">
-          <Row label="Name"         value={lead.contact_name} />
-          <Row label="Email"        value={<a href={`mailto:${lead.contact_email}`} className="text-indigo-400 hover:text-indigo-300">{lead.contact_email}</a>} />
-          <Row label="Company"      value={lead.company_name} />
-          <Row label="Website"      value={lead.company_website ? <a href={lead.company_website} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300">{lead.company_website}</a> : null} />
-          <Row label="Role"         value={lead.role} />
-          <Row label="Authority"    value={AUTHORITY_LABELS[lead.decision_authority ?? ""] ?? lead.decision_authority} />
-        </Section>
-
-        {/* Submission details */}
-        <Section title="Submission details">
-          <Row label="Engagement"   value={ENGAGEMENT_LABELS[lead.engagement_type ?? ""] ?? lead.engagement_type} />
-          <Row label="Budget"       value={BUDGET_LABELS[lead.budget ?? ""] ?? lead.budget} />
-          <Row label="Timeline"     value={TIMELINE_LABELS[lead.timeline ?? ""] ?? lead.timeline} />
-          {lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0 && (
-            <div className="mt-3 pt-3 border-t border-white/5">
-              <p className="text-xs text-gray-500 mb-2 uppercase tracking-wide">Clarifiers</p>
-              {Object.entries(lead.lead_details.clarifier_answers).map(([k, v]) => (
-                <Row key={k} label={k.replace(/_/g, " ")} value={String(v)} />
-              ))}
-            </div>
-          )}
-          {lead.lead_details?.success_definition && (
-            <div className="mt-3 pt-3 border-t border-white/5">
-              <p className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">Client request</p>
-              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
-            </div>
-          )}
-          {lead.lead_details?.current_tools && (
-            <div className="mt-3 pt-3 border-t border-white/5">
-              <p className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">Current tools</p>
-              <p className="text-sm text-gray-300 leading-relaxed">{lead.lead_details.current_tools}</p>
-            </div>
-          )}
-        </Section>
-
-        {/* Decision signals — replaced Internal scoring v1.68.3 */}
-        <Section title="Decision signals">
-          {decisionSignals ? (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Input quality</span>
-                <SignalPill value={decisionSignals.inputQuality} />
+        {/* ════════════════════════════════════════════════════════════════
+            ITERATION LOG — chronological record of new information added
+            ════════════════════════════════════════════════════════════════ */}
+        {briefAccessible && iterations.length > 0 && (
+          <div>
+            <Section title="Iteration history">
+              <div className="space-y-2">
+                {iterations.map((it, idx) => {
+                  const isOpen = expandedIteration === it.id;
+                  const preview = it.notes.length > 120 ? it.notes.slice(0, 120) + "…" : it.notes;
+                  return (
+                    <div key={it.id} className="rounded-lg bg-white/[0.02] border border-white/5 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedIteration(isOpen ? null : it.id)}
+                        className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-white/[0.02] transition-colors"
+                      >
+                        <span className="w-6 h-6 flex items-center justify-center rounded bg-amber-500/10 text-[10px] font-bold text-amber-400 shrink-0">#{idx + 1}</span>
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-medium uppercase tracking-wider bg-amber-500/10 text-amber-400">{it.source_type.replace(/_/g, " ")}</span>
+                        {it.source_date && <span className="text-[10px] text-gray-500">{it.source_date}</span>}
+                        <span className="text-[10px] text-gray-600 ml-auto shrink-0">{fmtDateTime(it.created_at)}</span>
+                        <span className="text-xs text-gray-600 shrink-0">{isOpen ? "▲" : "▼"}</span>
+                      </button>
+                      {isOpen ? (
+                        <div className="px-4 pb-3 border-t border-white/5 pt-2">
+                          <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">{it.notes}</p>
+                        </div>
+                      ) : (
+                        <div className="px-4 pb-3">
+                          <p className="text-xs text-gray-500 leading-relaxed truncate">{preview}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Budget clarity</span>
-                <SignalPill value={decisionSignals.budgetClarity} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Scope maturity</span>
-                <SignalPill value={decisionSignals.scopeMaturity} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Commercial fit</span>
-                <SignalPill value={decisionSignals.commercialFit} />
-              </div>
-              <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                <span className="text-xs text-gray-500">Next best action</span>
-                <span className="text-xs font-medium text-indigo-400">{decisionSignals.nextBestAction}</span>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-gray-600">Loading…</p>
-          )}
-        </Section>
-
-        {/* Lead stage */}
-        <Section title="Lead stage">
-          <div className="space-y-4">
-            {/* Status */}
-            <div>
-              <label className="text-xs text-gray-500 block mb-1.5">Stage</label>
-              <select
-                value={status}
-                onChange={(e) => {
-                  const v = e.target.value as LeadStatus;
-                  setStatus(v);
-                  saveField({ status: v });
-                }}
-                className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
-              >
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s} className="bg-[#0e0f14] text-gray-200">{STATUS_LABELS[s]}</option>
-                ))}
-              </select>
-              <p className="mt-1.5 text-xs text-gray-500">{NEXT_ACTION[status]}</p>
-
-              {/* Scoping CTA removed v1.68.2 — Qualification is the single source of truth for early-stage workflow actions */}
-              {status === "deposit_received" && (
-                <button
-                  type="button"
-                  onClick={() => setShowConvert(true)}
-                  className="mt-3 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                >
-                  Convert to project
-                </button>
-              )}
-            </div>
-
-            {/* Discovery override — retired v1.17.1 */}
-            {/* <div>
-              <label className="text-xs text-gray-500 block mb-1.5">Discovery override</label>
-              <select
-                value={discoveryDepth}
-                onChange={(e) => {
-                  setDiscoveryDepth(e.target.value);
-                  saveField({ discovery_depth: e.target.value || null });
-                }}
-                className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
-              >
-                <option value="" className="bg-[#0e0f14] text-gray-200">— Use recommended ({lead.discovery_depth_suggested ?? "core"})</option>
-                <option value="lite" className="bg-[#0e0f14] text-gray-200">Lite</option>
-                <option value="core" className="bg-[#0e0f14] text-gray-200">Core</option>
-                <option value="deep" className="bg-[#0e0f14] text-gray-200">Deep</option>
-              </select>
-            </div> */}
-
-            {/* Proposed hosting — retired v1.17.1 */}
-            {/* <div>
-              <label className="text-xs text-gray-500 block mb-1.5">Hosting proposed</label>
-              <select
-                value={proposedHosting}
-                onChange={(e) => {
-                  setProposedHosting(e.target.value as "yes" | "no" | "");
-                  saveField({ proposed_hosting_required: e.target.value === "yes" ? true : e.target.value === "no" ? false : null });
-                }}
-                className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
-              >
-                <option value="" className="bg-[#0e0f14] text-gray-200">Not set</option>
-                <option value="yes" className="bg-[#0e0f14] text-gray-200">Yes — hosting included</option>
-                <option value="no" className="bg-[#0e0f14] text-gray-200">No — client hosts</option>
-              </select>
-            </div> */}
-
-            {/* Proposed maintenance plan — retired v1.17.1 */}
-            {/* <div>
-              <label className="text-xs text-gray-500 block mb-1.5">Maintenance plan proposed</label>
-              <select
-                value={proposedPlan}
-                onChange={(e) => {
-                  setProposedPlan(e.target.value);
-                  saveField({ proposed_maintenance_plan: e.target.value || null });
-                }}
-                className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
-              >
-                <option value="" className="bg-[#0e0f14] text-gray-200">Not set</option>
-                {MAINTENANCE_PLANS.map((p) => (
-                  <option key={p} value={p} className="bg-[#0e0f14] text-gray-200">
-                    {MAINTENANCE_LABELS[p]}
-                    {MAINTENANCE_MONTHLY[p] ? ` — €${MAINTENANCE_MONTHLY[p]}/mo` : ""}
-                  </option>
-                ))}
-              </select>
-            </div> */}
+            </Section>
           </div>
-        </Section>
+        )}
 
         {/* ── Qualification — stage-1 decision workflow ─────────────────── */}
         {briefAccessible && (
@@ -4513,7 +4058,7 @@ export default function LeadDetailPage() {
               {['lead_submitted', 'scoping_sent'].includes(status) && (
                 <div className="space-y-3">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Choose workflow path</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <button
                       type="button"
                       disabled={stage1Saving}
@@ -4571,7 +4116,7 @@ export default function LeadDetailPage() {
                   {intakePath === "clarification_email" && (
                     <div className="px-4 py-3 rounded-lg border border-amber-500/20 bg-amber-500/5 space-y-2">
                       <p className="text-[10px] text-amber-400 uppercase tracking-wide font-medium">Next step</p>
-                      <p className="text-xs text-gray-400">Advance this lead to <strong className="text-gray-300">Scoping sent</strong> and send a scoping / clarification email from the Clarifications section below.</p>
+                      <p className="text-xs text-gray-400">Advance this lead to <strong className="text-gray-300">Scoping sent</strong> and send a scoping / clarification email to the client.</p>
                       {lead?.contact_email && (
                         <p className="text-[10px] text-gray-500">Client email: <span className="text-gray-300">{lead.contact_email}</span></p>
                       )}
@@ -4711,8 +4256,76 @@ export default function LeadDetailPage() {
           </Section>
         )}
 
+        {/* ── Client info, Submission details, Decision signals, Lead stage, Qualification ── */}
+        {/* Client info */}
+        <Section title="Client info">
+          <Row label="Name"         value={lead.contact_name} />
+          <Row label="Email"        value={<a href={`mailto:${lead.contact_email}`} className="text-indigo-400 hover:text-indigo-300">{lead.contact_email}</a>} />
+          <Row label="Company"      value={lead.company_name} />
+          <Row label="Website"      value={lead.company_website ? <a href={lead.company_website} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300">{lead.company_website}</a> : null} />
+          <Row label="Role"         value={lead.role} />
+          <Row label="Authority"    value={AUTHORITY_LABELS[lead.decision_authority ?? ""] ?? lead.decision_authority} />
+        </Section>
+
+        {/* Submission details */}
+        <Section title="Submission details">
+          <Row label="Engagement"   value={ENGAGEMENT_LABELS[lead.engagement_type ?? ""] ?? lead.engagement_type} />
+          <Row label="Budget"       value={BUDGET_LABELS[lead.budget ?? ""] ?? lead.budget} />
+          <Row label="Timeline"     value={TIMELINE_LABELS[lead.timeline ?? ""] ?? lead.timeline} />
+          {lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0 && (
+            <div className="mt-3 pt-3 border-t border-white/5">
+              <p className="text-xs text-gray-500 mb-2 uppercase tracking-wide">Clarifiers</p>
+              {Object.entries(lead.lead_details.clarifier_answers).map(([k, v]) => (
+                <Row key={k} label={k.replace(/_/g, " ")} value={String(v)} />
+              ))}
+            </div>
+          )}
+          {lead.lead_details?.success_definition && (
+            <div className="mt-3 pt-3 border-t border-white/5">
+              <p className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">Client request</p>
+              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
+            </div>
+          )}
+          {lead.lead_details?.current_tools && (
+            <div className="mt-3 pt-3 border-t border-white/5">
+              <p className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">Current tools</p>
+              <p className="text-sm text-gray-300 leading-relaxed">{lead.lead_details.current_tools}</p>
+            </div>
+          )}
+        </Section>
+
+        {/* Decision signals — replaced Internal scoring v1.68.3 */}
+        <Section title="Decision signals">
+          {decisionSignals ? (
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Input quality</span>
+                <SignalPill value={decisionSignals.inputQuality} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Budget clarity</span>
+                <SignalPill value={decisionSignals.budgetClarity} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Scope maturity</span>
+                <SignalPill value={decisionSignals.scopeMaturity} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Commercial fit</span>
+                <SignalPill value={decisionSignals.commercialFit} />
+              </div>
+              <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                <span className="text-xs text-gray-500">Next best action</span>
+                <span className="text-xs font-medium text-indigo-400">{decisionSignals.nextBestAction}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-600">Loading…</p>
+          )}
+        </Section>
+
         {/* Internal notes (full width, collapsed by default) */}
-        <div className="lg:col-span-2">
+        <div>
           <div className="rounded-xl border border-white/[0.06] bg-[#12131a] overflow-hidden">
             <button
               type="button"
@@ -4752,7 +4365,7 @@ export default function LeadDetailPage() {
             PROPOSAL PREP — proposal prompt, draft, and handoff actions
             ════════════════════════════════════════════════════════════════ */}
         {briefEligible && (
-          <div className="lg:col-span-2">
+          <div>
             <Section title="Proposal Prep">
 
               {/* ── Workflow progress indicator ─────────────────────────── */}
@@ -5021,7 +4634,7 @@ export default function LeadDetailPage() {
 
         {/* Project (if converted) */}
         {project && (
-          <div className="lg:col-span-2">
+          <div>
             <Section title="Project">
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <div>
@@ -5233,7 +4846,7 @@ export default function LeadDetailPage() {
 
         {/* ── Project Context (only when project exists) ────────────────── */}
         {project && (
-          <div className="lg:col-span-2">
+          <div>
             <Section title="Project Context">
               <p className="text-xs text-gray-600 -mt-1 mb-3">
                 Canonical internal context for this project. Used to generate execution packs and AI-ready prompts without re-explaining the project each time.
@@ -5352,7 +4965,7 @@ export default function LeadDetailPage() {
 
         {/* ── Revisions workspace (only when project exists) ───────────── */}
         {project && (
-          <div className="lg:col-span-2">
+          <div>
             <Section title="Revisions">
               {/* Section explainer */}
               <p className="text-xs text-gray-600 -mt-1 mb-3">
@@ -5726,7 +5339,7 @@ export default function LeadDetailPage() {
 
         {/* Timeline (only when project exists) */}
         {project && (
-          <div className="lg:col-span-2">
+          <div>
             <Section title="Timeline">
               <div className="flex justify-end -mt-1 mb-3">
                 <button
