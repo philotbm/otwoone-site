@@ -3212,22 +3212,43 @@ export default function LeadDetailPage() {
       <div className="px-6 py-6 max-w-4xl mx-auto grid grid-cols-1 gap-5">
 
         {/* ════════════════════════════════════════════════════════════════
-            CLIENT REQUEST — original intake description
+            LEAD CONTEXT SUMMARY — consolidated lead identity + signals
             ════════════════════════════════════════════════════════════════ */}
         <div>
-          <Section title="Client request">
+          <Section title="Lead Context">
             <div className="space-y-4">
-              {lead.lead_details?.success_definition ? (
-                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
-              ) : (
-                <p className="text-sm text-gray-600 italic">No client request submitted.</p>
-              )}
-              {lead.lead_details?.current_tools && (
-                <div className="pt-3 border-t border-white/5">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Current tools</p>
-                  <p className="text-sm text-gray-300">{lead.lead_details.current_tools}</p>
+
+              {/* ── Identity row ─────────────────────────────────────────── */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2">
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Contact</p>
+                  <p className="text-xs text-gray-300">{lead.contact_name ?? "—"}</p>
                 </div>
-              )}
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Company</p>
+                  <p className="text-xs text-gray-300">{lead.company_name ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Email</p>
+                  <p className="text-xs"><a href={`mailto:${lead.contact_email}`} className="text-indigo-400 hover:text-indigo-300">{lead.contact_email ?? "—"}</a></p>
+                </div>
+                {lead.company_website && (
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Website</p>
+                    <p className="text-xs"><a href={lead.company_website} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300">{lead.company_website}</a></p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Role</p>
+                  <p className="text-xs text-gray-300">{lead.role ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Authority</p>
+                  <p className="text-xs text-gray-300">{AUTHORITY_LABELS[lead.decision_authority ?? ""] ?? lead.decision_authority ?? "—"}</p>
+                </div>
+              </div>
+
+              {/* ── Engagement / request context ─────────────────────────── */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-white/5">
                 <div>
                   <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Engagement</p>
@@ -3241,12 +3262,69 @@ export default function LeadDetailPage() {
                   <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Timeline</p>
                   <p className="text-xs text-gray-300">{TIMELINE_LABELS[lead.timeline ?? ""] ?? lead.timeline ?? "—"}</p>
                 </div>
-                <div>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Authority</p>
-                  <p className="text-xs text-gray-300">{AUTHORITY_LABELS[lead.decision_authority ?? ""] ?? lead.decision_authority ?? "—"}</p>
-                </div>
+                {lead.lead_details?.current_tools && (
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Current tools</p>
+                    <p className="text-xs text-gray-300">{lead.lead_details.current_tools}</p>
+                  </div>
+                )}
               </div>
+
+              {/* ── Clarifier / intake metadata ─────────────────────────── */}
+              {lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 pt-3 border-t border-white/5">
+                  {Object.entries(lead.lead_details.clarifier_answers).map(([k, v]) => (
+                    <div key={k}>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">{k.replace(/_/g, " ")}</p>
+                      <p className="text-xs text-gray-300">{String(v)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── Decision signals ─────────────────────────────────────── */}
+              {decisionSignals && (
+                <div className="pt-3 border-t border-white/5">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Decision signals</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-gray-500">Input quality</span>
+                      <SignalPill value={decisionSignals.inputQuality} />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-gray-500">Budget clarity</span>
+                      <SignalPill value={decisionSignals.budgetClarity} />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-gray-500">Scope maturity</span>
+                      <SignalPill value={decisionSignals.scopeMaturity} />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-gray-500">Commercial fit</span>
+                      <SignalPill value={decisionSignals.commercialFit} />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-[11px] text-gray-500">Next best action:</span>
+                    <span className="text-xs font-medium text-indigo-400">{decisionSignals.nextBestAction}</span>
+                  </div>
+                </div>
+              )}
+
             </div>
+          </Section>
+        </div>
+
+        {/* ════════════════════════════════════════════════════════════════
+            CLIENT REQUEST — original intake description (full-width)
+            ════════════════════════════════════════════════════════════════ */}
+        <div>
+          <Section title="Client request">
+            {lead.lead_details?.success_definition ? (
+              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
+            ) : (
+              <p className="text-sm text-gray-600 italic">No client request submitted.</p>
+            )}
           </Section>
         </div>
 
@@ -4246,74 +4324,6 @@ export default function LeadDetailPage() {
             </div>
           </Section>
         )}
-
-        {/* ── Client info, Submission details, Decision signals, Lead stage, Qualification ── */}
-        {/* Client info */}
-        <Section title="Client info">
-          <Row label="Name"         value={lead.contact_name} />
-          <Row label="Email"        value={<a href={`mailto:${lead.contact_email}`} className="text-indigo-400 hover:text-indigo-300">{lead.contact_email}</a>} />
-          <Row label="Company"      value={lead.company_name} />
-          <Row label="Website"      value={lead.company_website ? <a href={lead.company_website} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300">{lead.company_website}</a> : null} />
-          <Row label="Role"         value={lead.role} />
-          <Row label="Authority"    value={AUTHORITY_LABELS[lead.decision_authority ?? ""] ?? lead.decision_authority} />
-        </Section>
-
-        {/* Submission details */}
-        <Section title="Submission details">
-          <Row label="Engagement"   value={ENGAGEMENT_LABELS[lead.engagement_type ?? ""] ?? lead.engagement_type} />
-          <Row label="Budget"       value={BUDGET_LABELS[lead.budget ?? ""] ?? lead.budget} />
-          <Row label="Timeline"     value={TIMELINE_LABELS[lead.timeline ?? ""] ?? lead.timeline} />
-          {lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0 && (
-            <div className="mt-3 pt-3 border-t border-white/5">
-              <p className="text-xs text-gray-500 mb-2 uppercase tracking-wide">Clarifiers</p>
-              {Object.entries(lead.lead_details.clarifier_answers).map(([k, v]) => (
-                <Row key={k} label={k.replace(/_/g, " ")} value={String(v)} />
-              ))}
-            </div>
-          )}
-          {lead.lead_details?.success_definition && (
-            <div className="mt-3 pt-3 border-t border-white/5">
-              <p className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">Client request</p>
-              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
-            </div>
-          )}
-          {lead.lead_details?.current_tools && (
-            <div className="mt-3 pt-3 border-t border-white/5">
-              <p className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">Current tools</p>
-              <p className="text-sm text-gray-300 leading-relaxed">{lead.lead_details.current_tools}</p>
-            </div>
-          )}
-        </Section>
-
-        {/* Decision signals — replaced Internal scoring v1.68.3 */}
-        <Section title="Decision signals">
-          {decisionSignals ? (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Input quality</span>
-                <SignalPill value={decisionSignals.inputQuality} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Budget clarity</span>
-                <SignalPill value={decisionSignals.budgetClarity} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Scope maturity</span>
-                <SignalPill value={decisionSignals.scopeMaturity} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Commercial fit</span>
-                <SignalPill value={decisionSignals.commercialFit} />
-              </div>
-              <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                <span className="text-xs text-gray-500">Next best action</span>
-                <span className="text-xs font-medium text-indigo-400">{decisionSignals.nextBestAction}</span>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-gray-600">Loading…</p>
-          )}
-        </Section>
 
         {/* Internal notes (full width, collapsed by default) */}
         <div>
