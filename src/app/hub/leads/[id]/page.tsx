@@ -136,6 +136,7 @@ type Lead = {
     raw_submission: Record<string, unknown> | null;
     clarifier_answers: Record<string, string> | null;
     success_definition: string | null;
+    current_tools: string | null;
     internal_notes: string | null;
   } | null;
   projects: Project[] | null;
@@ -1316,9 +1317,14 @@ export default function LeadDetailPage() {
       sections.push("## Intake clarifiers\n" + lines.join("\n"));
     }
 
-    // 3. Success definition
+    // 3. Client request
     if (lead.lead_details?.success_definition) {
-      sections.push("## Success definition\n" + lead.lead_details.success_definition);
+      sections.push("## Client request\n" + lead.lead_details.success_definition);
+    }
+
+    // 3b. Current tools
+    if (lead.lead_details?.current_tools) {
+      sections.push("## Current tools\n" + lead.lead_details.current_tools);
     }
 
     // 4. Decision signals context (raw scores still useful for AI analysis)
@@ -3043,8 +3049,14 @@ export default function LeadDetailPage() {
           )}
           {lead.lead_details?.success_definition && (
             <div className="mt-3 pt-3 border-t border-white/5">
-              <p className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">Success definition</p>
-              <p className="text-sm text-gray-300 leading-relaxed">{lead.lead_details.success_definition}</p>
+              <p className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">Client request</p>
+              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
+            </div>
+          )}
+          {lead.lead_details?.current_tools && (
+            <div className="mt-3 pt-3 border-t border-white/5">
+              <p className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">Current tools</p>
+              <p className="text-sm text-gray-300 leading-relaxed">{lead.lead_details.current_tools}</p>
             </div>
           )}
         </Section>
@@ -3713,8 +3725,14 @@ export default function LeadDetailPage() {
                       <Row label="Timeline" value={lead.timeline?.replace(/_/g, " ") ?? null} />
                       {lead.lead_details?.success_definition && (
                         <div className="pt-2 border-t border-white/5">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Success definition</p>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Client request</p>
                           <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
+                        </div>
+                      )}
+                      {lead.lead_details?.current_tools && (
+                        <div className="pt-2 border-t border-white/5">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Current tools</p>
+                          <p className="text-sm text-gray-300 leading-relaxed">{lead.lead_details.current_tools}</p>
                         </div>
                       )}
                       {lead.lead_details?.clarifier_answers && Object.keys(lead.lead_details.clarifier_answers).length > 0 && (

@@ -273,6 +273,7 @@ export default function ElevatePage() {
   const [budget, setBudget]                   = useState("");
   const [timeline, setTimeline]               = useState("");
   const [successDefinition, setSuccessDefinition] = useState("");
+  const [currentTools, setCurrentTools]           = useState("");
 
   // Contact
   const [name, setName]                       = useState("");
@@ -313,7 +314,7 @@ export default function ElevatePage() {
   }
 
   function handleContextNext() {
-    if (!successDefinition.trim()) return;
+    if (successDefinition.trim().length < 25) return;
     goToStep("contact");
   }
 
@@ -341,6 +342,7 @@ export default function ElevatePage() {
           budget:             budget || null,
           timeline:           timeline || null,
           success_definition: successDefinition.trim() || null,
+          current_tools:      currentTools.trim() || null,
           clarifier_answers:  clarifierAnswers,
         }),
       });
@@ -533,6 +535,13 @@ export default function ElevatePage() {
         {/* ── Step 3: Context ───────────────────────────────────────────────── */}
         {step === "context" && (
           <div className="space-y-8">
+            {/* Reassurance text */}
+            <p className="text-sm text-gray-400 leading-relaxed">
+              Not sure exactly what you need yet? That&apos;s completely fine.
+              Just tell us what you&apos;re trying to do and we&apos;ll guide you from there.
+              The more detail you can share, the easier it is for us to understand and scope things properly.
+            </p>
+
             {/* Budget */}
             <div>
               <SectionLabel>Budget</SectionLabel>
@@ -565,18 +574,34 @@ export default function ElevatePage() {
               </div>
             </div>
 
-            {/* Success definition */}
+            {/* Client request description */}
             <div>
-              <SectionLabel>What does success look like?</SectionLabel>
+              <SectionLabel>How can we help?</SectionLabel>
               <p className="text-xs text-gray-500 mb-3">
-                How will you measure whether this worked? The more specific, the better.
+                Tell us what you need or what&apos;s not working right now. The more detail you can share, the easier it is for us to understand and scope things properly.
               </p>
               <textarea
                 value={successDefinition}
                 onChange={(e) => setSuccessDefinition(e.target.value)}
-                placeholder="e.g. We launch the new site before Q3, reduce bounce rate, and start getting inbound leads from search..."
-                rows={4}
+                placeholder={"e.g.\nWe run a logistics company and want customers to submit shipment requests online instead of emailing us. Right now everything is handled manually and it\u2019s becoming difficult to manage as we grow.\n\nOur current website is outdated and doesn\u2019t generate many enquiries. We\u2019d like something more modern that explains our services clearly and helps bring in new business.\n\nWe manage bookings and customer requests through spreadsheets and email and want a simple system where customers can book, upload documents and receive updates automatically.\n\nWe\u2019re launching a new service later this year and need a website ready before then.\n\nFeel free to include as much detail as you like \u2014 it really helps us understand what you\u2019re trying to achieve."}
+                rows={6}
+                minLength={25}
                 className="w-full px-4 py-3 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+              />
+            </div>
+
+            {/* Current tools (optional) */}
+            <div>
+              <SectionLabel>What are you using today? <span className="text-gray-500 font-normal">(optional)</span></SectionLabel>
+              <p className="text-xs text-gray-500 mb-3">
+                For example: a website, spreadsheets, booking software, or something else.
+              </p>
+              <input
+                type="text"
+                value={currentTools}
+                onChange={(e) => setCurrentTools(e.target.value)}
+                placeholder="e.g. WordPress website, Excel spreadsheets, email, booking software, nothing yet"
+                className="w-full px-4 py-3 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
               />
             </div>
 
@@ -591,10 +616,10 @@ export default function ElevatePage() {
               <button
                 type="button"
                 onClick={handleContextNext}
-                disabled={!successDefinition.trim()}
+                disabled={successDefinition.trim().length < 25}
                 className={cx(
                   "flex-2 flex-grow py-3 rounded-lg text-sm font-medium transition-all",
-                  successDefinition.trim()
+                  successDefinition.trim().length >= 25
                     ? "bg-indigo-600 hover:bg-indigo-500 text-white"
                     : "bg-white/5 text-gray-600 cursor-not-allowed"
                 )}

@@ -273,10 +273,17 @@ function buildPrompt(
     lines.push('');
   }
 
-  // Success definition
+  // Client request
   if (leadDetails?.success_definition) {
-    lines.push('## Success definition');
+    lines.push('## Client request');
     lines.push(String(leadDetails.success_definition));
+    lines.push('');
+  }
+
+  // Current tools
+  if (leadDetails?.current_tools) {
+    lines.push('## Current tools');
+    lines.push(String(leadDetails.current_tools));
     lines.push('');
   }
 

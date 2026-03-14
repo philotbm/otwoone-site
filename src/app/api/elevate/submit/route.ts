@@ -67,13 +67,14 @@ function buildInternalEmail(params: {
   budget: string;
   timeline: string;
   success_definition: string;
+  current_tools: string;
   clarifier_answers: Record<string, string>;
   scores: ReturnType<typeof computeScores>;
   lead_id: string;
 }): string {
   const {
     name, email, company, website, role, authority,
-    engagement_type, budget, timeline, success_definition,
+    engagement_type, budget, timeline, success_definition, current_tools,
     clarifier_answers, scores, lead_id,
   } = params;
 
@@ -136,8 +137,15 @@ function buildInternalEmail(params: {
 
     ${success_definition ? `<tr><td style="padding:0 24px 20px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#13141a;border-radius:8px;overflow:hidden;">
-        <tr><td style="padding:10px 16px;background:#1c1d26;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6b7280;">Success Definition</td></tr>
+        <tr><td style="padding:10px 16px;background:#1c1d26;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6b7280;">Client Request</td></tr>
         <tr><td style="padding:14px 16px;font-size:13px;line-height:1.7;color:#d1d5db;">${escapeHtml(success_definition)}</td></tr>
+      </table>
+    </td></tr>` : ''}
+
+    ${current_tools ? `<tr><td style="padding:0 24px 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#13141a;border-radius:8px;overflow:hidden;">
+        <tr><td style="padding:10px 16px;background:#1c1d26;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6b7280;">Current Tools</td></tr>
+        <tr><td style="padding:14px 16px;font-size:13px;line-height:1.7;color:#d1d5db;">${escapeHtml(current_tools)}</td></tr>
       </table>
     </td></tr>` : ''}
 
@@ -209,10 +217,15 @@ export async function POST(req: NextRequest) {
     const budget             = String(body.budget ?? '').trim() || null;
     const timeline           = String(body.timeline ?? '').trim() || null;
     const success_definition = String(body.success_definition ?? '').trim() || null;
+    const current_tools      = String(body.current_tools ?? '').trim() || null;
     const clarifier_answers  = (body.clarifier_answers ?? {}) as Record<string, string>;
 
     if (!contact_email) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    }
+
+    if (!success_definition || success_definition.length < 25) {
+      return NextResponse.json({ error: 'Description must be at least 25 characters' }, { status: 400 });
     }
 
     // ── Score ────────────────────────────────────────────────────────────────
@@ -261,7 +274,7 @@ export async function POST(req: NextRequest) {
     const rawSubmission = {
       contact_name, contact_email, company_name, company_website,
       role, decision_authority, engagement_type, budget, timeline,
-      success_definition, clarifier_answers,
+      success_definition, current_tools, clarifier_answers,
     };
 
     await supabase.from('lead_details').insert({
@@ -269,6 +282,7 @@ export async function POST(req: NextRequest) {
       raw_submission:     rawSubmission,
       clarifier_answers,
       success_definition,
+      current_tools,
       internal_notes:     null,
     });
 
@@ -302,6 +316,7 @@ export async function POST(req: NextRequest) {
               budget:             budget ?? '',
               timeline:           timeline ?? '',
               success_definition: success_definition ?? '',
+              current_tools:      current_tools ?? '',
               clarifier_answers,
               scores,
               lead_id:            lead.id,
