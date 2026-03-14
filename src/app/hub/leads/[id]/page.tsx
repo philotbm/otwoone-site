@@ -3343,7 +3343,7 @@ export default function LeadDetailPage() {
               </p>
 
               {/* ── Read-only analysis summary ─────────────────────────── */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+              <div className="space-y-2">
                 <Row label="Project summary" value={briefSummary.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
                 <Row label="Project type" value={briefType.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
                 <Row label="Recommended solution" value={briefSolution.trim() || <span className="text-gray-600 text-sm italic">Not yet assessed</span>} />
@@ -3386,27 +3386,25 @@ export default function LeadDetailPage() {
                     <p className="text-xs text-gray-600 py-2">Loading brief…</p>
                   ) : (
                     <div className="space-y-4">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project summary</label>
-                          <textarea
-                            value={briefSummary}
-                            onChange={(e) => setBriefSummary(e.target.value)}
-                            placeholder="2–3 sentence overview of what the client needs…"
-                            rows={3}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project type</label>
-                          <textarea
-                            value={briefType}
-                            onChange={(e) => setBriefType(e.target.value)}
-                            placeholder="e.g. brochure site, web app, e-commerce, redesign…"
-                            rows={3}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                          />
-                        </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project summary</label>
+                        <textarea
+                          value={briefSummary}
+                          onChange={(e) => setBriefSummary(e.target.value)}
+                          placeholder="2–3 sentence overview of what the client needs…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Project type</label>
+                        <textarea
+                          value={briefType}
+                          onChange={(e) => setBriefType(e.target.value)}
+                          placeholder="e.g. brochure site, web app, e-commerce, redesign…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
                       </div>
 
                       <div>
@@ -3420,83 +3418,76 @@ export default function LeadDetailPage() {
                         />
                       </div>
 
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested pages</label>
-                          <textarea
-                            value={briefPages}
-                            onChange={(e) => setBriefPages(e.target.value)}
-                            placeholder="Homepage, About, Services, Contact…"
-                            rows={3}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested features</label>
-                          <textarea
-                            value={briefFeatures}
-                            onChange={(e) => setBriefFeatures(e.target.value)}
-                            placeholder="Contact form, blog, booking…"
-                            rows={3}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested integrations</label>
-                          <textarea
-                            value={briefIntegrations}
-                            onChange={(e) => setBriefIntegrations(e.target.value)}
-                            placeholder="Stripe, Google Analytics, CRM…"
-                            rows={3}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                          />
-                        </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested pages</label>
+                        <textarea
+                          value={briefPages}
+                          onChange={(e) => setBriefPages(e.target.value)}
+                          placeholder="Homepage, About, Services, Contact…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested features</label>
+                        <textarea
+                          value={briefFeatures}
+                          onChange={(e) => setBriefFeatures(e.target.value)}
+                          placeholder="Contact form, blog, booking…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Suggested integrations</label>
+                        <textarea
+                          value={briefIntegrations}
+                          onChange={(e) => setBriefIntegrations(e.target.value)}
+                          placeholder="Stripe, Google Analytics, CRM…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
                       </div>
 
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Timeline estimate</label>
-                          <textarea
-                            value={briefTimeline}
-                            onChange={(e) => setBriefTimeline(e.target.value)}
-                            placeholder="Realistic delivery window…"
-                            rows={2}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Budget positioning</label>
-                          <textarea
-                            value={briefBudget}
-                            onChange={(e) => setBriefBudget(e.target.value)}
-                            placeholder="Where this sits vs stated budget…"
-                            rows={2}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                          />
-                        </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Timeline estimate</label>
+                        <textarea
+                          value={briefTimeline}
+                          onChange={(e) => setBriefTimeline(e.target.value)}
+                          placeholder="Realistic delivery window…"
+                          rows={2}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
                       </div>
-
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Risks &amp; unknowns</label>
-                          <textarea
-                            value={briefRisks}
-                            onChange={(e) => setBriefRisks(e.target.value)}
-                            placeholder="Anything unclear, missing, or risky…"
-                            rows={3}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Follow-up questions</label>
-                          <textarea
-                            value={briefFollowUp}
-                            onChange={(e) => setBriefFollowUp(e.target.value)}
-                            placeholder="Questions to ask the client before proceeding…"
-                            rows={3}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
-                          />
-                        </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Budget positioning</label>
+                        <textarea
+                          value={briefBudget}
+                          onChange={(e) => setBriefBudget(e.target.value)}
+                          placeholder="Where this sits vs stated budget…"
+                          rows={2}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Risks &amp; unknowns</label>
+                        <textarea
+                          value={briefRisks}
+                          onChange={(e) => setBriefRisks(e.target.value)}
+                          placeholder="Anything unclear, missing, or risky…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Follow-up questions</label>
+                        <textarea
+                          value={briefFollowUp}
+                          onChange={(e) => setBriefFollowUp(e.target.value)}
+                          placeholder="Questions to ask the client before proceeding…"
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+                        />
                       </div>
 
                       {/* Save bar for brief fields */}
@@ -3539,7 +3530,7 @@ export default function LeadDetailPage() {
                   <p className="text-sm text-gray-300 leading-relaxed">{technicalResearch.summary}</p>
 
                   {/* Recommendations / Assumptions / Unknowns */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-3">
                     {technicalResearch.recommendations.length > 0 && (
                       <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
                         <p className="text-[10px] text-emerald-400/70 uppercase tracking-wide font-medium mb-1.5">Recommendations</p>
@@ -3573,7 +3564,7 @@ export default function LeadDetailPage() {
                   </div>
 
                   {/* Research category cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="space-y-3">
                     {(["integrations", "infrastructure", "third_party_services", "compliance", "operating_cost_estimate"] as const).map((catKey) => {
                       const category = technicalResearch[catKey];
                       const labels: Record<string, string> = {
