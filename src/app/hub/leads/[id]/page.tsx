@@ -3266,11 +3266,11 @@ export default function LeadDetailPage() {
                   const proposalDone = briefProposal.trim().length > 0;
 
                   const steps = [
-                    { label: "Qualification", done: qualDone },
                     { label: "Analysis", done: analysisDone },
                     { label: "Complexity", done: complexityDone },
                     { label: "Build Pricing", done: buildPricingDone },
                     { label: "Monthly Operating Cost", done: runningCostsDone },
+                    { label: "Qualification", done: qualDone },
                     { label: "Proposal", done: proposalDone },
                   ];
 
