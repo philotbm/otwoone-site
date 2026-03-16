@@ -1,6 +1,6 @@
 // ============================================================================
 // Proposal Engine — TypeScript types
-// v1.80.0
+// v1.83.0
 // ============================================================================
 
 // ── Proposal statuses (independent of lead status) ──────────────────────────
@@ -99,6 +99,10 @@ export type Proposal = {
   exclusions: string[];
   next_steps: string[];
   payment_notes: string | null;
+
+  // Terms
+  terms_template_id: string | null;
+  terms_version: string | null;
 
   // Acceptance / delivery
   acceptance_mode: 'email' | 'signature' | 'portal' | null;
@@ -231,4 +235,17 @@ export type ProposalSourcePackage = {
     percent: number;
     checks: Array<{ label: string; ok: boolean }>;
   };
+};
+
+// ── Terms template ────────────────────────────────────────────────────────
+
+export type TermsTemplate = {
+  id: string;
+  name: string;
+  version: string;
+  title: string;
+  body: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 };

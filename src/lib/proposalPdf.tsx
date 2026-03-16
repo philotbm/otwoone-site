@@ -439,7 +439,7 @@ function PageFooter() {
 
 // ── Document ─────────────────────────────────────────────────────────────────
 
-function ProposalDocument({ proposal: p }: { proposal: Proposal }) {
+function ProposalDocument({ proposal: p, termsBody }: { proposal: Proposal; termsBody: string | null }) {
   const hasRunningCosts = Array.isArray(p.running_costs) && p.running_costs.length > 0;
   let sectionNum = 0;
 
@@ -654,22 +654,37 @@ function ProposalDocument({ proposal: p }: { proposal: Proposal }) {
 
         {/* Terms & Conditions */}
         <SectionBlockWrap number={++sectionNum} title="Terms &amp; Conditions">
-          <Text style={s.bodyText}>
-            This proposal is valid until {fmtDate(p.valid_until)}.
-            Acceptance of this proposal constitutes agreement to the terms outlined herein.
-          </Text>
-          <Text style={[s.bodyText, { marginTop: 6 }]}>
-            Intellectual property rights for all work produced transfer to the client
-            upon receipt of final payment. OTwoOne retains the right to reference the
-            project in its portfolio unless otherwise agreed.
-          </Text>
-          <Text style={[s.bodyText, { marginTop: 6 }]}>
-            Either party may terminate this agreement with 14 days written notice.
-            Fees for completed work up to the termination date remain payable.
-          </Text>
-          <Text style={[s.bodyText, { marginTop: 6, fontSize: 8, color: colors.textMuted }]}>
-            Full terms and conditions are available on request.
-          </Text>
+          {termsBody ? (
+            <>
+              {termsBody.split('\n\n').map((paragraph, i) => {
+                const headingMatch = paragraph.match(/^(\d+)\.\s+(.+)\n([\s\S]*)/);
+                if (headingMatch) {
+                  return (
+                    <View key={i} style={{ marginBottom: 6 }}>
+                      <Text style={[s.bodyText, { fontFamily: 'Helvetica-Bold', color: colors.text, fontSize: 9, marginBottom: 2 }]}>
+                        {headingMatch[1]}. {headingMatch[2]}
+                      </Text>
+                      <Text style={s.bodyText}>{headingMatch[3]}</Text>
+                    </View>
+                  );
+                }
+                return <Text key={i} style={[s.bodyText, { marginBottom: 6 }]}>{paragraph}</Text>;
+              })}
+              <Text style={[s.bodyText, { fontSize: 7, color: colors.textMuted, marginTop: 4 }]}>
+                Terms version {p.terms_version || '1.0'}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={s.bodyText}>
+                This proposal is valid until {fmtDate(p.valid_until)}.
+                Acceptance of this proposal constitutes agreement to the terms outlined herein.
+              </Text>
+              <Text style={[s.bodyText, { marginTop: 6, fontSize: 8, color: colors.textMuted }]}>
+                Full terms and conditions are available on request.
+              </Text>
+            </>
+          )}
         </SectionBlockWrap>
 
         {/* Acceptance */}
@@ -711,9 +726,9 @@ function ProposalDocument({ proposal: p }: { proposal: Proposal }) {
 
 // ── Server-side render ───────────────────────────────────────────────────────
 
-export async function renderProposalPdf(proposal: Proposal): Promise<Buffer> {
+export async function renderProposalPdf(proposal: Proposal, termsBody: string | null = null): Promise<Buffer> {
   const buffer = await renderToBuffer(
-    <ProposalDocument proposal={proposal} />,
+    <ProposalDocument proposal={proposal} termsBody={termsBody} />,
   );
   return Buffer.from(buffer);
 }

@@ -5020,6 +5020,16 @@ export default function LeadDetailPage() {
                     </div>
                   )}
 
+                  {/* Terms version */}
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <span className="text-gray-600">Terms:</span>
+                    {proposal.terms_version ? (
+                      <span className="text-gray-400">v{proposal.terms_version}</span>
+                    ) : (
+                      <span className="text-amber-400">No terms attached</span>
+                    )}
+                  </div>
+
                   {/* Autofill from sources */}
                   {proposal.status === "draft" && (
                     <div className="flex items-center gap-3 flex-wrap">

@@ -98,6 +98,7 @@ export default function ProposalPage() {
   const token = params?.token as string;
 
   const [proposal, setProposal] = useState<ClientProposal | null>(null);
+  const [terms, setTerms] = useState<{ title: string; body: string; version: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -111,8 +112,9 @@ export default function ProposalPage() {
           setError(res.status === 404 ? "not_found" : "error");
           return;
         }
-        const data = (await res.json()) as { proposal: ClientProposal };
+        const data = (await res.json()) as { proposal: ClientProposal; terms?: { title: string; body: string; version: string } };
         setProposal(data.proposal);
+        if (data.terms) setTerms(data.terms);
       } catch {
         setError("error");
       } finally {
@@ -453,25 +455,39 @@ export default function ProposalPage() {
           )}
 
           {/* 12. Terms & Conditions */}
-          <Section number={12} title="Terms &amp; Conditions" id="terms">
-            <div className="space-y-3 text-sm text-gray-500 leading-relaxed">
-              <p>
-                This proposal is valid until {fmtDate(p.valid_until)}.
-                Acceptance of this proposal constitutes agreement to the terms outlined herein.
-              </p>
-              <p>
-                Intellectual property rights for all work produced transfer to the client
-                upon receipt of final payment. OTwoOne retains the right to reference the
-                project in its portfolio unless otherwise agreed.
-              </p>
-              <p>
-                Either party may terminate this agreement with 14 days written notice.
-                Fees for completed work up to the termination date remain payable.
-              </p>
-              <p className="text-gray-600 text-xs">
-                Full terms and conditions are available on request.
-              </p>
-            </div>
+          <Section number={12} title={terms?.title || "Terms & Conditions"} id="terms">
+            {terms?.body ? (
+              <div className="space-y-4 text-sm text-gray-500 leading-relaxed">
+                {terms.body.split("\n\n").map((paragraph, i) => {
+                  // Detect numbered section headings (e.g. "1. Proposal Validity")
+                  const headingMatch = paragraph.match(/^(\d+)\.\s+(.+)\n([\s\S]*)/);
+                  if (headingMatch) {
+                    return (
+                      <div key={i}>
+                        <p className="text-xs font-semibold text-gray-400 mb-1">
+                          {headingMatch[1]}. {headingMatch[2]}
+                        </p>
+                        <p className="text-sm text-gray-500 leading-relaxed">{headingMatch[3]}</p>
+                      </div>
+                    );
+                  }
+                  return <p key={i}>{paragraph}</p>;
+                })}
+                <p className="text-[10px] text-gray-600 pt-2">
+                  Terms version {terms.version}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 text-sm text-gray-500 leading-relaxed">
+                <p>
+                  This proposal is valid until {fmtDate(p.valid_until)}.
+                  Acceptance of this proposal constitutes agreement to the terms outlined herein.
+                </p>
+                <p>
+                  Full terms and conditions are available on request from OTwoOne.
+                </p>
+              </div>
+            )}
           </Section>
 
           {/* 13. Acceptance */}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { renderProposalPdf } from '@/lib/proposalPdf';
 import { logProposalEvent } from '@/lib/proposalEvents';
-import type { Proposal } from '@/lib/proposalTypes';
+import type { Proposal, TermsTemplate } from '@/lib/proposalTypes';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -34,10 +34,21 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const proposal = existing as unknown as Proposal;
 
+  // 1b. Load linked terms template
+  let termsBody: string | null = null;
+  if (proposal.terms_template_id) {
+    const { data: termsRow } = await supabaseServer
+      .from('proposal_terms_templates')
+      .select('body')
+      .eq('id', proposal.terms_template_id)
+      .maybeSingle();
+    if (termsRow) termsBody = (termsRow as TermsTemplate).body;
+  }
+
   // 2. Render PDF
   let pdfBuffer: Buffer;
   try {
-    pdfBuffer = await renderProposalPdf(proposal);
+    pdfBuffer = await renderProposalPdf(proposal, termsBody);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'PDF render failed';
     console.error('[proposal/pdf] Render error:', message);

@@ -137,6 +137,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const viewToken = randomBytes(24).toString('base64url');
 
+  // Attach active terms template
+  const { data: activeTerms } = await supabaseServer
+    .from('proposal_terms_templates')
+    .select('id, version')
+    .eq('is_active', true)
+    .maybeSingle();
+
   const insert: Record<string, unknown> = {
     lead_id: id,
     version_number: 1,
@@ -174,6 +181,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     next_steps: body.next_steps ?? [],
     payment_notes: body.payment_notes ?? null,
     acceptance_mode: body.acceptance_mode ?? 'email',
+
+    // Terms
+    terms_template_id: activeTerms?.id ?? null,
+    terms_version: activeTerms?.version ?? null,
   };
 
   // Compute deposit/balance from build_price

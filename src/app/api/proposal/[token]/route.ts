@@ -36,6 +36,8 @@ const CLIENT_SAFE_FIELDS = [
   'next_steps',
   'payment_notes',
   'acceptance_mode',
+  'terms_template_id',
+  'terms_version',
   'created_at',
   'updated_at',
 ].join(', ');
@@ -69,5 +71,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Proposal not found.' }, { status: 404 });
   }
 
-  return NextResponse.json({ proposal: data });
+  // Fetch linked terms content if available
+  const proposal = data as unknown as Record<string, unknown>;
+  let terms: { title: string; body: string; version: string } | null = null;
+  if (proposal.terms_template_id) {
+    const { data: termsRow } = await supabaseServer
+      .from('proposal_terms_templates')
+      .select('title, body, version')
+      .eq('id', proposal.terms_template_id)
+      .maybeSingle();
+    if (termsRow) {
+      terms = termsRow as { title: string; body: string; version: string };
+    }
+  }
+
+  return NextResponse.json({ proposal: data, terms });
 }
