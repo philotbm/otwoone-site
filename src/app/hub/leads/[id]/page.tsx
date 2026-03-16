@@ -384,7 +384,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   deposit_requested: "Deposit Requested",
   deposit_received:  "Won",
   lost_pre_deposit:  "Lost",
-  converted:         "Won (Converted)",
+  converted:         "Won",
 };
 
 const NEXT_ACTION: Record<LeadStatus, string> = {
@@ -4280,7 +4280,7 @@ export default function LeadDetailPage() {
 
               {/* ── Primary action: Proceed to Proposal ── */}
               <div className="pt-3 border-t border-white/5">
-                {["lead_submitted", "scoping_sent", "scope_received"].includes(status) && (
+                {status === "scope_received" && (
                   <button
                     type="button"
                     onClick={() => {
@@ -4292,6 +4292,9 @@ export default function LeadDetailPage() {
                   >
                     {saving ? "Updating…" : "Move to Proposal"}
                   </button>
+                )}
+                {["lead_submitted", "scoping_sent"].includes(status) && (
+                  <span className="text-xs text-gray-500">Lead must reach Ready for Proposal before proceeding.</span>
                 )}
                 {status === "proposal_sent" && (
                   <div className="flex items-center gap-2">
@@ -4438,8 +4441,11 @@ export default function LeadDetailPage() {
                         {saving ? "Updating…" : "Mark Deposit Received"}
                       </button>
                     )}
-                    {["lead_submitted", "scoping_sent", "scope_received"].includes(status) && (
+                    {["lead_submitted", "scoping_sent"].includes(status) && (
                       <span className="text-[10px] text-gray-600">Use Scope Readiness above to advance status.</span>
+                    )}
+                    {status === "scope_received" && (
+                      <span className="text-[10px] text-gray-600">Ready for Proposal — use Scope Readiness above to proceed.</span>
                     )}
                     {["deposit_received", "converted"].includes(status) && (
                       <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
