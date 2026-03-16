@@ -4425,9 +4425,11 @@ export default function LeadDetailPage() {
         {/* ════════════════════════════════════════════════════════════════
             PROPOSAL PREP — proposal prompt, draft, and handoff actions
             ════════════════════════════════════════════════════════════════ */}
-        {briefEligible && (
+        {briefEligible && (() => {
+          const proposalComplete = ["proposal_sent", "deposit_requested", "deposit_received", "converted"].includes(status);
+          return (
           <div>
-            <Section title="Proposal Prep">
+            <Section title={proposalComplete ? "Proposal Prep (Completed)" : "Proposal Prep"}>
 
               {/* ── Workflow progress indicator ─────────────────────────── */}
               {(() => {
@@ -4502,7 +4504,7 @@ export default function LeadDetailPage() {
                   {(scopeReady === true || overrideScopeWarning) && briefSummary.trim() && (
                     <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-green-500/5 border border-green-500/10 flex-wrap">
                       <span className="text-[10px] text-green-400 font-medium">✓ Brief confirmed</span>
-                      <span className="text-[10px] text-gray-500">→ Generate proposal prompt</span>
+                      <span className="text-[10px] text-gray-500">{proposalComplete ? "— Proposal sent" : "→ Generate proposal prompt"}</span>
                       {buildPricing && (
                         <span className="text-[10px] text-gray-500 ml-1">
                           · Build price: <span className="text-gray-400 font-medium">€{effectiveBuildPrice.toLocaleString()}</span> ({buildPricing.recommended_build_days}d)
@@ -4517,17 +4519,21 @@ export default function LeadDetailPage() {
                   )}
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal prompt</span>
-                    <button
-                      type="button"
-                      disabled={!briefSummary.trim() || (scopeReady === false && !overrideScopeWarning)}
-                      onClick={() => {
-                        setBriefPromptOutput(buildBriefPrompt());
-                        setBriefPromptCopied(false);
-                      }}
-                      className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      Generate proposal prompt
-                    </button>
+                    {!proposalComplete ? (
+                      <button
+                        type="button"
+                        disabled={!briefSummary.trim() || (scopeReady === false && !overrideScopeWarning)}
+                        onClick={() => {
+                          setBriefPromptOutput(buildBriefPrompt());
+                          setBriefPromptCopied(false);
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        Generate proposal prompt
+                      </button>
+                    ) : briefPromptOutput ? (
+                      <span className="text-[10px] text-green-400/60">✓ Generated</span>
+                    ) : null}
                   </div>
                   {scopeReady === false && !overrideScopeWarning && briefSummary.trim() && !briefPromptOutput && (
                     <p className="text-xs text-amber-400/60">Scope not ready. Update readiness in Scope Readiness above, or override to unlock proposal generation.</p>
@@ -4561,7 +4567,7 @@ export default function LeadDetailPage() {
                 {/* ── Proposal draft ──────────────────────────────────── */}
                 <div className="pt-3 border-t border-white/5">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal draft</span>
+                    <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal draft{proposalComplete && briefProposal.trim() ? " (sent)" : ""}</span>
                     {briefProposal.trim() && (
                       <button
                         type="button"
@@ -4576,13 +4582,28 @@ export default function LeadDetailPage() {
                       </button>
                     )}
                   </div>
-                  <textarea
-                    value={briefProposal}
-                    onChange={(e) => setBriefProposal(e.target.value)}
-                    placeholder="Paste or write the proposal email draft here. This can be AI-generated, manually written, or a combination."
-                    rows={8}
-                    className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
-                  />
+                  {proposalComplete ? (
+                    briefProposal.trim() ? (
+                      <div className="relative">
+                        <textarea
+                          readOnly
+                          value={briefProposal}
+                          rows={6}
+                          className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none resize-y cursor-default"
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-600">No draft was saved before sending.</p>
+                    )
+                  ) : (
+                    <textarea
+                      value={briefProposal}
+                      onChange={(e) => setBriefProposal(e.target.value)}
+                      placeholder="Paste or write the proposal email draft here. This can be AI-generated, manually written, or a combination."
+                      rows={8}
+                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
+                    />
+                  )}
                 </div>
 
                 {/* ── Save all ──────────────────────────────────────── */}
@@ -4680,7 +4701,7 @@ export default function LeadDetailPage() {
               </div>
             )}
           </div>
-        )}
+        ); })()}
 
         {/* Project (if converted) */}
         {project && (
