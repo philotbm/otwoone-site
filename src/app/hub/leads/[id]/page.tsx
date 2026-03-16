@@ -965,6 +965,7 @@ export default function LeadDetailPage() {
   const [proposalOpen,      setProposalOpen]      = useState(false);
   const [autofillRunning,   setAutofillRunning]   = useState(false);
   const [autofillResult,    setAutofillResult]    = useState<{ confidence: string; confidence_reason: string; fields_updated: string[] } | null>(null);
+  const [pdfGenerating,     setPdfGenerating]     = useState(false);
 
   const fetchLead = useCallback(async () => {
     setLoading(true);
@@ -1177,6 +1178,22 @@ export default function LeadDetailPage() {
       if (result.data.autofill.fields_updated?.length > 0) {
         setProposalOpen(true);
       }
+    } else {
+      setProposalError(result.error);
+    }
+  }
+
+  async function generateProposalPdf() {
+    if (!id) return;
+    setPdfGenerating(true);
+    setProposalError("");
+    const result = await safeFetch<{ pdf_url: string; proposal: Proposal }>(`/api/hub/leads/${id}/proposal/pdf`, {
+      method: "POST",
+    });
+    setPdfGenerating(false);
+    if (result.ok) {
+      setProposal(result.data.proposal);
+      window.open(result.data.pdf_url, "_blank");
     } else {
       setProposalError(result.error);
     }
@@ -5029,6 +5046,28 @@ export default function LeadDetailPage() {
                       )}
                     </div>
                   )}
+
+                  {/* PDF actions */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={generateProposalPdf}
+                      disabled={pdfGenerating || proposalSaving}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-50"
+                    >
+                      {pdfGenerating ? "Generating PDF…" : proposal.pdf_url ? "Regenerate PDF" : "Generate PDF"}
+                    </button>
+                    {proposal.pdf_url && (
+                      <a
+                        href={proposal.pdf_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
+                      >
+                        View PDF ↗
+                      </a>
+                    )}
+                  </div>
 
                   {proposalError && <p className="text-xs text-red-400">{proposalError}</p>}
 
