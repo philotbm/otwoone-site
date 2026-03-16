@@ -963,6 +963,8 @@ export default function LeadDetailPage() {
   const [proposalSaved,     setProposalSaved]     = useState(false);
   const [proposalError,     setProposalError]     = useState("");
   const [proposalOpen,      setProposalOpen]      = useState(false);
+  const [autofillRunning,   setAutofillRunning]   = useState(false);
+  const [autofillResult,    setAutofillResult]    = useState<{ confidence: string; confidence_reason: string; fields_updated: string[] } | null>(null);
 
   const fetchLead = useCallback(async () => {
     setLoading(true);
@@ -1150,6 +1152,31 @@ export default function LeadDetailPage() {
       setProposal(result.data.proposal);
       setProposalSaved(true);
       setTimeout(() => setProposalSaved(false), 2000);
+    } else {
+      setProposalError(result.error);
+    }
+  }
+
+  async function runProposalAutofill(force = false) {
+    if (!id) return;
+    setAutofillRunning(true);
+    setAutofillResult(null);
+    setProposalError("");
+    const result = await safeFetch<{
+      proposal: Proposal;
+      autofill: { confidence: string; confidence_reason: string; fields_updated: string[]; skipped_reason?: string };
+    }>(`/api/hub/leads/${id}/proposal/autofill`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force }),
+    });
+    setAutofillRunning(false);
+    if (result.ok) {
+      setProposal(result.data.proposal);
+      setAutofillResult(result.data.autofill);
+      if (result.data.autofill.fields_updated?.length > 0) {
+        setProposalOpen(true);
+      }
     } else {
       setProposalError(result.error);
     }
@@ -4945,6 +4972,33 @@ export default function LeadDetailPage() {
                         <span className="text-gray-500">Deposit ({proposal.deposit_percent ?? 50}%): <span className="text-gray-300 font-medium">€{proposal.deposit_amount ? Number(proposal.deposit_amount).toLocaleString() : "—"}</span></span>
                         <span className="text-gray-500">Balance: <span className="text-gray-300 font-medium">€{proposal.balance_amount ? Number(proposal.balance_amount).toLocaleString() : "—"}</span></span>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Autofill from sources */}
+                  {proposal.status === "draft" && (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => runProposalAutofill(false)}
+                        disabled={autofillRunning || proposalSaving}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50"
+                      >
+                        {autofillRunning ? "Generating…" : "✦ Autofill from Sources"}
+                      </button>
+                      {autofillResult && (
+                        <span className={cx(
+                          "text-[10px]",
+                          autofillResult.confidence === "high" && "text-green-400",
+                          autofillResult.confidence === "medium" && "text-amber-400",
+                          autofillResult.confidence === "low" && "text-red-400",
+                        )}>
+                          {autofillResult.confidence} confidence
+                          {autofillResult.fields_updated?.length > 0
+                            ? ` · ${autofillResult.fields_updated.length} fields filled`
+                            : " · no fields updated"}
+                        </span>
+                      )}
                     </div>
                   )}
 
