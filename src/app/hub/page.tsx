@@ -96,14 +96,14 @@ const BUDGET_LABELS: Record<string, string> = {
 };
 
 const STATUS_META: Record<LeadStatus, { label: string; colour: string }> = {
-  lead_submitted:    { label: "Enquiry",    colour: "text-blue-400 bg-blue-400/10" },
-  scoping_sent:      { label: "Scoping",    colour: "text-cyan-400 bg-cyan-400/10" },
-  scope_received:    { label: "Scoped",     colour: "text-indigo-400 bg-indigo-400/10" },
-  proposal_sent:     { label: "Proposal",   colour: "text-purple-400 bg-purple-400/10" },
-  deposit_requested: { label: "Dep. Req.",  colour: "text-orange-400 bg-orange-400/10" },
-  deposit_received:  { label: "Dep. Rcvd", colour: "text-emerald-400 bg-emerald-400/10" },
-  lost_pre_deposit:  { label: "Lost",       colour: "text-red-400 bg-red-400/10" },
-  converted:         { label: "Converted",  colour: "text-green-400 bg-green-400/10" },
+  lead_submitted:    { label: "New",                colour: "text-blue-400 bg-blue-400/10" },
+  scoping_sent:      { label: "In Progress",        colour: "text-cyan-400 bg-cyan-400/10" },
+  scope_received:    { label: "Ready for Proposal", colour: "text-indigo-400 bg-indigo-400/10" },
+  proposal_sent:     { label: "Proposal Sent",      colour: "text-purple-400 bg-purple-400/10" },
+  deposit_requested: { label: "Deposit Req.",        colour: "text-orange-400 bg-orange-400/10" },
+  deposit_received:  { label: "Won",                colour: "text-emerald-400 bg-emerald-400/10" },
+  lost_pre_deposit:  { label: "Lost",               colour: "text-red-400 bg-red-400/10" },
+  converted:         { label: "Won",                colour: "text-green-400 bg-green-400/10" },
 };
 
 const LEAD_STATUSES: LeadStatus[] = [

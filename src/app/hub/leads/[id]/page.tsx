@@ -375,26 +375,27 @@ const STATUS_OPTIONS: LeadStatus[] = [
   "deposit_requested", "deposit_received", "lost_pre_deposit", "converted",
 ];
 
+/** Operator-facing status labels (simplified business model) */
 const STATUS_LABELS: Record<LeadStatus, string> = {
-  lead_submitted:    "Enquiry submitted",
-  scoping_sent:      "Scoping sent",
-  scope_received:    "Scope received",
-  proposal_sent:     "Proposal sent",
-  deposit_requested: "Deposit requested",
-  deposit_received:  "Deposit received",
+  lead_submitted:    "New",
+  scoping_sent:      "In Progress",
+  scope_received:    "Ready for Proposal",
+  proposal_sent:     "Proposal Sent",
+  deposit_requested: "Deposit Requested",
+  deposit_received:  "Won",
   lost_pre_deposit:  "Lost",
-  converted:         "Converted",
+  converted:         "Won (Converted)",
 };
 
 const NEXT_ACTION: Record<LeadStatus, string> = {
   lead_submitted:    "Next action managed in Scope Readiness below",
-  scoping_sent:      "Next: wait for scope",
-  scope_received:    "Next: paste scoping reply → generate brief → draft proposal",
+  scoping_sent:      "Next: awaiting scope response",
+  scope_received:    "Next: review scope → generate brief → proceed to proposal",
   proposal_sent:     "Next: request deposit",
-  deposit_requested: "Next: confirm deposit",
+  deposit_requested: "Next: confirm deposit received",
   deposit_received:  "Next: convert to project",
   lost_pre_deposit:  "Closed",
-  converted:         "Converted",
+  converted:         "Won — converted to project",
 };
 
 const CTA_LABELS: Record<string, string> = {
@@ -3155,9 +3156,9 @@ export default function LeadDetailPage() {
           </p>
         </div>
 
-        {/* Lead stage (inline header — manual override) */}
+        {/* Lead status (inline header — manual override) */}
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-600 uppercase tracking-wide">Stage</span>
+          <span className="text-[10px] text-gray-600 uppercase tracking-wide">Status</span>
           <select
             value={status}
             onChange={(e) => {
@@ -3166,7 +3167,7 @@ export default function LeadDetailPage() {
               saveField({ status: v });
             }}
             className="bg-[#0e0f14] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-indigo-500/60"
-            title="Stage override — use contextual actions below to advance stages"
+            title="Status override — use contextual actions below to advance status"
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s} className="bg-[#0e0f14] text-gray-200">{STATUS_LABELS[s]}</option>
@@ -3184,7 +3185,7 @@ export default function LeadDetailPage() {
           </button>
         )}
         {!isConverted && !canConvert && (
-          <span className="text-xs text-gray-600">Convert available after Deposit received.</span>
+          <span className="text-xs text-gray-600">Convert available once status is Won.</span>
         )}
         {isConverted && (
           <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
@@ -4289,18 +4290,18 @@ export default function LeadDetailPage() {
                     disabled={saving}
                     className="w-full px-4 py-3 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
                   >
-                    {saving ? "Updating…" : "Proceed to Proposal"}
+                    {saving ? "Updating…" : "Move to Proposal"}
                   </button>
                 )}
                 {status === "proposal_sent" && (
                   <div className="flex items-center gap-2">
                     <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
-                      Proposal stage reached
+                      Proposal Sent
                     </span>
                   </div>
                 )}
                 {["deposit_requested", "deposit_received", "converted"].includes(status) && (
-                  <span className="text-xs text-gray-500">Stage: {STATUS_LABELS[status]}</span>
+                  <span className="text-xs text-gray-500">Status: {STATUS_LABELS[status]}</span>
                 )}
               </div>
 
@@ -4399,10 +4400,10 @@ export default function LeadDetailPage() {
 
               <div className="space-y-5">
 
-                {/* ── Proposal stage actions ──────────────────────────────── */}
+                {/* ── Proposal status actions ──────────────────────────────── */}
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <div>
-                    <p className="text-xs text-gray-500">Stage actions</p>
+                    <p className="text-xs text-gray-500">Actions</p>
                     <p className="text-[10px] text-gray-600 mt-0.5">
                       {status === "proposal_sent" ? "Proposal sent — request deposit when ready."
                         : status === "deposit_requested" ? "Deposit requested — confirm when received."
@@ -4438,7 +4439,7 @@ export default function LeadDetailPage() {
                       </button>
                     )}
                     {["lead_submitted", "scoping_sent", "scope_received"].includes(status) && (
-                      <span className="text-[10px] text-gray-600">Use Scope Readiness above to advance to this stage.</span>
+                      <span className="text-[10px] text-gray-600">Use Scope Readiness above to advance status.</span>
                     )}
                     {["deposit_received", "converted"].includes(status) && (
                       <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
