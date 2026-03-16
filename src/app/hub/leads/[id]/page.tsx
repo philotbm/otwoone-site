@@ -3195,10 +3195,76 @@ export default function LeadDetailPage() {
         )}
       </header>
 
-      {/* Next Action bar */}
-      <div className="border-b border-white/5 px-6 py-2.5 flex items-center gap-2">
-        <span className="text-[10px] text-gray-600 uppercase tracking-wide">Next action</span>
-        <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
+      {/* Next Action panel */}
+      <div className="border-b border-white/5 px-6 py-3 flex items-center gap-3">
+        <span className="text-[10px] text-gray-600 uppercase tracking-wide shrink-0">Next action</span>
+        {/* Passive / waiting states */}
+        {status === "scoping_sent" && (
+          <span className="text-xs text-yellow-400/80 italic">Waiting for client response</span>
+        )}
+        {status === "proposal_sent" && (
+          <>
+            <span className="text-xs text-yellow-400/80 italic">Awaiting client decision</span>
+            <button
+              type="button"
+              onClick={() => { saveField({ status: "deposit_requested" }); setStatus("deposit_requested"); }}
+              disabled={saving}
+              className="ml-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
+            >
+              {saving ? "Updating…" : "Request Deposit"}
+            </button>
+          </>
+        )}
+        {status === "deposit_requested" && (
+          <>
+            <span className="text-xs text-yellow-400/80 italic">Awaiting deposit</span>
+            <button
+              type="button"
+              onClick={() => { saveField({ status: "deposit_received" }); setStatus("deposit_received"); }}
+              disabled={saving}
+              className="ml-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white transition-colors disabled:opacity-50"
+            >
+              {saving ? "Updating…" : "Mark Deposit Received"}
+            </button>
+          </>
+        )}
+        {status === "converted" && (
+          <span className="text-xs text-green-400/80">Lead already converted</span>
+        )}
+        {status === "lost_pre_deposit" && (
+          <span className="text-xs text-red-400/80">Lead closed lost</span>
+        )}
+        {/* Active / primary action states */}
+        {status === "lead_submitted" && (
+          <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
+        )}
+        {status === "scope_received" && (
+          <>
+            <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
+            <button
+              type="button"
+              onClick={() => { saveField({ status: "proposal_sent" }); setStatus("proposal_sent"); }}
+              disabled={saving}
+              className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+            >
+              {saving ? "Updating…" : "Move to Proposal"}
+            </button>
+          </>
+        )}
+        {status === "deposit_received" && (
+          <>
+            <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
+            {!isConverted && canConvert && (
+              <button
+                type="button"
+                onClick={() => setShowConvert(true)}
+                className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+              >
+                Convert to Project
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       {/* Lifecycle stepper */}
@@ -4410,50 +4476,19 @@ export default function LeadDetailPage() {
 
               <div className="space-y-5">
 
-                {/* ── Proposal status actions ──────────────────────────────── */}
+                {/* ── Proposal status summary ──────────────────────────────── */}
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <div>
-                    <p className="text-xs text-gray-500">Actions</p>
+                    <p className="text-xs text-gray-500">Status</p>
                     <p className="text-[10px] text-gray-600 mt-0.5">
-                      {status === "proposal_sent" ? "Proposal sent — request deposit when ready."
-                        : status === "deposit_requested" ? "Deposit requested — confirm when received."
+                      {status === "proposal_sent" ? "Proposal sent — awaiting client decision."
+                        : status === "deposit_requested" ? "Deposit requested — awaiting payment."
                         : status === "deposit_received" ? "Deposit received — ready to convert."
+                        : status === "converted" ? "Converted to project."
                         : "Prepare and send the proposal."}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {status === "proposal_sent" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          saveField({ status: "deposit_requested" });
-                          setStatus("deposit_requested");
-                        }}
-                        disabled={saving}
-                        className="px-4 py-2 rounded-lg text-xs font-medium bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
-                      >
-                        {saving ? "Updating…" : "Request Deposit"}
-                      </button>
-                    )}
-                    {status === "deposit_requested" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          saveField({ status: "deposit_received" });
-                          setStatus("deposit_received");
-                        }}
-                        disabled={saving}
-                        className="px-4 py-2 rounded-lg text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white transition-colors disabled:opacity-50"
-                      >
-                        {saving ? "Updating…" : "Mark Deposit Received"}
-                      </button>
-                    )}
-                    {["lead_submitted", "scoping_sent"].includes(status) && (
-                      <span className="text-[10px] text-gray-600">Use Scope Readiness above to advance status.</span>
-                    )}
-                    {status === "scope_received" && (
-                      <span className="text-[10px] text-gray-600">Ready for Proposal — use Scope Readiness above to proceed.</span>
-                    )}
                     {["deposit_received", "converted"].includes(status) && (
                       <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
                         {STATUS_LABELS[status]}
