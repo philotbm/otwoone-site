@@ -1368,6 +1368,23 @@ export default function LeadDetailPage() {
       sections.push("## Discovery call notes\n" + lead.lead_details.internal_notes);
     }
 
+    // 7. Scoping reply (operator-entered or pasted client scoping response)
+    if (briefReply.trim()) {
+      sections.push("## Scoping reply\n" + briefReply.trim());
+    }
+
+    // 8. Clarification round replies (client Q&A exchanges)
+    const answeredRoundsForContext = rounds.filter(r => (r.status === "replied" || r.status === "closed") && r.client_reply?.trim());
+    if (answeredRoundsForContext.length > 0) {
+      const roundLines = answeredRoundsForContext.map(r => {
+        const lines: string[] = [];
+        if (r.questions?.trim()) lines.push(`Questions sent:\n${r.questions.trim()}`);
+        if (r.client_reply?.trim()) lines.push(`Client reply:\n${r.client_reply.trim()}`);
+        return `### Round ${r.round_number}\n${lines.join("\n")}`;
+      });
+      sections.push("## Clarification rounds\n" + roundLines.join("\n\n"));
+    }
+
     // 9. Revised information (operator-entered requirement changes / call notes)
     if (revisionContext.trim()) {
       sections.push("## Revised information\nIMPORTANT: The following updated requirements supersede any conflicting earlier information.\n" + revisionContext.trim());
@@ -1378,14 +1395,17 @@ export default function LeadDetailPage() {
     if (briefSummary.trim()) briefFields.push(`Project summary: ${briefSummary.trim()}`);
     if (briefType.trim()) briefFields.push(`Project type: ${briefType.trim()}`);
     if (briefSolution.trim()) briefFields.push(`Recommended solution: ${briefSolution.trim()}`);
+    if (briefPages.trim()) briefFields.push(`Suggested pages: ${briefPages.trim()}`);
+    if (briefFeatures.trim()) briefFields.push(`Suggested features: ${briefFeatures.trim()}`);
     if (briefIntegrations.trim()) briefFields.push(`Suggested integrations: ${briefIntegrations.trim()}`);
     if (briefTimeline.trim()) briefFields.push(`Timeline estimate: ${briefTimeline.trim()}`);
     if (briefBudget.trim()) briefFields.push(`Budget positioning: ${briefBudget.trim()}`);
     if (briefRisks.trim()) briefFields.push(`Risks & unknowns: ${briefRisks.trim()}`);
+    if (briefFollowUp.trim()) briefFields.push(`Follow-up questions: ${briefFollowUp.trim()}`);
     if (briefFields.length > 0) sections.push("## Existing brief analysis\n" + briefFields.join("\n"));
 
     return sections.join("\n\n");
-  }, [lead, intakePath, contactStrategy, briefSummary, briefType, briefSolution, briefIntegrations, briefTimeline, briefBudget, briefRisks, revisionContext]);
+  }, [lead, intakePath, contactStrategy, briefReply, rounds, briefSummary, briefType, briefSolution, briefPages, briefFeatures, briefIntegrations, briefTimeline, briefBudget, briefRisks, briefFollowUp, revisionContext]);
 
   // ── Pricing Engine (deterministic commercial recommendation) ─────────────────
 
@@ -2613,6 +2633,7 @@ export default function LeadDetailPage() {
       if (s(briefTimeline)) lines.push(`**Timeline estimate:** ${s(briefTimeline)}`);
       if (s(briefBudget)) lines.push(`**Budget positioning:** ${s(briefBudget)}`);
       if (s(briefRisks)) lines.push(`**Risks & unknowns:** ${s(briefRisks)}`);
+      if (s(briefFollowUp)) lines.push(`**Follow-up questions / open items:** ${s(briefFollowUp)}`);
       lines.push("");
 
       // Complexity assessment (if available, grounds effort/scope expectations)
@@ -2675,6 +2696,7 @@ export default function LeadDetailPage() {
       if (s(briefTimeline)) briefLines.push(`**Timeline estimate:** ${s(briefTimeline)}`);
       if (s(briefBudget)) briefLines.push(`**Budget positioning:** ${s(briefBudget)}`);
       if (s(briefRisks)) briefLines.push(`**Risks & unknowns:** ${s(briefRisks)}`);
+      if (s(briefFollowUp)) briefLines.push(`**Follow-up questions / open items:** ${s(briefFollowUp)}`);
       if (briefLines.length > 0) {
         lines.push("## Partial brief fields");
         lines.push(...briefLines);
@@ -3445,6 +3467,54 @@ export default function LeadDetailPage() {
             </div>
           </div>
         )}
+
+        {/* ════════════════════════════════════════════════════════════════
+            PROPOSAL READINESS — lightweight checklist for scope_received+
+            ════════════════════════════════════════════════════════════════ */}
+        {briefEligible && (() => {
+          const checks = [
+            { label: "Client intake",     ok: !!(lead?.lead_details?.success_definition?.trim()),    tip: "Client request / success definition submitted" },
+            { label: "Scope clarity",     ok: !!(briefReply.trim() || rounds.some(r => r.status === "replied" || r.status === "closed")),  tip: "Scoping reply or clarification round answered" },
+            { label: "System analysis",   ok: briefSummary.trim().length > 15 && briefSolution.trim().length > 15,   tip: "Brief summary and recommended solution populated" },
+            { label: "Technical research",ok: !!technicalResearch,             tip: "Technical research completed" },
+            { label: "Build pricing",     ok: !!buildPricing,                  tip: "Complexity scored and pricing computed" },
+            { label: "Running costs",     ok: !!runningCosts,                  tip: "Monthly operating costs estimated" },
+            { label: "Scope readiness",   ok: scopeReady === true || (scopeReady === false && overrideScopeWarning), tip: "Scope marked ready or override applied" },
+          ];
+          const doneCount = checks.filter(c => c.ok).length;
+          const allDone = doneCount === checks.length;
+          const pct = Math.round((doneCount / checks.length) * 100);
+
+          return (
+            <div>
+              <div className="px-5 py-3 rounded-xl border border-white/[0.06] bg-[#12131a]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal Readiness</span>
+                  <span className={cx(
+                    "text-[10px] font-semibold px-2 py-0.5 rounded",
+                    allDone ? "bg-green-500/15 text-green-400" : pct >= 60 ? "bg-amber-500/15 text-amber-400" : "bg-red-500/15 text-red-400",
+                  )}>
+                    {doneCount}/{checks.length} ({pct}%)
+                  </span>
+                </div>
+                <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mb-2">
+                  <div
+                    className={cx("h-full rounded-full transition-all", allDone ? "bg-green-500" : pct >= 60 ? "bg-amber-500" : "bg-red-500")}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1">
+                  {checks.map((c, i) => (
+                    <div key={i} className="flex items-center gap-1.5" title={c.tip}>
+                      <span className={cx("text-[10px]", c.ok ? "text-green-400" : "text-gray-600")}>{c.ok ? "✓" : "○"}</span>
+                      <span className={cx("text-[10px]", c.ok ? "text-gray-400" : "text-gray-600")}>{c.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ════════════════════════════════════════════════════════════════
             ANALYSIS ACTION — single-button pipeline trigger
@@ -4353,19 +4423,46 @@ export default function LeadDetailPage() {
 
               {/* ── Primary action: Proceed to Proposal ── */}
               <div className="pt-3 border-t border-white/5">
-                {status === "scope_received" && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      saveField({ status: "proposal_sent" });
-                      setStatus("proposal_sent");
-                    }}
-                    disabled={saving}
-                    className="w-full px-4 py-3 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-                  >
-                    {saving ? "Updating…" : "Move to Proposal"}
-                  </button>
-                )}
+                {status === "scope_received" && (() => {
+                  const missingInputs: string[] = [];
+                  if (!briefSummary.trim()) missingInputs.push("System analysis");
+                  if (!technicalResearch) missingInputs.push("Technical research");
+                  if (!complexityResult) missingInputs.push("Complexity scoring");
+                  if (!buildPricing) missingInputs.push("Build pricing");
+                  if (!runningCosts) missingInputs.push("Running costs");
+                  if (scopeReady === null) missingInputs.push("Scope readiness");
+                  if (scopeReady === false && !overrideScopeWarning) missingInputs.push("Scope not ready (no override)");
+
+                  return (
+                    <>
+                      {missingInputs.length > 0 && (
+                        <div className="mb-3 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/15">
+                          <p className="text-[10px] text-amber-400 font-medium mb-1">Proposal inputs incomplete:</p>
+                          <ul className="text-[10px] text-amber-400/70 space-y-0.5">
+                            {missingInputs.map((m, i) => <li key={i}>• {m}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (missingInputs.length > 0 && !window.confirm(`${missingInputs.length} proposal input(s) are incomplete:\n\n${missingInputs.map(m => "• " + m).join("\n")}\n\nProceed anyway?`)) return;
+                          saveField({ status: "proposal_sent" });
+                          setStatus("proposal_sent");
+                        }}
+                        disabled={saving}
+                        className={cx(
+                          "w-full px-4 py-3 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50",
+                          missingInputs.length > 0
+                            ? "bg-amber-600 hover:bg-amber-500 text-white"
+                            : "bg-indigo-600 hover:bg-indigo-500 text-white"
+                        )}
+                      >
+                        {saving ? "Updating…" : missingInputs.length > 0 ? "Move to Proposal (incomplete)" : "Move to Proposal"}
+                      </button>
+                    </>
+                  );
+                })()}
                 {["lead_submitted", "scoping_sent"].includes(status) && (
                   <span className="text-xs text-gray-500">Lead must reach Ready for Proposal before proceeding.</span>
                 )}
