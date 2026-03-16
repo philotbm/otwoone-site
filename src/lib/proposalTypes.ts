@@ -1,6 +1,6 @@
 // ============================================================================
 // Proposal Engine — TypeScript types
-// v1.83.0
+// v1.84.0
 // ============================================================================
 
 // ── Proposal statuses (independent of lead status) ──────────────────────────
@@ -103,6 +103,10 @@ export type Proposal = {
   // Terms
   terms_template_id: string | null;
   terms_version: string | null;
+
+  // Approval
+  approved_by_name: string | null;
+  approved_by_company: string | null;
 
   // Acceptance / delivery
   acceptance_mode: 'email' | 'signature' | 'portal' | null;

@@ -39,6 +39,9 @@ type ClientProposal = {
   next_steps: string[];
   payment_notes: string | null;
   acceptance_mode: string | null;
+  approved_by_name: string | null;
+  approved_by_company: string | null;
+  approved_at: string | null;
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -102,6 +105,13 @@ export default function ProposalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Approval form state
+  const [approvalName, setApprovalName] = useState("");
+  const [approvalCompany, setApprovalCompany] = useState("");
+  const [approving, setApproving] = useState(false);
+  const [approvalError, setApprovalError] = useState("");
+  const [approvalSuccess, setApprovalSuccess] = useState(false);
+
   useEffect(() => {
     if (!token) return;
     (async () => {
@@ -122,6 +132,45 @@ export default function ProposalPage() {
       }
     })();
   }, [token]);
+
+  // Check if proposal was already approved on load
+  const isApproved = approvalSuccess || proposal?.approved_at != null;
+
+  async function handleApproval() {
+    if (!approvalName.trim() || !approvalCompany.trim()) {
+      setApprovalError("Please enter your full name and company name.");
+      return;
+    }
+    setApproving(true);
+    setApprovalError("");
+    try {
+      const res = await fetch(`/api/proposal/${token}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: approvalName.trim(), company: approvalCompany.trim() }),
+      });
+      const data = (await res.json()) as { success?: boolean; error?: string; already_approved?: boolean };
+      if (!res.ok) {
+        setApprovalError(data.error || "Something went wrong. Please try again.");
+        return;
+      }
+      setApprovalSuccess(true);
+      // Update local proposal state
+      if (proposal) {
+        setProposal({
+          ...proposal,
+          status: "approved",
+          approved_by_name: approvalName.trim(),
+          approved_by_company: approvalCompany.trim(),
+          approved_at: new Date().toISOString(),
+        });
+      }
+    } catch {
+      setApprovalError("Network error. Please check your connection and try again.");
+    } finally {
+      setApproving(false);
+    }
+  }
 
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
@@ -490,45 +539,119 @@ export default function ProposalPage() {
             )}
           </Section>
 
-          {/* 13. Acceptance */}
-          <Section number={13} title="Acceptance" id="acceptance">
-            <div className="rounded-lg bg-white/[0.03] border border-white/10 px-6 py-8 text-center">
-              <p className="text-sm text-gray-400 mb-6 leading-relaxed max-w-lg mx-auto">
-                To accept this proposal, please confirm below. Upon acceptance, OTwoOne
-                will issue a deposit invoice and schedule your project kickoff.
-              </p>
+          {/* 13. What Happens Next */}
+          {!isApproved && (
+            <Section number={13} title="What Happens Next" id="what-happens-next">
+              <div className="space-y-5">
+                {[
+                  {
+                    step: 1,
+                    title: "Approve the proposal",
+                    description: "Confirm the scope and terms so we can begin.",
+                  },
+                  {
+                    step: 2,
+                    title: "Pay the deposit",
+                    description: "A deposit invoice will be issued to activate the project.",
+                  },
+                  {
+                    step: 3,
+                    title: "Project kickoff",
+                    description: "Once the deposit is received we schedule the kickoff and begin the build.",
+                  },
+                ].map((item) => (
+                  <div key={item.step} className="flex items-start gap-4">
+                    <span className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/15 text-indigo-400 text-sm font-semibold shrink-0 mt-0.5">
+                      {item.step}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-200">{item.title}</p>
+                      <p className="text-sm text-gray-500 mt-0.5">{item.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-lg mx-auto mb-8 text-left">
-                <div>
-                  <label className="text-[10px] uppercase tracking-wider text-gray-600 font-medium block mb-1">
-                    Name
-                  </label>
-                  <div className="h-8 border-b border-white/10" />
+          {/* 14. Acceptance */}
+          <Section number={isApproved ? 13 : 14} title={isApproved ? "Proposal Approved" : "Approve Proposal"} id="acceptance">
+            {isApproved ? (
+              /* ── Success state ────────────────────────────────────── */
+              <div className="rounded-lg bg-green-500/[0.06] border border-green-500/20 px-6 py-8 text-center">
+                <div className="w-12 h-12 rounded-full bg-green-500/15 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
                 </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wider text-gray-600 font-medium block mb-1">
-                    Company
-                  </label>
-                  <div className="h-8 border-b border-white/10" />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wider text-gray-600 font-medium block mb-1">
-                    Date
-                  </label>
-                  <div className="h-8 border-b border-white/10" />
+                <h3 className="text-lg font-semibold text-green-400 mb-2">Proposal Approved</h3>
+                <p className="text-sm text-gray-400 leading-relaxed max-w-md mx-auto mb-4">
+                  Thank you — your approval has been recorded.
+                  We will now move to the deposit stage to activate the project.
+                </p>
+                <div className="text-[10px] text-gray-600 space-y-0.5">
+                  {proposal?.approved_by_name && (
+                    <p>Approved by {proposal.approved_by_name}{proposal.approved_by_company ? `, ${proposal.approved_by_company}` : ""}</p>
+                  )}
+                  {proposal?.approved_at && (
+                    <p>{new Date(proposal.approved_at).toLocaleDateString("en-IE", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                  )}
                 </div>
               </div>
+            ) : (
+              /* ── Approval form ────────────────────────────────────── */
+              <div className="rounded-lg bg-white/[0.03] border border-white/10 px-6 py-8">
+                <p className="text-sm text-gray-400 mb-6 leading-relaxed max-w-lg mx-auto text-center">
+                  By approving this proposal, you confirm acceptance of the scope, pricing,
+                  and the OTwoOne Terms &amp; Conditions attached to this proposal.
+                </p>
 
-              <button
-                disabled
-                className="px-8 py-3 rounded-lg text-sm font-semibold bg-indigo-600/40 text-indigo-300/60 cursor-not-allowed"
-              >
-                Approve Proposal
-              </button>
-              <p className="text-[10px] text-gray-600 mt-3">
-                Online approval coming soon. For now, please confirm via email.
-              </p>
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md mx-auto mb-6">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider text-gray-600 font-medium block mb-1.5">
+                      Full name
+                    </label>
+                    <input
+                      type="text"
+                      value={approvalName}
+                      onChange={(e) => setApprovalName(e.target.value)}
+                      placeholder="Your full name"
+                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider text-gray-600 font-medium block mb-1.5">
+                      Company name
+                    </label>
+                    <input
+                      type="text"
+                      value={approvalCompany}
+                      onChange={(e) => setApprovalCompany(e.target.value)}
+                      placeholder="Your company"
+                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {approvalError && (
+                  <p className="text-xs text-red-400 text-center mb-4">{approvalError}</p>
+                )}
+
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={handleApproval}
+                    disabled={approving || !approvalName.trim() || !approvalCompany.trim()}
+                    className="px-8 py-3 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {approving ? "Processing…" : "Approve Proposal"}
+                  </button>
+                  <p className="text-[10px] text-gray-600 mt-3 max-w-sm mx-auto">
+                    Upon approval, OTwoOne will issue a deposit invoice and schedule your project kickoff.
+                  </p>
+                </div>
+              </div>
+            )}
           </Section>
         </div>
       </main>

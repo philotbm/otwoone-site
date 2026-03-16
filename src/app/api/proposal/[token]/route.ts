@@ -38,6 +38,9 @@ const CLIENT_SAFE_FIELDS = [
   'acceptance_mode',
   'terms_template_id',
   'terms_version',
+  'approved_by_name',
+  'approved_by_company',
+  'approved_at',
   'created_at',
   'updated_at',
 ].join(', ');

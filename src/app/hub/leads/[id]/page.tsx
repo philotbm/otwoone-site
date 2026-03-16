@@ -5030,6 +5030,23 @@ export default function LeadDetailPage() {
                     )}
                   </div>
 
+                  {/* Approval status */}
+                  {proposal.approved_at && (
+                    <div className="px-3 py-2 rounded-lg bg-green-500/[0.06] border border-green-500/20">
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                        <span className="text-green-400 font-medium">Approved</span>
+                        <span className="text-gray-600">by</span>
+                        <span className="text-gray-400">{proposal.approved_by_name ?? "—"}</span>
+                        {proposal.approved_by_company && (
+                          <span className="text-gray-600">({proposal.approved_by_company})</span>
+                        )}
+                        <span className="text-gray-600">·</span>
+                        <span className="text-gray-600">{new Date(proposal.approved_at).toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric" })}</span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Autofill from sources */}
                   {proposal.status === "draft" && (
                     <div className="flex items-center gap-3 flex-wrap">
