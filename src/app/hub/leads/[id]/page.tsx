@@ -4935,13 +4935,41 @@ export default function LeadDetailPage() {
                       </span>
                       <span className="text-[10px] text-gray-600">v{proposal.version_number}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setProposalOpen(!proposalOpen)}
-                      className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                    >
-                      {proposalOpen ? "Collapse ▲" : "Expand ▼"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {proposal.view_token && (
+                        <>
+                          <a
+                            href={`/proposal/${proposal.view_token}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
+                          >
+                            Preview ↗
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const url = `${window.location.origin}/proposal/${proposal.view_token}`;
+                              navigator.clipboard.writeText(url).then(() => {
+                                setProposalSaved(true);
+                                setTimeout(() => setProposalSaved(false), 2000);
+                              });
+                            }}
+                            className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+                          >
+                            Copy link
+                          </button>
+                          <span className="text-white/10">|</span>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setProposalOpen(!proposalOpen)}
+                        className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                      >
+                        {proposalOpen ? "Collapse ▲" : "Expand ▼"}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Proposal identity row */}

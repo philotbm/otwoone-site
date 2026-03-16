@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { logProposalEvent } from '@/lib/proposalEvents';
@@ -134,11 +135,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   const validUntil = new Date(now);
   validUntil.setDate(validUntil.getDate() + 30);
 
+  const viewToken = randomBytes(24).toString('base64url');
+
   const insert: Record<string, unknown> = {
     lead_id: id,
     version_number: 1,
     is_current: true,
     status: 'draft',
+    view_token: viewToken,
 
     // Identity defaults from lead
     title: body.title ?? `Proposal for ${sources.company_name || sources.contact_name || 'Client'}`,
