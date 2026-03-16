@@ -387,15 +387,16 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   converted:         "Won",
 };
 
+/** Operator-facing next action guidance per status */
 const NEXT_ACTION: Record<LeadStatus, string> = {
-  lead_submitted:    "Next action managed in Scope Readiness below",
-  scoping_sent:      "Next: awaiting scope response",
-  scope_received:    "Next: review scope → generate brief → proceed to proposal",
-  proposal_sent:     "Next: request deposit",
-  deposit_requested: "Next: confirm deposit received",
-  deposit_received:  "Next: convert to project",
-  lost_pre_deposit:  "Closed",
-  converted:         "Won — converted to project",
+  lead_submitted:    "Send scoping / qualify lead",
+  scoping_sent:      "Awaiting client details",
+  scope_received:    "Prepare proposal",
+  proposal_sent:     "Awaiting client decision",
+  deposit_requested: "Awaiting deposit",
+  deposit_received:  "Ready to convert",
+  lost_pre_deposit:  "Closed lost",
+  converted:         "Converted to project",
 };
 
 const CTA_LABELS: Record<string, string> = {
@@ -3193,6 +3194,12 @@ export default function LeadDetailPage() {
           </span>
         )}
       </header>
+
+      {/* Next Action bar */}
+      <div className="border-b border-white/5 px-6 py-2.5 flex items-center gap-2">
+        <span className="text-[10px] text-gray-600 uppercase tracking-wide">Next action</span>
+        <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
+      </div>
 
       {/* Lifecycle stepper */}
       <div className="px-6 pt-5 pb-2 max-w-4xl mx-auto">
