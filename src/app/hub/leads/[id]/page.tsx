@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { PROJECT_STATUSES, type ProjectStatus } from "@/lib/projectStatus";
+import type { Proposal, ProposalStatus } from "@/lib/proposalTypes";
 
 // ─── Safe JSON fetch ─────────────────────────────────────────────────────────
 // Defensively fetches JSON from an API route. Checks res.ok and content-type
@@ -955,6 +956,14 @@ export default function LeadDetailPage() {
   const [showRawInputs,        setShowRawInputs]        = useState(false);
   const [bootstrapDone,        setBootstrapDone]        = useState(false);
 
+  // Proposal Engine state
+  const [proposal,          setProposal]          = useState<Proposal | null>(null);
+  const [proposalLoading,   setProposalLoading]   = useState(false);
+  const [proposalSaving,    setProposalSaving]    = useState(false);
+  const [proposalSaved,     setProposalSaved]     = useState(false);
+  const [proposalError,     setProposalError]     = useState("");
+  const [proposalOpen,      setProposalOpen]      = useState(false);
+
   const fetchLead = useCallback(async () => {
     setLoading(true);
     try {
@@ -1091,6 +1100,60 @@ export default function LeadDetailPage() {
   const briefAccessible = ['lead_submitted', 'scoping_sent', 'scope_received', 'proposal_sent', 'deposit_requested', 'deposit_received', 'converted'].includes(status);
   const briefEligible = ['scope_received', 'proposal_sent', 'deposit_requested', 'deposit_received', 'converted'].includes(status);
   useEffect(() => { if (briefAccessible && id) fetchBrief(id); }, [briefAccessible, id, fetchBrief]);
+
+  // ── Fetch proposal (scope_received+) ────────────────────────────────────────
+
+  const fetchProposal = useCallback(async (leadId: string) => {
+    setProposalLoading(true);
+    setProposalError("");
+    try {
+      const result = await safeFetch<{ proposal: Proposal | null }>(`/api/hub/leads/${leadId}/proposal`);
+      if (result.ok) {
+        setProposal(result.data.proposal);
+      }
+    } finally {
+      setProposalLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (briefEligible && id) fetchProposal(id); }, [briefEligible, id, fetchProposal]);
+
+  async function createProposal() {
+    if (!id) return;
+    setProposalSaving(true);
+    setProposalError("");
+    const result = await safeFetch<{ proposal: Proposal }>(`/api/hub/leads/${id}/proposal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    setProposalSaving(false);
+    if (result.ok) {
+      setProposal(result.data.proposal);
+      setProposalOpen(true);
+    } else {
+      setProposalError(result.error);
+    }
+  }
+
+  async function saveProposal(fields: Record<string, unknown>) {
+    if (!id) return;
+    setProposalSaving(true);
+    setProposalSaved(false);
+    const result = await safeFetch<{ proposal: Proposal }>(`/api/hub/leads/${id}/proposal`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    setProposalSaving(false);
+    if (result.ok) {
+      setProposal(result.data.proposal);
+      setProposalSaved(true);
+      setTimeout(() => setProposalSaved(false), 2000);
+    } else {
+      setProposalError(result.error);
+    }
+  }
 
   // ── Bootstrap brief from enquiry data (early stages, fill-if-empty) ─────────
 
@@ -4799,6 +4862,236 @@ export default function LeadDetailPage() {
             )}
           </div>
         ); })()}
+
+        {/* ════════════════════════════════════════════════════════════════
+            PROPOSAL ENGINE — structured proposal workspace
+            ════════════════════════════════════════════════════════════════ */}
+        {briefEligible && (
+          <div>
+            <Section title="Proposal Engine">
+              {proposalLoading ? (
+                <p className="text-xs text-gray-500">Loading proposal…</p>
+              ) : !proposal ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-400">
+                    No structured proposal record exists for this lead yet.
+                    Create one to start building the formal proposal.
+                  </p>
+                  {proposalError && <p className="text-xs text-red-400">{proposalError}</p>}
+                  <button
+                    type="button"
+                    onClick={createProposal}
+                    disabled={proposalSaving}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                  >
+                    {proposalSaving ? "Creating…" : "Create Proposal"}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Proposal header info */}
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className={cx(
+                        "px-2.5 py-1 rounded text-[11px] font-medium uppercase tracking-wide",
+                        proposal.status === "draft" && "bg-gray-500/15 text-gray-400",
+                        proposal.status === "ready" && "bg-indigo-500/15 text-indigo-400",
+                        proposal.status === "sent" && "bg-blue-500/15 text-blue-400",
+                        proposal.status === "viewed" && "bg-amber-500/15 text-amber-400",
+                        proposal.status === "approved" && "bg-green-500/15 text-green-400",
+                        proposal.status === "signed" && "bg-green-500/15 text-green-400",
+                        proposal.status === "deposit_requested" && "bg-violet-500/15 text-violet-400",
+                        proposal.status === "deposit_received" && "bg-green-500/15 text-green-400",
+                        proposal.status === "superseded" && "bg-gray-500/15 text-gray-600",
+                      )}>
+                        {proposal.status.replace(/_/g, " ")}
+                      </span>
+                      <span className="text-[10px] text-gray-600">v{proposal.version_number}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setProposalOpen(!proposalOpen)}
+                      className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      {proposalOpen ? "Collapse ▲" : "Expand ▼"}
+                    </button>
+                  </div>
+
+                  {/* Proposal identity row */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <p className="text-[10px] text-gray-600 mb-0.5">Client</p>
+                      <p className="text-xs text-gray-300">{proposal.client_name ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-gray-600 mb-0.5">Company</p>
+                      <p className="text-xs text-gray-300">{proposal.client_company ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-gray-600 mb-0.5">Build price</p>
+                      <p className="text-xs text-gray-300">{proposal.build_price ? `€${Number(proposal.build_price).toLocaleString()}` : "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-gray-600 mb-0.5">Valid until</p>
+                      <p className="text-xs text-gray-300">{proposal.valid_until ?? "—"}</p>
+                    </div>
+                  </div>
+
+                  {/* Commercial summary */}
+                  {proposal.build_price && (
+                    <div className="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/5">
+                      <div className="flex items-center gap-4 flex-wrap text-[10px]">
+                        <span className="text-gray-500">Build: <span className="text-gray-300 font-medium">€{Number(proposal.build_price).toLocaleString()}</span></span>
+                        <span className="text-gray-500">Deposit ({proposal.deposit_percent ?? 50}%): <span className="text-gray-300 font-medium">€{proposal.deposit_amount ? Number(proposal.deposit_amount).toLocaleString() : "—"}</span></span>
+                        <span className="text-gray-500">Balance: <span className="text-gray-300 font-medium">€{proposal.balance_amount ? Number(proposal.balance_amount).toLocaleString() : "—"}</span></span>
+                      </div>
+                    </div>
+                  )}
+
+                  {proposalError && <p className="text-xs text-red-400">{proposalError}</p>}
+
+                  {/* Expanded workspace */}
+                  {proposalOpen && (
+                    <div className="space-y-4 pt-3 border-t border-white/5">
+                      {/* Title */}
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Proposal title</label>
+                        <input
+                          type="text"
+                          value={proposal.title ?? ""}
+                          onChange={(e) => setProposal(p => p ? { ...p, title: e.target.value } : p)}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
+                          placeholder="Proposal title"
+                        />
+                      </div>
+
+                      {/* Executive summary */}
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Executive summary</label>
+                        <textarea
+                          value={proposal.executive_summary ?? ""}
+                          onChange={(e) => setProposal(p => p ? { ...p, executive_summary: e.target.value } : p)}
+                          rows={4}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
+                          placeholder="Brief overview of the project and proposed solution…"
+                        />
+                      </div>
+
+                      {/* Problem statement */}
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Problem statement</label>
+                        <textarea
+                          value={proposal.problem_statement ?? ""}
+                          onChange={(e) => setProposal(p => p ? { ...p, problem_statement: e.target.value } : p)}
+                          rows={3}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
+                          placeholder="What problem is this solving for the client…"
+                        />
+                      </div>
+
+                      {/* Recommended solution */}
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Recommended solution</label>
+                        <textarea
+                          value={proposal.recommended_solution ?? ""}
+                          onChange={(e) => setProposal(p => p ? { ...p, recommended_solution: e.target.value } : p)}
+                          rows={4}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
+                          placeholder="What we recommend building…"
+                        />
+                      </div>
+
+                      {/* Timeline */}
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Timeline summary</label>
+                        <textarea
+                          value={proposal.timeline_summary ?? ""}
+                          onChange={(e) => setProposal(p => p ? { ...p, timeline_summary: e.target.value } : p)}
+                          rows={2}
+                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
+                          placeholder="Estimated timeline and delivery approach…"
+                        />
+                      </div>
+
+                      {/* Build price */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Build price (€)</label>
+                          <input
+                            type="number"
+                            value={proposal.build_price ?? ""}
+                            onChange={(e) => setProposal(p => p ? { ...p, build_price: e.target.value ? Number(e.target.value) : null } : p)}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Deposit %</label>
+                          <input
+                            type="number"
+                            value={proposal.deposit_percent ?? 50}
+                            onChange={(e) => setProposal(p => p ? { ...p, deposit_percent: e.target.value ? Number(e.target.value) : 50 } : p)}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Payment notes</label>
+                          <input
+                            type="text"
+                            value={proposal.payment_notes ?? ""}
+                            onChange={(e) => setProposal(p => p ? { ...p, payment_notes: e.target.value } : p)}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
+                            placeholder="e.g. Bank transfer preferred"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Valid until</label>
+                          <input
+                            type="date"
+                            value={proposal.valid_until ?? ""}
+                            onChange={(e) => setProposal(p => p ? { ...p, valid_until: e.target.value } : p)}
+                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Save */}
+                      <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                        <div className="flex items-center gap-3">
+                          <span className={cx("text-xs transition-opacity", proposalSaved ? "text-green-400 opacity-100" : "opacity-0")}>
+                            Saved
+                          </span>
+                          <span className="text-[10px] text-gray-700">
+                            Last updated {proposal.updated_at ? fmtDateTime(proposal.updated_at) : "—"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (!proposal) return;
+                            saveProposal({
+                              title: proposal.title,
+                              executive_summary: proposal.executive_summary,
+                              problem_statement: proposal.problem_statement,
+                              recommended_solution: proposal.recommended_solution,
+                              timeline_summary: proposal.timeline_summary,
+                              build_price: proposal.build_price,
+                              deposit_percent: proposal.deposit_percent,
+                              payment_notes: proposal.payment_notes,
+                              valid_until: proposal.valid_until,
+                            });
+                          }}
+                          disabled={proposalSaving}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                        >
+                          {proposalSaving ? "Saving…" : "Save proposal"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Section>
+          </div>
+        )}
 
         {/* Project (if converted) */}
         {project && (
