@@ -78,6 +78,9 @@ type Project = {
   intake_status: "not_sent" | "sent" | "in_progress" | "complete" | null;
   reviews_included: number;
   reviews_used: number;
+  deposit_paid_at: string | null;
+  deposit_amount: number | null;
+  deposit_reference: string | null;
 };
 
 type IntakeStep1 = {
@@ -643,16 +646,16 @@ function SignalPill({ value }: { value: string }) {
   );
 }
 
-// ─── Convert modal ─────────────────────────────────────────────────────────────
+// ─── Deposit activation modal ─────────────────────────────────────────────────
 
-function ConvertModal({
+function DepositActivationModal({
   lead,
   onClose,
-  onConverted,
+  onActivated,
 }: {
   lead: Lead;
   onClose: () => void;
-  onConverted: () => void;
+  onActivated: () => void;
 }) {
   const [hostingRequired, setHostingRequired] = useState(
     lead.proposed_hosting_required ?? true
@@ -660,10 +663,12 @@ function ConvertModal({
   const [maintenancePlan, setMaintenancePlan] = useState(
     lead.proposed_maintenance_plan ?? "essential"
   );
+  const [depositAmount, setDepositAmount] = useState("");
+  const [depositReference, setDepositReference] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState("");
 
-  async function handleConvert() {
+  async function handleActivate() {
     if (hostingRequired && maintenancePlan === "none") {
       setError("Select a maintenance plan when hosting is included.");
       return;
@@ -677,12 +682,14 @@ function ConvertModal({
         body: JSON.stringify({
           hosting_required: hostingRequired,
           maintenance_plan: hostingRequired ? maintenancePlan : "none",
+          deposit_amount: depositAmount.trim() ? Number(depositAmount) : null,
+          deposit_reference: depositReference.trim() || null,
         }),
       });
       if (!result.ok) throw new Error(result.error);
-      onConverted();
+      onActivated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Conversion failed");
+      setError(err instanceof Error ? err.message : "Activation failed");
     } finally {
       setSaving(false);
     }
@@ -691,8 +698,34 @@ function ConvertModal({
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
       <div className="bg-[#0e0f14] border border-white/10 rounded-2xl w-full max-w-sm p-6">
-        <h2 className="text-base font-semibold text-white mb-1">Convert Lead</h2>
-        <p className="text-xs text-gray-500 mb-6">Deposit confirmed — this will create a project.</p>
+        <h2 className="text-base font-semibold text-white mb-1">Activate Deposit</h2>
+        <p className="text-xs text-gray-500 mb-6">Record deposit payment and create the project.</p>
+
+        {/* Deposit amount */}
+        <div className="mb-5">
+          <label className="text-xs text-gray-400 block mb-2">Deposit amount (optional)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={depositAmount}
+            onChange={(e) => setDepositAmount(e.target.value)}
+            placeholder="e.g. 1500.00"
+            className="w-full bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
+          />
+        </div>
+
+        {/* Deposit reference */}
+        <div className="mb-5">
+          <label className="text-xs text-gray-400 block mb-2">Payment reference / note (optional)</label>
+          <input
+            type="text"
+            value={depositReference}
+            onChange={(e) => setDepositReference(e.target.value)}
+            placeholder="e.g. INV-2026-042 or bank transfer ref"
+            className="w-full bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
+          />
+        </div>
 
         {/* Hosting */}
         <div className="mb-5">
@@ -755,11 +788,11 @@ function ConvertModal({
           </button>
           <button
             type="button"
-            onClick={handleConvert}
+            onClick={handleActivate}
             disabled={saving}
-            className="flex-1 py-2.5 rounded-lg text-sm bg-indigo-600 hover:bg-indigo-500 text-white font-medium disabled:opacity-50"
+            className="flex-1 py-2.5 rounded-lg text-sm bg-green-600 hover:bg-green-500 text-white font-medium disabled:opacity-50"
           >
-            {saving ? "Converting…" : "Convert"}
+            {saving ? "Activating…" : "Activate"}
           </button>
         </div>
       </div>
@@ -3266,7 +3299,7 @@ export default function LeadDetailPage() {
 
   const project     = lead.projects?.[0] ?? null;
   const isConverted = lead.status === "converted";
-  const canConvert  = lead.status === "deposit_received";
+  const canActivateDeposit = lead.status === "deposit_requested" || lead.status === "deposit_received";
 
   return (
     <div className="min-h-screen bg-[#05060a] text-gray-200">
@@ -3305,21 +3338,21 @@ export default function LeadDetailPage() {
           </select>
         </div>
 
-        {/* Convert button */}
-        {!isConverted && canConvert && (
+        {/* Deposit activation / status */}
+        {!isConverted && canActivateDeposit && (
           <button
             onClick={() => setShowConvert(true)}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-green-600 hover:bg-green-500 text-white transition-colors"
           >
-            Convert (Deposit Paid)
+            Activate Deposit
           </button>
         )}
-        {!isConverted && !canConvert && (
-          <span className="text-xs text-gray-600">Convert available once status is Won.</span>
+        {!isConverted && !canActivateDeposit && (
+          <span className="text-xs text-gray-600">Deposit activation available after proposal approval.</span>
         )}
         {isConverted && (
           <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
-            Converted
+            Deposit Activated
           </span>
         )}
       </header>
@@ -3380,16 +3413,16 @@ export default function LeadDetailPage() {
             </button>
           </>
         )}
-        {status === "deposit_received" && (
+        {(status === "deposit_requested" || status === "deposit_received") && (
           <>
             <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
-            {!isConverted && canConvert && (
+            {!isConverted && canActivateDeposit && (
               <button
                 type="button"
                 onClick={() => setShowConvert(true)}
-                className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors"
               >
-                Convert to Project
+                Activate Deposit
               </button>
             )}
           </>
@@ -4687,18 +4720,53 @@ export default function LeadDetailPage() {
                   <div>
                     <p className="text-xs text-gray-500">Status</p>
                     <p className="text-[10px] text-gray-600 mt-0.5">
-                      {status === "proposal_sent" ? "Proposal sent — awaiting client decision."
-                        : status === "deposit_requested" ? "Deposit requested — awaiting payment."
-                        : status === "deposit_received" ? "Deposit received — ready to convert."
-                        : status === "converted" ? "Converted to project."
+                      {status === "proposal_sent" ? "Proposal sent — request deposit when ready."
+                        : status === "deposit_requested" ? "Deposit requested — activate when payment received."
+                        : status === "deposit_received" ? "Deposit received — activate to create project."
+                        : status === "converted" ? "Deposit activated — project created."
                         : "Prepare and send the proposal."}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {["deposit_received", "converted"].includes(status) && (
-                      <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
-                        {STATUS_LABELS[status]}
-                      </span>
+                    {status === "proposal_sent" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          saveField({ status: "deposit_requested" });
+                          setStatus("deposit_requested");
+                        }}
+                        disabled={saving}
+                        className="px-4 py-2 rounded-lg text-xs font-medium bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
+                      >
+                        {saving ? "Updating…" : "Request Deposit"}
+                      </button>
+                    )}
+                    {(status === "deposit_requested" || status === "deposit_received") && (
+                      <button
+                        type="button"
+                        onClick={() => setShowConvert(true)}
+                        className="px-4 py-2 rounded-lg text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white transition-colors"
+                      >
+                        Activate Deposit
+                      </button>
+                    )}
+                    {["lead_submitted", "scoping_sent", "scope_received"].includes(status) && (
+                      <span className="text-[10px] text-gray-600">Use Scope Readiness above to advance to this stage.</span>
+                    )}
+                    {status === "converted" && project && (
+                      <div className="flex items-center gap-3">
+                        <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                          Deposit Activated
+                        </span>
+                        {(project.deposit_amount != null || project.deposit_reference) && (
+                          <span className="text-[10px] text-gray-500">
+                            {project.deposit_amount != null && <span>{Number(project.deposit_amount).toLocaleString("en-IE", { style: "currency", currency: "EUR" })}</span>}
+                            {project.deposit_amount != null && project.deposit_reference && " · "}
+                            {project.deposit_reference && <span>{project.deposit_reference}</span>}
+                            {project.deposit_paid_at && <span> · {fmt(project.deposit_paid_at)}</span>}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -6005,12 +6073,12 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {/* Convert modal */}
+      {/* Deposit activation modal */}
       {showConvert && (
-        <ConvertModal
+        <DepositActivationModal
           lead={lead}
           onClose={() => setShowConvert(false)}
-          onConverted={() => {
+          onActivated={() => {
             setShowConvert(false);
             fetchLead();
             router.refresh();

@@ -9,14 +9,17 @@ type Params = { params: Promise<{ id: string }> };
 /**
  * POST /api/hub/leads/[id]/convert
  *
- * Converts a lead to a project (deposit confirmed).
- * 1. Updates lead.status → 'converted'
- * 2. Creates a project row
- * 3. Triggers SharePoint folder creation (non-blocking)
+ * Deposit activation: converts an approved lead to an active project.
+ * 1. Validates lead is at deposit_requested or deposit_received
+ * 2. Updates lead.status → 'converted'
+ * 3. Creates a project row with deposit_paid status + deposit metadata
+ * 4. Triggers SharePoint folder creation (non-blocking)
  *
  * Body:
  *   hosting_required: boolean (required)
  *   maintenance_plan: 'starter_49' | 'essential' | 'growth' | 'accelerator' | 'none' (required if hosting_required)
+ *   deposit_amount: number | null (optional — deposit value)
+ *   deposit_reference: string | null (optional — payment reference / note)
  */
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -25,6 +28,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   const hosting_required   = Boolean(body.hosting_required);
   const maintenance_plan   = String(body.maintenance_plan ?? 'none') as
     'starter_49' | 'essential' | 'growth' | 'accelerator' | 'none';
+
+  // Deposit metadata (optional)
+  const deposit_amount = body.deposit_amount != null ? Number(body.deposit_amount) : null;
+  const deposit_reference = typeof body.deposit_reference === 'string' && body.deposit_reference.trim()
+    ? body.deposit_reference.trim()
+    : null;
 
   // Validation: if hosting required, plan must not be 'none'
   if (hosting_required && maintenance_plan === 'none') {
@@ -49,6 +58,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Lead is already converted', version: OTWOONE_OS_VERSION }, { status: 409 });
   }
 
+  // Gate: deposit activation requires the lead to be past proposal approval
+  const activatableStatuses = ['deposit_requested', 'deposit_received'];
+  if (!activatableStatuses.includes(lead.status)) {
+    return NextResponse.json(
+      { error: `Deposit activation requires status deposit_requested or deposit_received (current: ${lead.status}).`, version: OTWOONE_OS_VERSION },
+      { status: 400 }
+    );
+  }
+
   // 1. Update lead status
   const { error: statusErr } = await supabaseServer
     .from('leads')
@@ -59,7 +77,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: statusErr.message, version: OTWOONE_OS_VERSION }, { status: 500 });
   }
 
-  // 2. Create project
+  // 2. Create project with deposit metadata
   const { data: project, error: projectErr } = await supabaseServer
     .from('projects')
     .insert({
@@ -70,6 +88,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       maintenance_status:   'pending',
       client_contact_email: lead.contact_email?.trim() || null,
       client_contact_name:  lead.contact_name?.trim()  || null,
+      deposit_paid_at:      new Date().toISOString(),
+      deposit_amount:       deposit_amount,
+      deposit_reference:    deposit_reference,
     })
     .select('id')
     .single();
@@ -122,8 +143,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   await logProjectEvent(
     project.id,
     'project_created',
-    'Project created from lead conversion',
-    { lead_id: id },
+    'Project created via deposit activation',
+    {
+      lead_id: id,
+      deposit_amount: deposit_amount,
+      deposit_reference: deposit_reference,
+    },
   );
 
   return NextResponse.json({ success: true, project_id: project.id, version: OTWOONE_OS_VERSION });
