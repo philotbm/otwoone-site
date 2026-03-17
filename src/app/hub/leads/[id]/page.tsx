@@ -231,6 +231,7 @@ type LeadBrief = {
   revision_context: string | null;
   technical_research: TechnicalResearch | null;
   technical_research_updated_at: string | null;
+  complexity_result: ComplexityResult | null;
   created_at: string;
   updated_at: string;
 };
@@ -1131,14 +1132,16 @@ export default function LeadDetailPage() {
         if (b.revision_context) setRevisionContext(b.revision_context);
         if (b.technical_research) setTechnicalResearch(b.technical_research as TechnicalResearch);
         if (b.technical_research_updated_at) setResearchUpdatedAt(b.technical_research_updated_at);
+        if (b.complexity_result) setComplexityResult(b.complexity_result as ComplexityResult);
 
-        // Backward compatibility: if the lead already has analysis data from a
-        // previous session, mark the atomic analysis gate as satisfied so existing
-        // fully-analysed leads render correctly without requiring a re-run.
+        // Backward compatibility: if the lead already has a full analysis pass
+        // persisted from a previous session, mark the atomic gate as satisfied
+        // so all sections render immediately without flash.
         const hasPriorAnalysis =
           (b.project_summary?.trim()?.length ?? 0) > 0 &&
           (b.project_type?.trim()?.length ?? 0) > 0 &&
-          b.technical_research !== null;
+          b.technical_research !== null &&
+          b.complexity_result !== null;
         if (hasPriorAnalysis) setAnalysisEverRun(true);
       }
     } finally {
@@ -2126,8 +2129,12 @@ export default function LeadDetailPage() {
     const hasBriefAnalysis = briefSummary.trim().length > 0 && briefType.trim().length > 0;
     const hasComplexity = complexityResult !== null && complexityResult.complexity_score > 0;
     const hasResearch = technicalResearch !== null;
-    return hasBriefAnalysis && hasComplexity && hasResearch;
-  }, [analysisEverRun, briefSummary, briefType, complexityResult, technicalResearch]);
+    const hasBuildPricing = buildPricing !== null;
+    // runningCosts can legitimately be null when research contains no parseable
+    // monthly costs — that's a data gap, not a pipeline failure. The Monthly Cost
+    // section handles this with a "Not yet computed" fallback inside the gated view.
+    return hasBriefAnalysis && hasComplexity && hasResearch && hasBuildPricing;
+  }, [analysisEverRun, briefSummary, briefType, complexityResult, technicalResearch, buildPricing]);
 
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
@@ -2304,6 +2311,13 @@ export default function LeadDetailPage() {
     }
 
     setComplexityResult(result.data);
+
+    // Persist to DB so page reload doesn't flash (eliminates auto-run delay).
+    safeFetch(`/api/hub/leads/${id}/brief`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ complexity_result: result.data }),
+    });
   }, [id, mergedClientContext]);
 
   // ── Auto-run Complexity when upstream structured outputs change ─────────────
@@ -2641,12 +2655,35 @@ export default function LeadDetailPage() {
 
   // ── Add iteration and refresh analysis ────────────────────────────────────
 
+  async function addIteration() {
+    const notes = iterNotes.trim();
+    if (!notes || notes.length < 5) return;
+    setIterSaving(true);
+
+    const result = await safeFetch<{ iteration: LeadIteration }>(`/api/hub/leads/${id}/iterations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_type: iterSourceType,
+        source_date: iterSourceDate || null,
+        notes,
+      }),
+    });
+
+    if (result.ok) {
+      setIterations(prev => [...prev, result.data.iteration]);
+      setIterNotes("");
+      setIterSourceDate("");
+    }
+
+    setIterSaving(false);
+  }
+
   async function addIterationAndRefresh() {
     const notes = iterNotes.trim();
     if (!notes || notes.length < 5) return;
     setIterSaving(true);
 
-    // 1. Save iteration entry
     const result = await safeFetch<{ iteration: LeadIteration }>(`/api/hub/leads/${id}/iterations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2662,7 +2699,8 @@ export default function LeadDetailPage() {
       setIterNotes("");
       setIterSourceDate("");
 
-      // 2. Recompute full pipeline with new context
+      // Only recompute the full pipeline if analysis has been run before.
+      // This prevents "Add Information" from being a back-door analysis trigger.
       await runUnifiedAnalysis(notes);
     }
 
@@ -4370,10 +4408,12 @@ export default function LeadDetailPage() {
                 <button
                   type="button"
                   disabled={iterNotes.trim().length < 5 || iterSaving || unifiedRunning}
-                  onClick={addIterationAndRefresh}
+                  onClick={analysisPassComplete ? addIterationAndRefresh : addIteration}
                   className="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  {iterSaving ? "Saving & recomputing…" : "Add and refresh analysis"}
+                  {iterSaving
+                    ? (analysisPassComplete ? "Saving & recomputing…" : "Saving…")
+                    : (analysisPassComplete ? "Add and refresh analysis" : "Add context")}
                 </button>
               </div>
             </Section>

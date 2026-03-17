@@ -27,6 +27,11 @@ const ALLOWED_BOOL_FIELDS = [
   'scope_ready',
 ] as const;
 
+/** Fields stored as jsonb — passed through without string coercion */
+const ALLOWED_JSON_FIELDS = [
+  'complexity_result',
+] as const;
+
 /**
  * GET /api/hub/leads/[id]/brief
  *
@@ -145,6 +150,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (field in body) {
       const v = body[field];
       fields[field] = v === true ? true : v === false ? false : null;
+    }
+  }
+  for (const field of ALLOWED_JSON_FIELDS) {
+    if (field in body) {
+      // Accept any JSON-serialisable value (object, array, null)
+      fields[field] = body[field] ?? null;
     }
   }
 
