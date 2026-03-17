@@ -1926,9 +1926,9 @@ export default function LeadDetailPage() {
     }
 
     // Rationale referencing complexity signals
-    const signalNames = complexityResult.detected_signals.map(s => s.key.replace(/_/g, " ")).join(", ");
+    const signalNames = (complexityResult.detected_signals ?? []).map((s: { key: string }) => s.key.replace(/_/g, " ")).join(", ");
     const rationale = `${recommendedDays} recommended build days (midpoint of ${daysLow}–${daysHigh}) at €${OTWOONE_DAY_RATE}/day = €${recommendedPrice.toLocaleString()}. ` +
-      `Complexity ${Math.min(complexityResult.complexity_score, 100)}/100 (${complexityResult.complexity_class.replace(/_/g, " ")}). ` +
+      `Complexity ${Math.min(complexityResult.complexity_score, 100)}/100 (${(complexityResult.complexity_class ?? "unknown").replace(/_/g, " ")}). ` +
       (signalNames ? `Detected signals: ${signalNames}.` : "No complexity signals detected.");
 
     return {
@@ -2091,9 +2091,6 @@ export default function LeadDetailPage() {
       }
     }
 
-    // If still no items, return null — no monthly operating cost to show
-    if (deduped.length === 0) return null;
-
     // Round individual item costs for clean display
     for (const item of deduped) {
       item.low = roundCost(item.low);
@@ -2103,10 +2100,16 @@ export default function LeadDetailPage() {
     const totalLow = roundCost(deduped.reduce((sum, i) => sum + i.low, 0));
     const totalHigh = roundCost(deduped.reduce((sum, i) => sum + i.high, 0));
 
-    const rationale = `${deduped.length} recurring cost${deduped.length !== 1 ? "s" : ""} extracted from technical research. ` +
-      `Infrastructure/tool costs: €${totalLow.toLocaleString()}–€${totalHigh.toLocaleString()}/month. ` +
-      `OTwoOne support retainer: €${OTWOONE_SUPPORT_RETAINER}/month. ` +
-      `Total: €${(totalLow + OTWOONE_SUPPORT_RETAINER).toLocaleString()}–€${(totalHigh + OTWOONE_SUPPORT_RETAINER).toLocaleString()}/month.`;
+    // Always return a valid result when research exists — even if zero items.
+    // Zero items means "no recurring infrastructure costs identified", which is
+    // a valid analysis outcome, not a pipeline failure.
+    const rationale = deduped.length > 0
+      ? `${deduped.length} recurring cost${deduped.length !== 1 ? "s" : ""} extracted from technical research. ` +
+        `Infrastructure/tool costs: €${totalLow.toLocaleString()}–€${totalHigh.toLocaleString()}/month. ` +
+        `OTwoOne support retainer: €${OTWOONE_SUPPORT_RETAINER}/month. ` +
+        `Total: €${(totalLow + OTWOONE_SUPPORT_RETAINER).toLocaleString()}–€${(totalHigh + OTWOONE_SUPPORT_RETAINER).toLocaleString()}/month.`
+      : `No recurring infrastructure or third-party costs identified in technical research. ` +
+        `OTwoOne support retainer: €${OTWOONE_SUPPORT_RETAINER}/month.`;
 
     return {
       items: deduped,
@@ -2130,11 +2133,9 @@ export default function LeadDetailPage() {
     const hasComplexity = complexityResult !== null && complexityResult.complexity_score > 0;
     const hasResearch = technicalResearch !== null;
     const hasBuildPricing = buildPricing !== null;
-    // runningCosts can legitimately be null when research contains no parseable
-    // monthly costs — that's a data gap, not a pipeline failure. The Monthly Cost
-    // section handles this with a "Not yet computed" fallback inside the gated view.
-    return hasBriefAnalysis && hasComplexity && hasResearch && hasBuildPricing;
-  }, [analysisEverRun, briefSummary, briefType, complexityResult, technicalResearch, buildPricing]);
+    const hasRunningCosts = runningCosts !== null;
+    return hasBriefAnalysis && hasComplexity && hasResearch && hasBuildPricing && hasRunningCosts;
+  }, [analysisEverRun, briefSummary, briefType, complexityResult, technicalResearch, buildPricing, runningCosts]);
 
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
@@ -4261,7 +4262,8 @@ export default function LeadDetailPage() {
         {briefAccessible && analysisPassComplete && (
           <div>
             <Section title="Monthly Operating Cost">
-              {runningCosts ? (
+              {/* runningCosts is guaranteed non-null inside analysisPassComplete gate */}
+              {runningCosts && (
               <div className="space-y-4">
 
                 {/* ── Totals ──────────────────────────────────────────── */}
@@ -4279,8 +4281,9 @@ export default function LeadDetailPage() {
                   <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
                     <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Infrastructure / tools</p>
                     <p className="text-sm font-semibold text-gray-100">
-                      €{runningCosts.total_low.toLocaleString()}
-                      {runningCosts.total_low !== runningCosts.total_high && ` – €${runningCosts.total_high.toLocaleString()}`}
+                      {runningCosts.items.length > 0
+                        ? <>€{runningCosts.total_low.toLocaleString()}{runningCosts.total_low !== runningCosts.total_high && ` – €${runningCosts.total_high.toLocaleString()}`}</>
+                        : <span className="text-gray-500 font-normal">€0</span>}
                     </p>
                     <p className="text-[10px] text-gray-500 mt-0.5">/month</p>
                   </div>
@@ -4295,22 +4298,26 @@ export default function LeadDetailPage() {
                 <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Cost breakdown</p>
                   <div className="space-y-1.5">
-                    {runningCosts.items.map((item, idx) => (
-                      <div key={idx} className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className={cx(
-                            "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                            item.relevance === "required" && "bg-emerald-400",
-                            item.relevance === "likely" && "bg-amber-400",
-                            item.relevance === "optional" && "bg-gray-500",
-                          )} />
-                          <span className="text-gray-300 truncate">{item.name}</span>
+                    {runningCosts.items.length > 0 ? (
+                      runningCosts.items.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className={cx(
+                              "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                              item.relevance === "required" && "bg-emerald-400",
+                              item.relevance === "likely" && "bg-amber-400",
+                              item.relevance === "optional" && "bg-gray-500",
+                            )} />
+                            <span className="text-gray-300 truncate">{item.name}</span>
+                          </div>
+                          <span className="text-gray-400 ml-2 flex-shrink-0">
+                            €{item.low.toLocaleString()}{item.low !== item.high && ` – €${item.high.toLocaleString()}`}/mo
+                          </span>
                         </div>
-                        <span className="text-gray-400 ml-2 flex-shrink-0">
-                          €{item.low.toLocaleString()}{item.low !== item.high && ` – €${item.high.toLocaleString()}`}/mo
-                        </span>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <p className="text-xs text-gray-500 italic">No recurring infrastructure or third-party costs identified.</p>
+                    )}
                     <div className="flex items-center justify-between text-xs pt-1.5 border-t border-white/5">
                       <div className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0" />
@@ -4328,8 +4335,6 @@ export default function LeadDetailPage() {
                 </div>
 
               </div>
-              ) : (
-                <p className="text-xs text-gray-600 italic py-2">Not yet computed. Run the analysis pipeline to generate monthly operating cost estimates.</p>
               )}
             </Section>
           </div>
