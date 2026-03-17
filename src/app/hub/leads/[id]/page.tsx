@@ -397,10 +397,10 @@ const NEXT_ACTION: Record<LeadStatus, string> = {
   scoping_sent:      "Awaiting client details",
   scope_received:    "Prepare proposal",
   proposal_sent:     "Awaiting client decision",
-  deposit_requested: "Awaiting deposit",
-  deposit_received:  "Ready to convert",
+  deposit_requested: "Awaiting deposit payment",
+  deposit_received:  "Ready to activate deposit",
   lost_pre_deposit:  "Closed lost",
-  converted:         "Converted to project",
+  converted:         "Deposit activated",
 };
 
 const CTA_LABELS: Record<string, string> = {
@@ -3377,21 +3377,22 @@ export default function LeadDetailPage() {
             </button>
           </>
         )}
-        {status === "deposit_requested" && (
+        {(status === "deposit_requested" || status === "deposit_received") && (
           <>
-            <span className="text-xs text-yellow-400/80 italic">Awaiting deposit</span>
-            <button
-              type="button"
-              onClick={() => { saveField({ status: "deposit_received" }); setStatus("deposit_received"); }}
-              disabled={saving}
-              className="ml-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white transition-colors disabled:opacity-50"
-            >
-              {saving ? "Updating…" : "Mark Deposit Received"}
-            </button>
+            <span className="text-xs text-yellow-400/80 italic">Awaiting deposit activation</span>
+            {!isConverted && canActivateDeposit && (
+              <button
+                type="button"
+                onClick={() => setShowConvert(true)}
+                className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors"
+              >
+                Activate Deposit
+              </button>
+            )}
           </>
         )}
         {status === "converted" && (
-          <span className="text-xs text-green-400/80">Lead already converted</span>
+          <span className="text-xs text-green-400/80">Deposit activated — project created</span>
         )}
         {status === "lost_pre_deposit" && (
           <span className="text-xs text-red-400/80">Lead closed lost</span>
@@ -3411,20 +3412,6 @@ export default function LeadDetailPage() {
             >
               {saving ? "Updating…" : "Move to Proposal"}
             </button>
-          </>
-        )}
-        {(status === "deposit_requested" || status === "deposit_received") && (
-          <>
-            <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
-            {!isConverted && canActivateDeposit && (
-              <button
-                type="button"
-                onClick={() => setShowConvert(true)}
-                className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors"
-              >
-                Activate Deposit
-              </button>
-            )}
           </>
         )}
       </div>

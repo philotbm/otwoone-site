@@ -55,14 +55,49 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   if (lead.status === 'converted') {
-    return NextResponse.json({ error: 'Lead is already converted', version: OTWOONE_OS_VERSION }, { status: 409 });
+    return NextResponse.json({ error: 'Lead is already converted.', version: OTWOONE_OS_VERSION }, { status: 409 });
   }
 
-  // Gate: deposit activation requires the lead to be past proposal approval
+  // Prevent duplicate activation — check if a project already exists for this lead
+  const { data: existingProject } = await supabaseServer
+    .from('projects')
+    .select('id')
+    .eq('lead_id', id)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingProject) {
+    return NextResponse.json({ error: 'A project already exists for this lead.', version: OTWOONE_OS_VERSION }, { status: 409 });
+  }
+
+  // Gate 1: lead status must be past proposal approval
   const activatableStatuses = ['deposit_requested', 'deposit_received'];
   if (!activatableStatuses.includes(lead.status)) {
     return NextResponse.json(
       { error: `Deposit activation requires status deposit_requested or deposit_received (current: ${lead.status}).`, version: OTWOONE_OS_VERSION },
+      { status: 400 }
+    );
+  }
+
+  // Gate 2: verify actual proposal approval truth — prevents activation
+  // if lead status was manually advanced without genuine client approval
+  const { data: proposal, error: proposalErr } = await supabaseServer
+    .from('proposals')
+    .select('id, status, approved_at, approved_by_name')
+    .eq('lead_id', id)
+    .eq('is_current', true)
+    .single();
+
+  if (proposalErr || !proposal) {
+    return NextResponse.json(
+      { error: 'No current proposal found for this lead. Create and send a proposal before activating deposit.', version: OTWOONE_OS_VERSION },
+      { status: 400 }
+    );
+  }
+
+  if (!proposal.approved_at) {
+    return NextResponse.json(
+      { error: 'Proposal has not been approved by the client. Approval is required before deposit activation.', version: OTWOONE_OS_VERSION },
       { status: 400 }
     );
   }
@@ -140,12 +175,20 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   })();
 
+  // Update proposal status to deposit_received (non-blocking — best effort)
+  await supabaseServer
+    .from('proposals')
+    .update({ status: 'deposit_received', deposit_received_at: new Date().toISOString() })
+    .eq('id', proposal.id);
+
   await logProjectEvent(
     project.id,
     'project_created',
     'Project created via deposit activation',
     {
       lead_id: id,
+      proposal_id: proposal.id,
+      approved_by: proposal.approved_by_name,
       deposit_amount: deposit_amount,
       deposit_reference: deposit_reference,
     },
