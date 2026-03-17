@@ -381,7 +381,7 @@ const STATUS_OPTIONS: LeadStatus[] = [
 
 /** Operator-facing status labels (simplified business model) */
 const STATUS_LABELS: Record<LeadStatus, string> = {
-  lead_submitted:    "New",
+  lead_submitted:    "Enquiry Received",
   scoping_sent:      "In Progress",
   scope_received:    "Ready for Proposal",
   proposal_sent:     "Proposal Sent",
@@ -393,7 +393,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 /** Operator-facing next action guidance per status */
 const NEXT_ACTION: Record<LeadStatus, string> = {
-  lead_submitted:    "Send scoping / qualify lead",
+  lead_submitted:    "Run full analysis to assess this enquiry",
   scoping_sent:      "Awaiting client details",
   scope_received:    "Prepare proposal",
   proposal_sent:     "Awaiting client decision",
@@ -981,6 +981,11 @@ export default function LeadDetailPage() {
   const [unifiedRunning,      setUnifiedRunning]      = useState(false);
   const [expandedIteration,   setExpandedIteration]   = useState<string | null>(null);
 
+  // Atomic analysis gate — tracks whether the operator has explicitly run analysis
+  // (or whether the lead already has analysis data from a previous session).
+  // All analysis-derived sections are gated behind this flag.
+  const [analysisEverRun, setAnalysisEverRun] = useState(false);
+
   // Workflow state
   const [overrideScopeWarning, setOverrideScopeWarning] = useState(false);
   const [contactStrategy,      setContactStrategy]      = useState<"bookings" | "teams" | "phone" | null>(null);
@@ -1126,6 +1131,15 @@ export default function LeadDetailPage() {
         if (b.revision_context) setRevisionContext(b.revision_context);
         if (b.technical_research) setTechnicalResearch(b.technical_research as TechnicalResearch);
         if (b.technical_research_updated_at) setResearchUpdatedAt(b.technical_research_updated_at);
+
+        // Backward compatibility: if the lead already has analysis data from a
+        // previous session, mark the atomic analysis gate as satisfied so existing
+        // fully-analysed leads render correctly without requiring a re-run.
+        const hasPriorAnalysis =
+          (b.project_summary?.trim()?.length ?? 0) > 0 &&
+          (b.project_type?.trim()?.length ?? 0) > 0 &&
+          b.technical_research !== null;
+        if (hasPriorAnalysis) setAnalysisEverRun(true);
       }
     } finally {
       setBriefLoading(false);
@@ -2102,6 +2116,19 @@ export default function LeadDetailPage() {
     };
   }, [technicalResearch]);
 
+  // ── Atomic Analysis Gate ─────────────────────────────────────────────────────
+  // All analysis-derived outputs must be present together or none are shown.
+  // This prevents showing isolated fragments (e.g. complexity without costs).
+  // The flag is true when: (a) operator has explicitly run analysis AND the full
+  // chain completed, OR (b) the lead already has prior analysis data on load.
+  const analysisPassComplete = useMemo(() => {
+    if (!analysisEverRun) return false;
+    const hasBriefAnalysis = briefSummary.trim().length > 0 && briefType.trim().length > 0;
+    const hasComplexity = complexityResult !== null && complexityResult.complexity_score > 0;
+    const hasResearch = technicalResearch !== null;
+    return hasBriefAnalysis && hasComplexity && hasResearch;
+  }, [analysisEverRun, briefSummary, briefType, complexityResult, technicalResearch]);
+
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
   async function saveBrief() {
@@ -2313,6 +2340,10 @@ export default function LeadDetailPage() {
     if (complexityLoading) return;
     // Suppress during unified recompute — applyRevision() runs complexity explicitly
     if (revisionApplying) return;
+    // Atomic analysis gate: never auto-run complexity unless operator has
+    // explicitly triggered analysis at least once. This prevents isolated
+    // complexity fragments appearing before a full analysis pass.
+    if (!analysisEverRun) return;
     // Need at least brief summary or research to produce meaningful scores
     if (!briefSummary.trim() && !researchUpdatedAt) return;
 
@@ -2322,7 +2353,7 @@ export default function LeadDetailPage() {
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [complexityFingerprint, complexityAutoReady, briefAccessible, revisionApplying]);
+  }, [complexityFingerprint, complexityAutoReady, briefAccessible, revisionApplying, analysisEverRun]);
 
   // ── Unified recompute: Apply revised information ────────────────────────────
   // Persists revision_context, then re-runs the full downstream chain in sequence:
@@ -2488,6 +2519,7 @@ export default function LeadDetailPage() {
 
   async function runUnifiedAnalysis(extraContext?: string) {
     setUnifiedRunning(true);
+    setAnalysisEverRun(true);
 
     // Build full context including iterations
     const iterationText = iterations.length > 0
@@ -3560,21 +3592,23 @@ export default function LeadDetailPage() {
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mr-2">Workflow</span>
                 {(() => {
-                  const analysisDone = briefSummary.trim().length > 0 && briefType.trim().length > 0;
-                  const complexityDone = complexityResult !== null && complexityResult.complexity_score > 0;
-                  const buildPricingDone = buildPricing !== null;
-                  const runningCostsDone = runningCosts !== null;
+                  // Atomic analysis gate: show "Full Analysis" as a single step
+                  // rather than individual fragments. Only show sub-steps once
+                  // analysis has been explicitly run.
                   const scopeReadyDone = scopeReady !== null;
                   const proposalDone = briefProposal.trim().length > 0;
 
-                  const steps = [
-                    { label: "Analysis", done: analysisDone },
-                    { label: "Complexity", done: complexityDone },
-                    { label: "Build Pricing", done: buildPricingDone },
-                    { label: "Monthly Cost", done: runningCostsDone },
-                    { label: "Scope Readiness", done: scopeReadyDone },
-                    { label: "Proposal", done: proposalDone },
-                  ];
+                  const steps = analysisPassComplete
+                    ? [
+                        { label: "Full Analysis", done: true },
+                        { label: "Scope Readiness", done: scopeReadyDone },
+                        { label: "Proposal", done: proposalDone },
+                      ]
+                    : [
+                        { label: "Full Analysis", done: false },
+                        { label: "Scope Readiness", done: scopeReadyDone },
+                        { label: "Proposal", done: proposalDone },
+                      ];
 
                   return steps.map((s, i) => (
                     <div key={i} className="flex items-center gap-1">
@@ -3602,10 +3636,7 @@ export default function LeadDetailPage() {
           const checks = [
             { label: "Client intake",     ok: !!(lead?.lead_details?.success_definition?.trim()),    tip: "Client request / success definition submitted" },
             { label: "Scope clarity",     ok: !!(briefReply.trim() || rounds.some(r => r.status === "replied" || r.status === "closed")),  tip: "Scoping reply or clarification round answered" },
-            { label: "System analysis",   ok: briefSummary.trim().length > 15 && briefSolution.trim().length > 15,   tip: "Brief summary and recommended solution populated" },
-            { label: "Technical research",ok: !!technicalResearch,             tip: "Technical research completed" },
-            { label: "Build pricing",     ok: !!buildPricing,                  tip: "Complexity scored and pricing computed" },
-            { label: "Running costs",     ok: !!runningCosts,                  tip: "Monthly operating costs estimated" },
+            { label: "Full analysis",     ok: analysisPassComplete,            tip: "System analysis, complexity, build pricing, and running costs computed atomically" },
             { label: "Scope readiness",   ok: scopeReady === true || (scopeReady === false && overrideScopeWarning), tip: "Scope marked ready or override applied" },
           ];
           const doneCount = checks.filter(c => c.ok).length;
@@ -3644,15 +3675,30 @@ export default function LeadDetailPage() {
         })()}
 
         {/* ════════════════════════════════════════════════════════════════
-            ANALYSIS ACTION — single-button pipeline trigger
+            ANALYSIS ACTION — single-button pipeline trigger (atomic gate)
+            Pre-analysis: prominent CTA as the only entry point.
+            Post-analysis: compact refresh button.
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && (
           <div>
-            <div className="px-5 py-4 rounded-xl border border-white/[0.06] bg-[#12131a]">
+            <div className={cx(
+              "px-5 rounded-xl border",
+              analysisPassComplete
+                ? "py-4 border-white/[0.06] bg-[#12131a]"
+                : "py-6 border-emerald-500/20 bg-emerald-500/[0.03]",
+            )}>
+              {!analysisPassComplete && !unifiedRunning && (
+                <div className="mb-4">
+                  <p className="text-sm font-semibold text-gray-200 mb-1">Enquiry Received</p>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    This lead is in the enquiry stage. Run a full analysis to generate system analysis, technical research, complexity scoring, build pricing, and monthly operating costs in a single atomic pass.
+                  </p>
+                </div>
+              )}
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                   <p className="text-xs font-semibold text-gray-300 mb-0.5">
-                    {briefSummary.trim() ? "Analysis complete" : "Ready to analyse"}
+                    {analysisPassComplete ? "Analysis complete" : unifiedRunning ? "Analysis running…" : "Ready to analyse"}
                   </p>
                   <p className="text-[10px] text-gray-500">
                     Runs system analysis, technical research, complexity, pricing, and monthly costs in one pass.
@@ -3662,9 +3708,14 @@ export default function LeadDetailPage() {
                   type="button"
                   disabled={(!mergedClientContext.trim()) || unifiedRunning || autofillLoading || researchLoading}
                   onClick={() => runUnifiedAnalysis()}
-                  className="px-5 py-2.5 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className={cx(
+                    "rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+                    analysisPassComplete
+                      ? "px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500"
+                      : "px-7 py-3 bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-500/20",
+                  )}
                 >
-                  {unifiedRunning ? "Running full pipeline…" : briefSummary.trim() ? "Refresh analysis" : "Run analysis"}
+                  {unifiedRunning ? "Running full pipeline…" : analysisPassComplete ? "Refresh analysis" : "Run Full Analysis"}
                 </button>
               </div>
               {unifiedRunning && (
@@ -3684,8 +3735,9 @@ export default function LeadDetailPage() {
 
         {/* ════════════════════════════════════════════════════════════════
             SYSTEM ANALYSIS — merged context analysis + structured brief
+            Gated behind atomic analysis pass — never shown in isolation.
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && (
+        {briefAccessible && analysisPassComplete && (
           <div>
             <Section title="System Analysis">
               <p className="text-xs text-gray-600 -mt-1 mb-3">
@@ -3870,8 +3922,9 @@ export default function LeadDetailPage() {
 
         {/* ════════════════════════════════════════════════════════════════
             TECHNICAL RESEARCH — stack due-diligence from Research Agent
+            Gated behind atomic analysis pass — never shown in isolation.
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && (
+        {briefAccessible && analysisPassComplete && (
           <div>
             <Section title="Technical Research">
               {technicalResearch ? (
@@ -3969,8 +4022,9 @@ export default function LeadDetailPage() {
 
         {/* ════════════════════════════════════════════════════════════════
             COMPLEXITY ENGINE — 0–100 scoring from upstream workflow outputs
+            Gated behind atomic analysis pass — never shown in isolation.
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && complexityResult && (
+        {briefAccessible && analysisPassComplete && complexityResult && (
           <div>
             <Section title="Complexity Engine">
               <div className="space-y-4">
@@ -4056,8 +4110,9 @@ export default function LeadDetailPage() {
 
         {/* ════════════════════════════════════════════════════════════════
             BUILD PRICING — deterministic price from complexity engine output
+            Gated behind atomic analysis pass — never shown in isolation.
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && buildPricing && (
+        {briefAccessible && analysisPassComplete && buildPricing && (
           <div>
             <Section title="Build Pricing">
               <div className="space-y-4">
@@ -4163,8 +4218,9 @@ export default function LeadDetailPage() {
 
         {/* ════════════════════════════════════════════════════════════════
             MONTHLY OPERATING COST — recurring infrastructure + support retainer
+            Gated behind atomic analysis pass — never shown in isolation.
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && (
+        {briefAccessible && analysisPassComplete && (
           <div>
             <Section title="Monthly Operating Cost">
               {runningCosts ? (
