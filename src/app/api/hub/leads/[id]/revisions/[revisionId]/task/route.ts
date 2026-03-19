@@ -78,7 +78,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Context
   lines.push('## Context');
-  const company = lead.company || lead.lead_details?.company || 'Unknown';
+  const company = lead.company_name || lead.company || lead.lead_details?.company || 'Unknown';
   const contact = lead.contact_name || lead.lead_details?.contact_name || '';
   lines.push(`**Client:** ${company}${contact ? ` (${contact})` : ''}`);
 
