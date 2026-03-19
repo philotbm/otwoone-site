@@ -1017,6 +1017,9 @@ export default function LeadDetailPage() {
   const [leadRevGenerating,      setLeadRevGenerating]      = useState(false);
   const [leadRevError,           setLeadRevError]           = useState("");
   const [expandedBriefs,         setExpandedBriefs]         = useState<Set<string>>(new Set());
+  const [taskPrompt,             setTaskPrompt]             = useState<string | null>(null);
+  const [taskGenerating,         setTaskGenerating]         = useState(false);
+  const [taskCopied,             setTaskCopied]             = useState(false);
 
   // Atomic analysis gate — tracks whether the operator has explicitly run analysis
   // (or whether the lead already has analysis data from a previous session).
@@ -2605,6 +2608,23 @@ export default function LeadDetailPage() {
     );
     if (result.ok) {
       setLeadRevisions(prev => prev.map(r => r.id === revisionId ? result.data.revision : r));
+    }
+  }
+
+  async function generateExecutionTask(revisionId: string, batchIndex: number) {
+    setTaskGenerating(true);
+    setTaskCopied(false);
+    const result = await safeFetch<{ prompt: string }>(
+      `/api/hub/leads/${id}/revisions/${revisionId}/task`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batch_index: batchIndex }),
+      },
+    );
+    setTaskGenerating(false);
+    if (result.ok) {
+      setTaskPrompt(result.data.prompt);
     }
   }
 
@@ -4955,18 +4975,27 @@ export default function LeadDetailPage() {
                         const hasContent = !!(batch.objective || batch.implementation_notes || (batch.open_questions?.length) || (batch.acceptance_criteria?.length));
                         return (
                           <div className="mt-2 pt-2 border-t border-white/5">
-                            <button
-                              onClick={() => setExpandedBriefs(prev => {
-                                const next = new Set(prev);
-                                if (next.has(briefKey)) next.delete(briefKey); else next.add(briefKey);
-                                return next;
-                              })}
-                              className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-gray-500 hover:text-gray-300 transition-colors"
-                            >
-                              <span className="text-[8px]">{isExpanded ? "▼" : "▶"}</span>
-                              Execution Brief
-                              {hasContent && <span className="w-1.5 h-1.5 rounded-full bg-blue-500/60" />}
-                            </button>
+                            <div className="flex items-center justify-between">
+                              <button
+                                onClick={() => setExpandedBriefs(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(briefKey)) next.delete(briefKey); else next.add(briefKey);
+                                  return next;
+                                })}
+                                className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-gray-500 hover:text-gray-300 transition-colors"
+                              >
+                                <span className="text-[8px]">{isExpanded ? "▼" : "▶"}</span>
+                                Execution Brief
+                                {hasContent && <span className="w-1.5 h-1.5 rounded-full bg-blue-500/60" />}
+                              </button>
+                              <button
+                                onClick={() => generateExecutionTask(rev.id, bi)}
+                                disabled={taskGenerating}
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
+                              >
+                                {taskGenerating ? "Generating…" : "⚡ Generate Task"}
+                              </button>
+                            </div>
                             {isExpanded && (
                               <div className="mt-3 space-y-3">
                                 {/* Objective */}
@@ -5040,6 +5069,31 @@ export default function LeadDetailPage() {
             </div>
           )}
         </Section>
+
+        {/* Execution Task modal */}
+        {taskPrompt !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setTaskPrompt(null)}>
+            <div className="relative w-full max-w-3xl max-h-[80vh] mx-4 rounded-xl border border-white/10 bg-[#12131a] shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
+                <h3 className="text-sm font-medium text-gray-200">Claude Code Execution Task</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(taskPrompt);
+                      setTaskCopied(true);
+                      setTimeout(() => setTaskCopied(false), 2000);
+                    }}
+                    className="px-3 py-1 rounded text-xs font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+                  >
+                    {taskCopied ? "✓ Copied" : "Copy to clipboard"}
+                  </button>
+                  <button onClick={() => setTaskPrompt(null)} className="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
+                </div>
+              </div>
+              <pre className="flex-1 overflow-auto px-5 py-4 text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">{taskPrompt}</pre>
+            </div>
+          </div>
+        )}
 
         {/* Internal notes (full width, collapsed by default) */}
         <div>
