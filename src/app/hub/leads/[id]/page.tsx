@@ -2561,7 +2561,34 @@ export default function LeadDetailPage() {
       setResearchUpdatedAt(researchResult.data.updated_at);
     }
 
-    // 2. Run consultant brief analysis (autofill)
+    // 2. Run complexity (reads research from DB — must run before autofill so
+    //    the consultant brief has complexity signals on the very first run)
+    setComplexityLoading(true);
+    setComplexityError("");
+    const complexityFetchResult = await safeFetch<ComplexityResult>(
+      `/api/hub/leads/${id}/brief/complexity`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ merged_context: contextWithIterations }),
+      },
+    );
+    setComplexityLoading(false);
+    let freshComplexity: ComplexityResult | null = null;
+    if (complexityFetchResult.ok) {
+      freshComplexity = complexityFetchResult.data;
+      setComplexityResult(freshComplexity);
+      // Persist to DB so page reload doesn't flash
+      safeFetch(`/api/hub/leads/${id}/brief`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ complexity_result: freshComplexity }),
+      });
+    } else {
+      setComplexityError(complexityFetchResult.error);
+    }
+
+    // 3. Run consultant brief analysis (autofill) — now has complexity signals
     setAutofillLoading(true);
     setAutofillError("");
     const autofillBody: Record<string, unknown> = {
@@ -2579,15 +2606,18 @@ export default function LeadDetailPage() {
         isCustomSplit: pricingRecommendation.isCustomSplit,
       };
     }
-    if (complexityResult && complexityResult.complexity_score > 0) {
+    // Use freshly computed complexity (not stale React state) so the
+    // autofill always receives complexity signals — even on the first run
+    const cxForAutofill = freshComplexity ?? complexityResult;
+    if (cxForAutofill && cxForAutofill.complexity_score > 0) {
       autofillBody.complexity_signals = {
-        complexity_score: complexityResult.complexity_score,
-        complexity_class: complexityResult.complexity_class,
-        detected_signals: complexityResult.detected_signals,
-        build_components: complexityResult.build_components,
-        estimated_days_low: complexityResult.estimated_days_low,
-        estimated_days_high: complexityResult.estimated_days_high,
-        complexity_rationale: complexityResult.complexity_rationale,
+        complexity_score: cxForAutofill.complexity_score,
+        complexity_class: cxForAutofill.complexity_class,
+        detected_signals: cxForAutofill.detected_signals,
+        build_components: cxForAutofill.build_components,
+        estimated_days_low: cxForAutofill.estimated_days_low,
+        estimated_days_high: cxForAutofill.estimated_days_high,
+        complexity_rationale: cxForAutofill.complexity_rationale,
       };
     }
     const autofillResult = await safeFetch<{
@@ -2627,7 +2657,7 @@ export default function LeadDetailPage() {
       setScopeReady(ready);
       setReadinessReason(readiness_reason);
 
-      // Persist to DB so complexity reads fresh data
+      // Persist brief to DB
       await safeFetch(`/api/hub/leads/${id}/brief`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -2647,9 +2677,6 @@ export default function LeadDetailPage() {
         }),
       });
     }
-
-    // 3. Run complexity (reads final DB state)
-    await runComplexity();
 
     setUnifiedRunning(false);
   }
@@ -3760,10 +3787,10 @@ export default function LeadDetailPage() {
               {unifiedRunning && (
                 <div className="mt-3 flex items-center gap-2">
                   <div className="h-1 flex-1 bg-white/5 rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-500/60 rounded-full animate-pulse" style={{ width: researchLoading ? "30%" : autofillLoading ? "60%" : complexityLoading ? "85%" : "100%" }} />
+                    <div className="h-full bg-emerald-500/60 rounded-full animate-pulse" style={{ width: researchLoading ? "25%" : complexityLoading ? "50%" : autofillLoading ? "75%" : "100%" }} />
                   </div>
                   <span className="text-[10px] text-gray-500">
-                    {researchLoading ? "Technical research…" : autofillLoading ? "System analysis…" : complexityLoading ? "Complexity scoring…" : "Computing pricing…"}
+                    {researchLoading ? "Technical research…" : complexityLoading ? "Complexity scoring…" : autofillLoading ? "System analysis…" : "Computing pricing…"}
                   </span>
                 </div>
               )}
