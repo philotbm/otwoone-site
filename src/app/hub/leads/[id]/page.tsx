@@ -306,6 +306,9 @@ type LeadRevisionBatchItem = {
 type LeadRevisionBatch = {
   title: string;
   priority: 'high' | 'medium' | 'low';
+  effort?: 'small' | 'medium' | 'large';
+  status?: 'pending' | 'ready' | 'in_progress' | 'complete';
+  operator_note?: string;
   items: LeadRevisionBatchItem[];
 };
 
@@ -2586,6 +2589,20 @@ export default function LeadDetailPage() {
     }
   }
 
+  async function updateBatchTriage(revisionId: string, batchIndex: number, updates: { priority?: string; effort?: string; status?: string; operator_note?: string }) {
+    const result = await safeFetch<{ revision: LeadRevisionRecord }>(
+      `/api/hub/leads/${id}/revisions/${revisionId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batch_index: batchIndex, ...updates }),
+      },
+    );
+    if (result.ok) {
+      setLeadRevisions(prev => prev.map(r => r.id === revisionId ? result.data.revision : r));
+    }
+  }
+
   // ── Unified Analysis Pipeline ─────────────────────────────────────────────
   // Single-action pipeline: research → analysis (autofill) → complexity
   // Build pricing + monthly running costs cascade automatically via useMemo.
@@ -4834,19 +4851,66 @@ export default function LeadDetailPage() {
                   <p className="text-[10px] text-gray-600">
                     Generated {new Date(rev.created_at).toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric" })}, {new Date(rev.created_at).toLocaleTimeString("en-IE", { hour: "2-digit", minute: "2-digit" })}
                   </p>
-                  {rev.structured_output.batches.map((batch, bi) => (
-                    <div key={bi} className="rounded-lg border border-white/[0.06] bg-[#0e0f14] p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-medium text-gray-200">{batch.title}</span>
-                        <span className={cx(
-                          "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
-                          batch.priority === "high" ? "bg-red-500/15 text-red-400" :
-                          batch.priority === "medium" ? "bg-amber-500/15 text-amber-400" :
-                          "bg-gray-500/15 text-gray-400"
-                        )}>
-                          {batch.priority}
-                        </span>
+                  {rev.structured_output.batches.map((batch, bi) => {
+                    const batchStatus = batch.status ?? "pending";
+                    const batchEffort = batch.effort ?? "medium";
+                    return (
+                    <div key={bi} className={cx(
+                      "rounded-lg border bg-[#0e0f14] p-4",
+                      batchStatus === "complete" ? "border-green-500/20" : "border-white/[0.06]"
+                    )}>
+                      {/* Batch header: title + badges */}
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <span className={cx("text-sm font-medium", batchStatus === "complete" ? "text-gray-500 line-through" : "text-gray-200")}>{batch.title}</span>
+                        {/* Priority selector */}
+                        <select
+                          value={batch.priority}
+                          onChange={(e) => updateBatchTriage(rev.id, bi, { priority: e.target.value })}
+                          className={cx(
+                            "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide border-0 cursor-pointer appearance-none",
+                            batch.priority === "high" ? "bg-red-500/15 text-red-400" :
+                            batch.priority === "medium" ? "bg-amber-500/15 text-amber-400" :
+                            "bg-gray-500/15 text-gray-400"
+                          )}
+                        >
+                          <option value="high">high</option>
+                          <option value="medium">medium</option>
+                          <option value="low">low</option>
+                        </select>
+                        {/* Effort selector */}
+                        <select
+                          value={batchEffort}
+                          onChange={(e) => updateBatchTriage(rev.id, bi, { effort: e.target.value })}
+                          className={cx(
+                            "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide border-0 cursor-pointer appearance-none",
+                            batchEffort === "large" ? "bg-orange-500/15 text-orange-400" :
+                            batchEffort === "small" ? "bg-teal-500/15 text-teal-400" :
+                            "bg-violet-500/15 text-violet-400"
+                          )}
+                        >
+                          <option value="small">small</option>
+                          <option value="medium">medium</option>
+                          <option value="large">large</option>
+                        </select>
+                        {/* Status selector */}
+                        <select
+                          value={batchStatus}
+                          onChange={(e) => updateBatchTriage(rev.id, bi, { status: e.target.value })}
+                          className={cx(
+                            "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide border-0 cursor-pointer appearance-none",
+                            batchStatus === "complete" ? "bg-green-500/15 text-green-400" :
+                            batchStatus === "in_progress" ? "bg-amber-500/15 text-amber-400" :
+                            batchStatus === "ready" ? "bg-blue-500/15 text-blue-400" :
+                            "bg-gray-500/15 text-gray-500"
+                          )}
+                        >
+                          <option value="pending">pending</option>
+                          <option value="ready">ready</option>
+                          <option value="in_progress">in progress</option>
+                          <option value="complete">complete</option>
+                        </select>
                       </div>
+                      {/* Items */}
                       <ul className="space-y-1.5">
                         {batch.items.map((item, ii) => (
                           <li key={ii} className="flex items-start gap-2 text-xs text-gray-400">
@@ -4864,8 +4928,24 @@ export default function LeadDetailPage() {
                           </li>
                         ))}
                       </ul>
+                      {/* Operator note — saves on blur to avoid excessive API calls */}
+                      <div className="mt-3 pt-2 border-t border-white/5">
+                        <input
+                          type="text"
+                          defaultValue={batch.operator_note ?? ""}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (val !== (batch.operator_note ?? "")) {
+                              updateBatchTriage(rev.id, bi, { operator_note: val });
+                            }
+                          }}
+                          placeholder="Operator note…"
+                          className="w-full bg-transparent text-xs text-gray-400 placeholder:text-gray-700 focus:outline-none focus:text-gray-300"
+                        />
+                      </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ))}
             </div>

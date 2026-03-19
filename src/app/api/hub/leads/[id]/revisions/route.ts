@@ -14,6 +14,9 @@ type RevisionItem = {
 type RevisionBatch = {
   title: string;
   priority: 'high' | 'medium' | 'low';
+  effort: 'small' | 'medium' | 'large';
+  status: 'pending' | 'ready' | 'in_progress' | 'complete';
+  operator_note: string;
   items: RevisionItem[];
 };
 
@@ -125,6 +128,21 @@ function validateOutput(data: StructuredOutput): string | null {
   return null;
 }
 
+/**
+ * Inject default triage metadata onto each batch after AI generation.
+ * AI only produces title, priority, and items — we add effort, status, operator_note.
+ */
+function injectTriageDefaults(structured: StructuredOutput): StructuredOutput {
+  return {
+    batches: structured.batches.map((batch) => ({
+      ...batch,
+      effort: batch.effort ?? 'medium',
+      status: batch.status ?? 'pending',
+      operator_note: batch.operator_note ?? '',
+    })),
+  };
+}
+
 // ── GET: retrieve revisions for a lead ───────────────────────────────────────
 
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -195,7 +213,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     let structured: StructuredOutput;
     try {
       structured = extractJSON(rawText);
-    } catch (parseErr) {
+    } catch {
       console.error('[revisions] Failed to parse AI response:', rawText.slice(0, 500));
       return NextResponse.json(
         { error: 'Failed to parse AI response. Please try again.' },
@@ -206,12 +224,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     const validationError = validateOutput(structured);
     if (validationError) {
       console.error('[revisions] Validation failed:', validationError);
-      console.error('[revisions] Raw output:', JSON.stringify(structured).slice(0, 500));
       return NextResponse.json(
         { error: `AI output validation failed: ${validationError}. Please try again.` },
         { status: 502 },
       );
     }
+
+    // Inject default triage metadata
+    structured = injectTriageDefaults(structured);
 
     // Persist
     const { data: revision, error: insertErr } = await supabaseServer
@@ -231,8 +251,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ revision });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'AI request failed.';
-    console.error('[revisions] AI error:', message);
-    return NextResponse.json({ error: message }, { status: 502 });
+    const msg = err instanceof Error ? err.message : 'AI request failed.';
+    console.error('[revisions] AI error:', msg);
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 }
