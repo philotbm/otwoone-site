@@ -17,6 +17,10 @@ type RevisionBatch = {
   effort: 'small' | 'medium' | 'large';
   status: 'pending' | 'ready' | 'in_progress' | 'complete';
   operator_note: string;
+  objective: string;
+  implementation_notes: string;
+  open_questions: string[];
+  acceptance_criteria: string[];
   items: RevisionItem[];
 };
 
@@ -34,6 +38,7 @@ You will receive client feedback text — this may be from an email, a call summ
 2. Group them into logical batches (by theme, page, or concern — NOT one batch per item)
 3. Assign a priority to each batch (high = blocking or critical, medium = important, low = nice-to-have)
 4. Classify each item by type
+5. Write an execution brief for each batch
 
 RULES:
 - Be specific and actionable — each item should be clear enough for a developer to act on
@@ -45,6 +50,14 @@ RULES:
 - Group intelligently: a batch should have 2–6 items where possible
 - Prefer fewer, well-grouped batches over many single-item batches
 
+EXECUTION BRIEF RULES:
+- objective: one sentence explaining the intended outcome in plain English
+- implementation_notes: practical, concise notes an operator or developer would find useful — avoid generic advice
+- open_questions: only include real uncertainties that genuinely need answering before work starts — leave empty if none
+- acceptance_criteria: simple, observable checks that confirm the batch is done — 2–4 items max
+- Do NOT invent technical specifics that aren't implied by the feedback
+- Keep everything commercially and operationally useful
+
 Respond with valid JSON only. No markdown, no code fences, no explanation.
 
 JSON schema:
@@ -53,6 +66,10 @@ JSON schema:
     {
       "title": "short descriptive batch title",
       "priority": "high | medium | low",
+      "objective": "one-sentence intended outcome",
+      "implementation_notes": "practical notes for the implementer",
+      "open_questions": ["genuine uncertainty that needs answering"],
+      "acceptance_criteria": ["observable check that confirms completion"],
       "items": [
         {
           "description": "clear, actionable revision description",
@@ -129,16 +146,21 @@ function validateOutput(data: StructuredOutput): string | null {
 }
 
 /**
- * Inject default triage metadata onto each batch after AI generation.
- * AI only produces title, priority, and items — we add effort, status, operator_note.
+ * Inject default triage + execution brief metadata onto each batch after AI generation.
+ * AI produces title, priority, items, objective, implementation_notes, open_questions, acceptance_criteria.
+ * We ensure triage defaults (effort, status, operator_note) and execution brief defaults are present.
  */
-function injectTriageDefaults(structured: StructuredOutput): StructuredOutput {
+function injectDefaults(structured: StructuredOutput): StructuredOutput {
   return {
     batches: structured.batches.map((batch) => ({
       ...batch,
       effort: batch.effort ?? 'medium',
       status: batch.status ?? 'pending',
       operator_note: batch.operator_note ?? '',
+      objective: batch.objective ?? '',
+      implementation_notes: batch.implementation_notes ?? '',
+      open_questions: Array.isArray(batch.open_questions) ? batch.open_questions : [],
+      acceptance_criteria: Array.isArray(batch.acceptance_criteria) ? batch.acceptance_criteria : [],
     })),
   };
 }
@@ -200,7 +222,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: rawFeedback }],
     });
@@ -230,8 +252,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
 
-    // Inject default triage metadata
-    structured = injectTriageDefaults(structured);
+    // Inject default triage + execution brief metadata
+    structured = injectDefaults(structured);
 
     // Persist
     const { data: revision, error: insertErr } = await supabaseServer

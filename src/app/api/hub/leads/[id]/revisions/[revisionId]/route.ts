@@ -13,20 +13,20 @@ type BatchUpdate = {
   effort?: string;
   status?: string;
   operator_note?: string;
+  objective?: string;
+  implementation_notes?: string;
+  open_questions?: string[];
+  acceptance_criteria?: string[];
 };
+
+function isStringArray(val: unknown): val is string[] {
+  return Array.isArray(val) && val.every((v) => typeof v === 'string');
+}
 
 /**
  * PATCH /api/hub/leads/[id]/revisions/[revisionId]
  *
- * Updates triage metadata on a single batch within a revision's structured_output.
- *
- * Body: {
- *   batch_index: number,
- *   priority?: "high" | "medium" | "low",
- *   effort?: "small" | "medium" | "large",
- *   status?: "pending" | "ready" | "in_progress" | "complete",
- *   operator_note?: string
- * }
+ * Updates triage + execution brief metadata on a single batch.
  */
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id, revisionId } = await params;
@@ -52,8 +52,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.status !== undefined && !VALID_STATUSES.has(body.status)) {
     return NextResponse.json({ error: `Invalid status: "${body.status}"` }, { status: 400 });
   }
+  // Validate strings
   if (body.operator_note !== undefined && typeof body.operator_note !== 'string') {
     return NextResponse.json({ error: 'operator_note must be a string.' }, { status: 400 });
+  }
+  if (body.objective !== undefined && typeof body.objective !== 'string') {
+    return NextResponse.json({ error: 'objective must be a string.' }, { status: 400 });
+  }
+  if (body.implementation_notes !== undefined && typeof body.implementation_notes !== 'string') {
+    return NextResponse.json({ error: 'implementation_notes must be a string.' }, { status: 400 });
+  }
+  // Validate arrays
+  if (body.open_questions !== undefined && !isStringArray(body.open_questions)) {
+    return NextResponse.json({ error: 'open_questions must be an array of strings.' }, { status: 400 });
+  }
+  if (body.acceptance_criteria !== undefined && !isStringArray(body.acceptance_criteria)) {
+    return NextResponse.json({ error: 'acceptance_criteria must be an array of strings.' }, { status: 400 });
   }
 
   // Load current revision
@@ -79,6 +93,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.effort !== undefined) batch.effort = body.effort;
   if (body.status !== undefined) batch.status = body.status;
   if (body.operator_note !== undefined) batch.operator_note = body.operator_note;
+  if (body.objective !== undefined) batch.objective = body.objective;
+  if (body.implementation_notes !== undefined) batch.implementation_notes = body.implementation_notes;
+  if (body.open_questions !== undefined) batch.open_questions = body.open_questions;
+  if (body.acceptance_criteria !== undefined) batch.acceptance_criteria = body.acceptance_criteria;
 
   // Persist
   const { data: updated, error: updateErr } = await supabaseServer

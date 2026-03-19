@@ -309,6 +309,10 @@ type LeadRevisionBatch = {
   effort?: 'small' | 'medium' | 'large';
   status?: 'pending' | 'ready' | 'in_progress' | 'complete';
   operator_note?: string;
+  objective?: string;
+  implementation_notes?: string;
+  open_questions?: string[];
+  acceptance_criteria?: string[];
   items: LeadRevisionBatchItem[];
 };
 
@@ -1012,6 +1016,7 @@ export default function LeadDetailPage() {
   const [leadRevFeedback,        setLeadRevFeedback]        = useState("");
   const [leadRevGenerating,      setLeadRevGenerating]      = useState(false);
   const [leadRevError,           setLeadRevError]           = useState("");
+  const [expandedBriefs,         setExpandedBriefs]         = useState<Set<string>>(new Set());
 
   // Atomic analysis gate — tracks whether the operator has explicitly run analysis
   // (or whether the lead already has analysis data from a previous session).
@@ -2589,7 +2594,7 @@ export default function LeadDetailPage() {
     }
   }
 
-  async function updateBatchTriage(revisionId: string, batchIndex: number, updates: { priority?: string; effort?: string; status?: string; operator_note?: string }) {
+  async function updateBatchTriage(revisionId: string, batchIndex: number, updates: { priority?: string; effort?: string; status?: string; operator_note?: string; objective?: string; implementation_notes?: string; open_questions?: string[]; acceptance_criteria?: string[] }) {
     const result = await safeFetch<{ revision: LeadRevisionRecord }>(
       `/api/hub/leads/${id}/revisions/${revisionId}`,
       {
@@ -4943,6 +4948,90 @@ export default function LeadDetailPage() {
                           className="w-full bg-transparent text-xs text-gray-400 placeholder:text-gray-700 focus:outline-none focus:text-gray-300"
                         />
                       </div>
+                      {/* Execution Brief — expandable per batch */}
+                      {(() => {
+                        const briefKey = `${rev.id}-${bi}`;
+                        const isExpanded = expandedBriefs.has(briefKey);
+                        const hasContent = !!(batch.objective || batch.implementation_notes || (batch.open_questions?.length) || (batch.acceptance_criteria?.length));
+                        return (
+                          <div className="mt-2 pt-2 border-t border-white/5">
+                            <button
+                              onClick={() => setExpandedBriefs(prev => {
+                                const next = new Set(prev);
+                                if (next.has(briefKey)) next.delete(briefKey); else next.add(briefKey);
+                                return next;
+                              })}
+                              className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-gray-500 hover:text-gray-300 transition-colors"
+                            >
+                              <span className="text-[8px]">{isExpanded ? "▼" : "▶"}</span>
+                              Execution Brief
+                              {hasContent && <span className="w-1.5 h-1.5 rounded-full bg-blue-500/60" />}
+                            </button>
+                            {isExpanded && (
+                              <div className="mt-3 space-y-3">
+                                {/* Objective */}
+                                <div>
+                                  <label className="block text-[10px] uppercase tracking-wide text-gray-600 mb-1">Objective</label>
+                                  <textarea
+                                    defaultValue={batch.objective ?? ""}
+                                    onBlur={(e) => {
+                                      const val = e.target.value;
+                                      if (val !== (batch.objective ?? "")) updateBatchTriage(rev.id, bi, { objective: val });
+                                    }}
+                                    rows={2}
+                                    placeholder="What is the intended outcome?"
+                                    className="w-full bg-white/[0.03] rounded px-2 py-1.5 text-xs text-gray-300 placeholder:text-gray-700 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
+                                  />
+                                </div>
+                                {/* Implementation Notes */}
+                                <div>
+                                  <label className="block text-[10px] uppercase tracking-wide text-gray-600 mb-1">Implementation Notes</label>
+                                  <textarea
+                                    defaultValue={batch.implementation_notes ?? ""}
+                                    onBlur={(e) => {
+                                      const val = e.target.value;
+                                      if (val !== (batch.implementation_notes ?? "")) updateBatchTriage(rev.id, bi, { implementation_notes: val });
+                                    }}
+                                    rows={3}
+                                    placeholder="Practical notes for the implementer…"
+                                    className="w-full bg-white/[0.03] rounded px-2 py-1.5 text-xs text-gray-300 placeholder:text-gray-700 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
+                                  />
+                                </div>
+                                {/* Open Questions — one per line */}
+                                <div>
+                                  <label className="block text-[10px] uppercase tracking-wide text-gray-600 mb-1">Open Questions <span className="normal-case text-gray-700">(one per line)</span></label>
+                                  <textarea
+                                    defaultValue={(batch.open_questions ?? []).join("\n")}
+                                    onBlur={(e) => {
+                                      const lines = e.target.value.split("\n").map(l => l.trim()).filter(Boolean);
+                                      const prev = batch.open_questions ?? [];
+                                      if (JSON.stringify(lines) !== JSON.stringify(prev)) updateBatchTriage(rev.id, bi, { open_questions: lines });
+                                    }}
+                                    rows={2}
+                                    placeholder="Questions that need answering before work starts…"
+                                    className="w-full bg-white/[0.03] rounded px-2 py-1.5 text-xs text-gray-300 placeholder:text-gray-700 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
+                                  />
+                                </div>
+                                {/* Acceptance Criteria — one per line */}
+                                <div>
+                                  <label className="block text-[10px] uppercase tracking-wide text-gray-600 mb-1">Acceptance Criteria <span className="normal-case text-gray-700">(one per line)</span></label>
+                                  <textarea
+                                    defaultValue={(batch.acceptance_criteria ?? []).join("\n")}
+                                    onBlur={(e) => {
+                                      const lines = e.target.value.split("\n").map(l => l.trim()).filter(Boolean);
+                                      const prev = batch.acceptance_criteria ?? [];
+                                      if (JSON.stringify(lines) !== JSON.stringify(prev)) updateBatchTriage(rev.id, bi, { acceptance_criteria: lines });
+                                    }}
+                                    rows={2}
+                                    placeholder="Observable checks that confirm this batch is done…"
+                                    className="w-full bg-white/[0.03] rounded px-2 py-1.5 text-xs text-gray-300 placeholder:text-gray-700 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     );
                   })}
