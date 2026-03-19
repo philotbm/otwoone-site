@@ -296,6 +296,28 @@ type LeadIteration = {
   created_at: string;
 };
 
+// ── Lead Revision Execution types ─────────────────────────────────────────────
+
+type LeadRevisionBatchItem = {
+  description: string;
+  type: 'content' | 'design' | 'functionality' | 'integration' | 'other';
+};
+
+type LeadRevisionBatch = {
+  title: string;
+  priority: 'high' | 'medium' | 'low';
+  items: LeadRevisionBatchItem[];
+};
+
+type LeadRevisionRecord = {
+  id: string;
+  lead_id: string;
+  raw_feedback: string;
+  structured_output: { batches: LeadRevisionBatch[] };
+  created_at: string;
+  updated_at: string;
+};
+
 type ProjectContext = {
   id: string;
   project_id: string;
@@ -981,6 +1003,12 @@ export default function LeadDetailPage() {
   const [iterSaving,          setIterSaving]          = useState(false);
   const [unifiedRunning,      setUnifiedRunning]      = useState(false);
   const [expandedIteration,   setExpandedIteration]   = useState<string | null>(null);
+
+  // Lead Revision Execution state
+  const [leadRevisions,          setLeadRevisions]          = useState<LeadRevisionRecord[]>([]);
+  const [leadRevFeedback,        setLeadRevFeedback]        = useState("");
+  const [leadRevGenerating,      setLeadRevGenerating]      = useState(false);
+  const [leadRevError,           setLeadRevError]           = useState("");
 
   // Atomic analysis gate — tracks whether the operator has explicitly run analysis
   // (or whether the lead already has analysis data from a previous session).
@@ -2527,6 +2555,37 @@ export default function LeadDetailPage() {
     if (result.ok) setIterations(result.data.iterations);
   }
 
+  // ── Revision Execution ───────────────────────────────────────────────────
+
+  async function fetchLeadRevisions() {
+    const result = await safeFetch<{ revisions: LeadRevisionRecord[] }>(`/api/hub/leads/${id}/revisions`);
+    if (result.ok) setLeadRevisions(result.data.revisions);
+  }
+
+  async function generateRevisionPlan() {
+    const feedback = leadRevFeedback.trim();
+    if (!feedback || feedback.length < 10) return;
+    setLeadRevGenerating(true);
+    setLeadRevError("");
+
+    const result = await safeFetch<{ revision: LeadRevisionRecord }>(
+      `/api/hub/leads/${id}/revisions`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw_feedback: feedback }),
+      },
+    );
+
+    setLeadRevGenerating(false);
+    if (result.ok) {
+      setLeadRevisions(prev => [result.data.revision, ...prev]);
+      setLeadRevFeedback("");
+    } else {
+      setLeadRevError(result.error);
+    }
+  }
+
   // ── Unified Analysis Pipeline ─────────────────────────────────────────────
   // Single-action pipeline: research → analysis (autofill) → complexity
   // Build pricing + monthly running costs cascade automatically via useMemo.
@@ -3226,6 +3285,7 @@ export default function LeadDetailPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchIterations(); }, [id]);
+  useEffect(() => { fetchLeadRevisions(); }, [id]);
 
   async function createRound() {
     setRoundSaving("new");
@@ -4736,6 +4796,81 @@ export default function LeadDetailPage() {
             </div>
           </Section>
         )}
+
+        {/* ════════════════════════════════════════════════════════════════
+            REVISION EXECUTION — structured revision batches from feedback
+            ════════════════════════════════════════════════════════════════ */}
+        <Section title="Revision Execution">
+          {/* Feedback input */}
+          <div className="mb-4">
+            <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Client Feedback</label>
+            <textarea
+              value={leadRevFeedback}
+              onChange={(e) => setLeadRevFeedback(e.target.value)}
+              placeholder="Paste client feedback from email, call notes, or meeting notes…"
+              rows={4}
+              className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
+            />
+            <div className="flex items-center justify-between mt-2">
+              <span className={cx("text-xs transition-opacity", leadRevError ? "text-red-400 opacity-100" : "opacity-0")}>
+                {leadRevError || "—"}
+              </span>
+              <button
+                type="button"
+                onClick={generateRevisionPlan}
+                disabled={leadRevGenerating || leadRevFeedback.trim().length < 10}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {leadRevGenerating ? "Generating…" : "Generate Revision Plan"}
+              </button>
+            </div>
+          </div>
+
+          {/* Revision batches */}
+          {leadRevisions.length > 0 && (
+            <div className="space-y-4 mt-4 pt-4 border-t border-white/5">
+              {leadRevisions.map((rev) => (
+                <div key={rev.id} className="space-y-3">
+                  <p className="text-[10px] text-gray-600">
+                    Generated {new Date(rev.created_at).toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric" })}, {new Date(rev.created_at).toLocaleTimeString("en-IE", { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                  {rev.structured_output.batches.map((batch, bi) => (
+                    <div key={bi} className="rounded-lg border border-white/[0.06] bg-[#0e0f14] p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-medium text-gray-200">{batch.title}</span>
+                        <span className={cx(
+                          "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
+                          batch.priority === "high" ? "bg-red-500/15 text-red-400" :
+                          batch.priority === "medium" ? "bg-amber-500/15 text-amber-400" :
+                          "bg-gray-500/15 text-gray-400"
+                        )}>
+                          {batch.priority}
+                        </span>
+                      </div>
+                      <ul className="space-y-1.5">
+                        {batch.items.map((item, ii) => (
+                          <li key={ii} className="flex items-start gap-2 text-xs text-gray-400">
+                            <span className={cx(
+                              "mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium uppercase tracking-wide shrink-0",
+                              item.type === "functionality" ? "bg-blue-500/15 text-blue-400" :
+                              item.type === "design" ? "bg-purple-500/15 text-purple-400" :
+                              item.type === "content" ? "bg-green-500/15 text-green-400" :
+                              item.type === "integration" ? "bg-cyan-500/15 text-cyan-400" :
+                              "bg-gray-500/15 text-gray-500"
+                            )}>
+                              {item.type}
+                            </span>
+                            <span>{item.description}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
 
         {/* Internal notes (full width, collapsed by default) */}
         <div>
