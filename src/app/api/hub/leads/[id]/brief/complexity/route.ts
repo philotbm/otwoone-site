@@ -508,7 +508,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const signals = detectSignals(searchText);
 
   // ── Calculate score ────────────────────────────────────────────────────
-  const score = signals.reduce((sum, s) => sum + s.weight, 0);
+  const score = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0));
   const cls = classifyComplexity(score);
 
   // ── Derive build components and effort ─────────────────────────────────
