@@ -325,6 +325,15 @@ type LeadRevisionRecord = {
   updated_at: string;
 };
 
+type ExecutionRun = {
+  id: string;
+  revision_id: string;
+  batch_index: number;
+  output_report: string;
+  operator_note: string;
+  created_at: string;
+};
+
 type ProjectContext = {
   id: string;
   project_id: string;
@@ -1020,6 +1029,12 @@ export default function LeadDetailPage() {
   const [taskPrompt,             setTaskPrompt]             = useState<string | null>(null);
   const [taskGenerating,         setTaskGenerating]         = useState(false);
   const [taskCopied,             setTaskCopied]             = useState(false);
+  const [executionRuns,          setExecutionRuns]          = useState<ExecutionRun[]>([]);
+  const [runReportInputs,        setRunReportInputs]        = useState<Record<string, string>>({});
+  const [runNoteInputs,          setRunNoteInputs]          = useState<Record<string, string>>({});
+  const [runSaving,              setRunSaving]              = useState<string | null>(null);
+  const [expandedRuns,           setExpandedRuns]           = useState<Set<string>>(new Set());
+  const [expandedRunSections,    setExpandedRunSections]    = useState<Set<string>>(new Set());
 
   // Atomic analysis gate — tracks whether the operator has explicitly run analysis
   // (or whether the lead already has analysis data from a previous session).
@@ -2570,7 +2585,44 @@ export default function LeadDetailPage() {
 
   async function fetchLeadRevisions() {
     const result = await safeFetch<{ revisions: LeadRevisionRecord[] }>(`/api/hub/leads/${id}/revisions`);
-    if (result.ok) setLeadRevisions(result.data.revisions);
+    if (result.ok) {
+      setLeadRevisions(result.data.revisions);
+      // Fetch runs for all revisions
+      for (const rev of result.data.revisions) {
+        const runsResult = await safeFetch<{ runs: ExecutionRun[] }>(`/api/hub/leads/${id}/revisions/${rev.id}/runs`);
+        if (runsResult.ok) {
+          setExecutionRuns(prev => {
+            const filtered = prev.filter(r => r.revision_id !== rev.id);
+            return [...filtered, ...runsResult.data.runs];
+          });
+        }
+      }
+    }
+  }
+
+  async function saveExecutionRun(revisionId: string, batchIndex: number) {
+    const key = `${revisionId}-${batchIndex}`;
+    const report = runReportInputs[key]?.trim();
+    if (!report || report.length < 10) return;
+    setRunSaving(key);
+    const result = await safeFetch<{ run: ExecutionRun }>(
+      `/api/hub/leads/${id}/revisions/${revisionId}/runs`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batch_index: batchIndex,
+          output_report: report,
+          operator_note: runNoteInputs[key]?.trim() || "",
+        }),
+      },
+    );
+    setRunSaving(null);
+    if (result.ok) {
+      setExecutionRuns(prev => [result.data.run, ...prev]);
+      setRunReportInputs(prev => ({ ...prev, [key]: "" }));
+      setRunNoteInputs(prev => ({ ...prev, [key]: "" }));
+    }
   }
 
   async function generateRevisionPlan() {
@@ -5056,6 +5108,87 @@ export default function LeadDetailPage() {
                                     className="w-full bg-white/[0.03] rounded px-2 py-1.5 text-xs text-gray-300 placeholder:text-gray-700 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
                                   />
                                 </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {/* Execution Runs — per batch */}
+                      {(() => {
+                        const runKey = `${rev.id}-${bi}`;
+                        const batchRuns = executionRuns.filter(r => r.revision_id === rev.id && r.batch_index === bi);
+                        const isRunsExpanded = expandedRunSections.has(runKey);
+                        return (
+                          <div className="mt-2 pt-2 border-t border-white/5">
+                            <button
+                              onClick={() => setExpandedRunSections(prev => {
+                                const next = new Set(prev);
+                                if (next.has(runKey)) next.delete(runKey); else next.add(runKey);
+                                return next;
+                              })}
+                              className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-gray-500 hover:text-gray-300 transition-colors"
+                            >
+                              <span className="text-[8px]">{isRunsExpanded ? "▼" : "▶"}</span>
+                              Execution Runs
+                              {batchRuns.length > 0 && (
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 text-[9px] font-medium">{batchRuns.length}</span>
+                              )}
+                            </button>
+                            {isRunsExpanded && (
+                              <div className="mt-2 space-y-3">
+                                {/* Add run form */}
+                                <div className="space-y-2 p-3 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                                  <textarea
+                                    value={runReportInputs[runKey] ?? ""}
+                                    onChange={(e) => setRunReportInputs(prev => ({ ...prev, [runKey]: e.target.value }))}
+                                    placeholder="Paste Claude OUTPUT REPORT…"
+                                    rows={4}
+                                    className="w-full bg-transparent text-xs text-gray-300 placeholder:text-gray-700 border border-white/[0.06] rounded-lg p-2 focus:outline-none focus:border-white/20 resize-y"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={runNoteInputs[runKey] ?? ""}
+                                    onChange={(e) => setRunNoteInputs(prev => ({ ...prev, [runKey]: e.target.value }))}
+                                    placeholder="Operator note (optional)…"
+                                    className="w-full bg-transparent text-xs text-gray-400 placeholder:text-gray-700 border border-white/[0.06] rounded-lg p-2 focus:outline-none focus:border-white/20"
+                                  />
+                                  <button
+                                    onClick={() => saveExecutionRun(rev.id, bi)}
+                                    disabled={runSaving === runKey || !runReportInputs[runKey]?.trim()}
+                                    className="px-3 py-1 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
+                                  >
+                                    {runSaving === runKey ? "Saving…" : "Save Execution Run"}
+                                  </button>
+                                </div>
+                                {/* Run history */}
+                                {batchRuns.map((run) => {
+                                  const isExpanded = expandedRuns.has(run.id);
+                                  return (
+                                    <div key={run.id} className="rounded-lg border border-white/[0.04] bg-white/[0.01] p-3">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] text-gray-600">
+                                            {new Date(run.created_at).toLocaleDateString("en-IE", { day: "numeric", month: "short" })}, {new Date(run.created_at).toLocaleTimeString("en-IE", { hour: "2-digit", minute: "2-digit" })}
+                                          </span>
+                                          {run.operator_note && <span className="text-[10px] text-gray-500 italic">{run.operator_note}</span>}
+                                        </div>
+                                        <button
+                                          onClick={() => setExpandedRuns(prev => {
+                                            const next = new Set(prev);
+                                            if (next.has(run.id)) next.delete(run.id); else next.add(run.id);
+                                            return next;
+                                          })}
+                                          className="text-[10px] text-gray-600 hover:text-gray-300 transition-colors"
+                                        >
+                                          {isExpanded ? "Hide" : "View report"}
+                                        </button>
+                                      </div>
+                                      {isExpanded && (
+                                        <pre className="mt-2 text-[11px] text-gray-400 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">{run.output_report}</pre>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
