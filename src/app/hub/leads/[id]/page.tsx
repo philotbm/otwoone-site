@@ -81,6 +81,7 @@ type Project = {
   deposit_paid_at: string | null;
   deposit_amount: number | null;
   deposit_reference: string | null;
+  intake_token: string | null;
 };
 
 type IntakeStep1 = {
@@ -3618,9 +3619,20 @@ export default function LeadDetailPage() {
         {!isConverted && !canActivateDeposit && (
           <span className="text-xs text-gray-600">Deposit activation available after proposal approval.</span>
         )}
-        {isConverted && (
-          <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
-            Deposit Activated
+        {isConverted && project && (
+          <span className={cx(
+            "px-3 py-1.5 rounded-lg text-xs font-medium border",
+            project.project_status === "complete" ? "bg-green-500/10 text-green-400 border-green-500/20" :
+            project.project_status === "in_build" || project.project_status === "revisions" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+            project.project_status === "client_review" || project.project_status === "final_approval" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+            "bg-green-500/10 text-green-400 border-green-500/20"
+          )}>
+            {(project.project_status ?? "deposit_paid").replace(/_/g, " ")}
+          </span>
+        )}
+        {isConverted && !project && (
+          <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+            Converted — no project
           </span>
         )}
       </header>
@@ -6078,6 +6090,28 @@ export default function LeadDetailPage() {
                   )}
                 </div>
               </div>
+
+              {/* ── Client portal (progress view) ──────────────────────── */}
+              {project.intake_token && (
+                <div className="pt-4 mt-1 border-t border-white/5 flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-36 shrink-0">Client portal</span>
+                  <a
+                    href={`/projects/${project.intake_token}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                  >
+                    Open portal →
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(`${window.location.origin}/projects/${project.intake_token}`)}
+                    className="px-2 py-1 rounded text-[10px] font-medium border border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20 transition-colors"
+                  >
+                    Copy URL
+                  </button>
+                </div>
+              )}
 
               {/* ── View intake ───────────────────────────────────── */}
               <div className="pt-4 mt-1 border-t border-white/5">
