@@ -19,6 +19,23 @@ type Step2Form = {
   primary_cta: string;
 };
 
+type ClientBatch = {
+  title: string;
+  status: string;
+  priority: string;
+  completedWork?: {
+    summary: string;
+    completedAt: string;
+  };
+};
+
+type ProjectProgress = {
+  batches: ClientBatch[];
+  upNext: string[];
+  totalBatches: number;
+  completedBatches: number;
+};
+
 const EMPTY_STEP2: Step2Form = {
   headline: "",
   subheadline: "",
@@ -165,6 +182,9 @@ export default function ClientPortalPage() {
   const [submitError, setSubmitError] = useState("");
   const [submitted,   setSubmitted]   = useState(false);
 
+  // ── Progress state ─────────────────────────────────────────────────────────
+  const [progress, setProgress] = useState<ProjectProgress | null>(null);
+
   // ── Hydrate from server on mount ────────────────────────────────────────────
 
   useEffect(() => {
@@ -217,6 +237,14 @@ export default function ClientPortalPage() {
       .finally(() => {
         setLoading(false);
       });
+
+    // Load project progress (non-blocking)
+    fetch(`/api/projects/${token}/progress`)
+      .then((r) => r.json() as Promise<{ progress: ProjectProgress | null }>)
+      .then((data) => {
+        if (data.progress) setProgress(data.progress);
+      })
+      .catch(() => { /* non-fatal */ });
   }, [token]);
 
   // ── Save Step 1 ────────────────────────────────────────────────────────────
@@ -710,6 +738,105 @@ export default function ClientPortalPage() {
                         ))}
                       </ul>
                     </div>
+                  </div>
+                )}
+
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* ── Project Progress — shown when revision data exists ─────────────── */}
+        {progress && progress.batches.length > 0 && (
+          <div className="mt-8">
+            <Card title="Project Progress" badge={
+              <span className="text-xs text-gray-500">
+                {progress.completedBatches} of {progress.totalBatches} complete
+              </span>
+            }>
+              <div className="space-y-6">
+
+                {/* Progress bar */}
+                <div>
+                  <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-indigo-500 transition-all duration-500"
+                      style={{ width: `${progress.totalBatches > 0 ? (progress.completedBatches / progress.totalBatches) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Batch list */}
+                <div className="space-y-3">
+                  {progress.batches.map((batch, i) => {
+                    const statusLabel =
+                      batch.status === "complete" ? "Complete" :
+                      batch.status === "in_progress" ? "In progress" :
+                      batch.status === "ready" ? "Up next" :
+                      "Planned";
+
+                    const statusColor =
+                      batch.status === "complete" ? "text-green-400" :
+                      batch.status === "in_progress" ? "text-amber-400" :
+                      batch.status === "ready" ? "text-blue-400" :
+                      "text-gray-600";
+
+                    const statusIcon =
+                      batch.status === "complete" ? "✓" :
+                      batch.status === "in_progress" ? "◐" :
+                      batch.status === "ready" ? "→" :
+                      "○";
+
+                    return (
+                      <div key={i} className={cx(
+                        "rounded-lg border p-4",
+                        batch.status === "complete" ? "border-green-500/15 bg-green-500/[0.02]" :
+                        batch.status === "in_progress" ? "border-amber-500/15 bg-amber-500/[0.02]" :
+                        "border-white/5 bg-white/[0.01]"
+                      )}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={cx("text-sm", statusColor)}>{statusIcon}</span>
+                            <span className={cx(
+                              "text-sm",
+                              batch.status === "complete" ? "text-gray-400" : "text-gray-200"
+                            )}>
+                              {batch.title}
+                            </span>
+                          </div>
+                          <span className={cx("text-xs font-medium", statusColor)}>
+                            {statusLabel}
+                          </span>
+                        </div>
+
+                        {/* Show completed work summary if QA-passed run exists */}
+                        {batch.completedWork && (
+                          <div className="mt-2 pt-2 border-t border-white/5">
+                            <p className="text-xs text-gray-500 whitespace-pre-line leading-relaxed">
+                              {batch.completedWork.summary}
+                            </p>
+                            <p className="text-[10px] text-gray-700 mt-1">
+                              Completed {new Date(batch.completedWork.completedAt).toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric" })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* What's next */}
+                {progress.upNext.length > 0 && (
+                  <div className="pt-2 border-t border-white/5">
+                    <p className="text-xs font-medium tracking-widest uppercase text-gray-600 mb-2">Coming up</p>
+                    <ul className="space-y-1.5">
+                      {progress.upNext.map((title, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-gray-400">
+                          <span className="mt-1.5 w-1 h-1 rounded-full bg-indigo-500 flex-shrink-0" />
+                          {title}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
