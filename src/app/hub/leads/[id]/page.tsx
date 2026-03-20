@@ -5015,6 +5015,22 @@ export default function LeadDetailPage() {
                           <option value="complete">complete</option>
                         </select>
                       </div>
+                      {/* Mark as Complete — shown when latest run is QA-passed and batch isn't complete */}
+                      {(() => {
+                        if (batchStatus === "complete") return null;
+                        const runs = executionRuns.filter(r => r.revision_id === rev.id && r.batch_index === bi);
+                        if (runs.length === 0) return null;
+                        const latest = runs[0]; // already sorted newest-first
+                        if (latest.qa_status !== "passed") return null;
+                        return (
+                          <button
+                            onClick={() => updateBatchTriage(rev.id, bi, { status: "complete" })}
+                            className="mt-2 px-3 py-1 rounded text-xs font-medium bg-green-500/15 text-green-400 hover:bg-green-500/25 border border-green-500/20 transition-colors"
+                          >
+                            ✓ Mark as Complete
+                          </button>
+                        );
+                      })()}
                       {/* Items */}
                       <ul className="space-y-1.5">
                         {batch.items.map((item, ii) => (
