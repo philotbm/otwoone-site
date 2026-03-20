@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data, error } = await supabaseServer
     .from('revision_execution_runs')
-    .select('id, revision_id, batch_index, output_report, operator_note, created_at')
+    .select('id, revision_id, batch_index, output_report, operator_note, qa_status, qa_notes, created_at')
     .eq('revision_id', revisionId)
     .order('created_at', { ascending: false });
 
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       output_report: report,
       operator_note: body.operator_note?.trim() ?? '',
     })
-    .select('id, revision_id, batch_index, output_report, operator_note, created_at')
+    .select('id, revision_id, batch_index, output_report, operator_note, qa_status, qa_notes, created_at')
     .single();
 
   if (insertErr) {

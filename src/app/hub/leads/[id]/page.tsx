@@ -331,6 +331,8 @@ type ExecutionRun = {
   batch_index: number;
   output_report: string;
   operator_note: string;
+  qa_status: 'pending' | 'passed' | 'failed';
+  qa_notes: string;
   created_at: string;
 };
 
@@ -2622,6 +2624,20 @@ export default function LeadDetailPage() {
       setExecutionRuns(prev => [result.data.run, ...prev]);
       setRunReportInputs(prev => ({ ...prev, [key]: "" }));
       setRunNoteInputs(prev => ({ ...prev, [key]: "" }));
+    }
+  }
+
+  async function updateRunQA(revisionId: string, runId: string, updates: { qa_status?: string; qa_notes?: string }) {
+    const result = await safeFetch<{ run: ExecutionRun }>(
+      `/api/hub/leads/${id}/revisions/${revisionId}/runs/${runId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      },
+    );
+    if (result.ok) {
+      setExecutionRuns(prev => prev.map(r => r.id === runId ? result.data.run : r));
     }
   }
 
@@ -5163,14 +5179,35 @@ export default function LeadDetailPage() {
                                 {/* Run history */}
                                 {batchRuns.map((run) => {
                                   const isExpanded = expandedRuns.has(run.id);
+                                  const qaStatus = run.qa_status ?? "pending";
                                   return (
-                                    <div key={run.id} className="rounded-lg border border-white/[0.04] bg-white/[0.01] p-3">
+                                    <div key={run.id} className={cx(
+                                      "rounded-lg bg-white/[0.01] p-3 border",
+                                      qaStatus === "passed" ? "border-green-500/30" :
+                                      qaStatus === "failed" ? "border-red-500/30" :
+                                      "border-white/[0.04]"
+                                    )}>
                                       <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                           <span className="text-[10px] text-gray-600">
                                             {new Date(run.created_at).toLocaleDateString("en-IE", { day: "numeric", month: "short" })}, {new Date(run.created_at).toLocaleTimeString("en-IE", { hour: "2-digit", minute: "2-digit" })}
                                           </span>
                                           {run.operator_note && <span className="text-[10px] text-gray-500 italic">{run.operator_note}</span>}
+                                          {/* QA status selector */}
+                                          <select
+                                            value={qaStatus}
+                                            onChange={(e) => updateRunQA(rev.id, run.id, { qa_status: e.target.value })}
+                                            className={cx(
+                                              "px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide border-0 cursor-pointer appearance-none",
+                                              qaStatus === "passed" ? "bg-green-500/15 text-green-400" :
+                                              qaStatus === "failed" ? "bg-red-500/15 text-red-400" :
+                                              "bg-gray-500/15 text-gray-500"
+                                            )}
+                                          >
+                                            <option value="pending">QA: pending</option>
+                                            <option value="passed">QA: passed</option>
+                                            <option value="failed">QA: failed</option>
+                                          </select>
                                         </div>
                                         <button
                                           onClick={() => setExpandedRuns(prev => {
@@ -5178,7 +5215,7 @@ export default function LeadDetailPage() {
                                             if (next.has(run.id)) next.delete(run.id); else next.add(run.id);
                                             return next;
                                           })}
-                                          className="text-[10px] text-gray-600 hover:text-gray-300 transition-colors"
+                                          className="text-[10px] text-gray-600 hover:text-gray-300 transition-colors shrink-0"
                                         >
                                           {isExpanded ? "Hide" : "View report"}
                                         </button>
@@ -5186,6 +5223,21 @@ export default function LeadDetailPage() {
                                       {isExpanded && (
                                         <pre className="mt-2 text-[11px] text-gray-400 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">{run.output_report}</pre>
                                       )}
+                                      {/* QA notes */}
+                                      <div className="mt-2 pt-1.5 border-t border-white/5">
+                                        <input
+                                          type="text"
+                                          defaultValue={run.qa_notes ?? ""}
+                                          onBlur={(e) => {
+                                            const val = e.target.value;
+                                            if (val !== (run.qa_notes ?? "")) {
+                                              updateRunQA(rev.id, run.id, { qa_notes: val });
+                                            }
+                                          }}
+                                          placeholder="QA notes…"
+                                          className="w-full bg-transparent text-[11px] text-gray-500 placeholder:text-gray-700 focus:outline-none focus:text-gray-300"
+                                        />
+                                      </div>
                                     </div>
                                   );
                                 })}
