@@ -3686,11 +3686,19 @@ export default function LeadDetailPage() {
             <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
             <button
               type="button"
-              onClick={() => { saveField({ status: "proposal_sent" }); setStatus("proposal_sent"); }}
-              disabled={saving}
+              onClick={async () => {
+                if (!proposal) {
+                  await createProposal();
+                }
+                setProposalOpen(true);
+                setTimeout(() => {
+                  document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 100);
+              }}
+              disabled={proposalSaving || proposalLoading}
               className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
             >
-              {saving ? "Updating…" : "Move to Proposal"}
+              {proposalSaving ? "Creating…" : proposal ? "Open Proposal" : "Create Proposal"}
             </button>
           </>
         )}
@@ -4008,7 +4016,7 @@ export default function LeadDetailPage() {
 
               {/* Proposal readiness */}
               <div className="mt-3 pt-3 border-t border-white/5">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-[10px] text-gray-500 uppercase tracking-wide">Proposal readiness</span>
                   {scopeReady === true ? (
                     <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-green-500/15 text-green-400">Ready</span>
@@ -4018,6 +4026,9 @@ export default function LeadDetailPage() {
                     <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-gray-500/15 text-gray-500">Not assessed</span>
                   )}
                   {readinessReason && <span className="text-xs text-gray-400">{readinessReason}</span>}
+                  {(scopeReady === true || overrideScopeWarning) && briefEligible && (
+                    <span className="text-[10px] text-indigo-400">→ See Scope Readiness below to create proposal</span>
+                  )}
                 </div>
               </div>
 
@@ -4860,7 +4871,59 @@ export default function LeadDetailPage() {
 
               {/* ── Primary action: Proceed to Proposal ── */}
               <div className="pt-3 border-t border-white/5">
-                {status === "scope_received" && (() => {
+                {/* ── Ready-for-proposal CTA (primary workflow action) ──────── */}
+                {briefEligible && (scopeReady === true || overrideScopeWarning) && (() => {
+                  const proposalApproved = proposal && ["approved", "signed", "deposit_requested", "deposit_received"].includes(proposal.status);
+                  const proposalExists = !!proposal;
+
+                  return (
+                    <div className="space-y-2">
+                      {!proposalApproved && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!proposalExists) {
+                                await createProposal();
+                              }
+                              setProposalOpen(true);
+                              // Scroll to proposal engine
+                              setTimeout(() => {
+                                document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                              }, 100);
+                            }}
+                            disabled={proposalSaving || proposalLoading}
+                            className="w-full px-4 py-3 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                          >
+                            {proposalSaving ? "Creating…" : proposalExists ? "Open Proposal" : "Create Proposal"}
+                          </button>
+                          <p className="text-[10px] text-gray-500 text-center">Next step: Create and send proposal to client</p>
+                        </>
+                      )}
+                      {proposalApproved && (
+                        <div className="flex items-center gap-2">
+                          <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                            Proposal Approved
+                          </span>
+                          {proposal?.view_token && (
+                            <a
+                              href={`/proposal/${proposal.view_token}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
+                            >
+                              View ↗
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      {proposalError && <p className="text-xs text-red-400">{proposalError}</p>}
+                    </div>
+                  );
+                })()}
+
+                {/* ── Scope received but not ready — show missing inputs ───── */}
+                {status === "scope_received" && scopeReady !== true && !overrideScopeWarning && (() => {
                   const missingInputs: string[] = [];
                   if (!briefSummary.trim()) missingInputs.push("System analysis");
                   if (!technicalResearch) missingInputs.push("Technical research");
@@ -4868,50 +4931,60 @@ export default function LeadDetailPage() {
                   if (!buildPricing) missingInputs.push("Build pricing");
                   if (!runningCosts) missingInputs.push("Running costs");
                   if (scopeReady === null) missingInputs.push("Scope readiness");
-                  if (scopeReady === false && !overrideScopeWarning) missingInputs.push("Scope not ready (no override)");
+                  if (scopeReady === false) missingInputs.push("Scope not ready (no override)");
 
-                  return (
-                    <>
-                      {missingInputs.length > 0 && (
-                        <div className="mb-3 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/15">
-                          <p className="text-[10px] text-amber-400 font-medium mb-1">Proposal inputs incomplete:</p>
-                          <ul className="text-[10px] text-amber-400/70 space-y-0.5">
-                            {missingInputs.map((m, i) => <li key={i}>• {m}</li>)}
-                          </ul>
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (missingInputs.length > 0 && !window.confirm(`${missingInputs.length} proposal input(s) are incomplete:\n\n${missingInputs.map(m => "• " + m).join("\n")}\n\nProceed anyway?`)) return;
-                          saveField({ status: "proposal_sent" });
-                          setStatus("proposal_sent");
-                        }}
-                        disabled={saving}
-                        className={cx(
-                          "w-full px-4 py-3 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50",
-                          missingInputs.length > 0
-                            ? "bg-amber-600 hover:bg-amber-500 text-white"
-                            : "bg-indigo-600 hover:bg-indigo-500 text-white"
-                        )}
-                      >
-                        {saving ? "Updating…" : missingInputs.length > 0 ? "Move to Proposal (incomplete)" : "Move to Proposal"}
-                      </button>
-                    </>
-                  );
+                  return missingInputs.length > 0 ? (
+                    <div className="px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/15">
+                      <p className="text-[10px] text-amber-400 font-medium mb-1">Before proposal — complete these inputs:</p>
+                      <ul className="text-[10px] text-amber-400/70 space-y-0.5">
+                        {missingInputs.map((m, i) => <li key={i}>• {m}</li>)}
+                      </ul>
+                    </div>
+                  ) : null;
                 })()}
+
                 {["lead_submitted", "scoping_sent"].includes(status) && (
                   <span className="text-xs text-gray-500">Lead must reach Ready for Proposal before proceeding.</span>
                 )}
-                {status === "proposal_sent" && (
-                  <div className="flex items-center gap-2">
-                    <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
-                      Proposal Sent
+
+                {/* ── Post-proposal status — always show link back to proposal ── */}
+                {["proposal_sent", "deposit_requested", "deposit_received", "converted"].includes(status) && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={cx(
+                      "px-3 py-1.5 rounded-lg text-xs font-medium border",
+                      status === "proposal_sent" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                      status === "converted" ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                      "bg-violet-500/10 text-violet-400 border-violet-500/20"
+                    )}>
+                      {STATUS_LABELS[status]}
                     </span>
+                    {proposal?.view_token && (
+                      <a
+                        href={`/proposal/${proposal.view_token}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
+                      >
+                        View proposal ↗
+                      </a>
+                    )}
+                    {!proposal && briefEligible && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await createProposal();
+                          setProposalOpen(true);
+                          setTimeout(() => {
+                            document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }, 100);
+                        }}
+                        disabled={proposalSaving}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-indigo-600/80 hover:bg-indigo-600 text-white transition-colors disabled:opacity-50"
+                      >
+                        {proposalSaving ? "Creating…" : "Create Proposal"}
+                      </button>
+                    )}
                   </div>
-                )}
-                {["deposit_requested", "deposit_received", "converted"].includes(status) && (
-                  <span className="text-xs text-gray-500">Status: {STATUS_LABELS[status]}</span>
                 )}
               </div>
 
@@ -5436,8 +5509,25 @@ export default function LeadDetailPage() {
                         Activate Deposit
                       </button>
                     )}
-                    {["lead_submitted", "scoping_sent", "scope_received"].includes(status) && (
-                      <span className="text-[10px] text-gray-600">Use Scope Readiness above to advance to this stage.</span>
+                    {["lead_submitted", "scoping_sent"].includes(status) && (
+                      <span className="text-[10px] text-gray-600">Lead must reach Ready for Proposal to advance.</span>
+                    )}
+                    {status === "scope_received" && proposal && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm("Mark this proposal as sent? This advances the lead status to Proposal Sent.")) return;
+                          saveField({ status: "proposal_sent" });
+                          setStatus("proposal_sent");
+                        }}
+                        disabled={saving}
+                        className="px-4 py-2 rounded-lg text-xs font-medium bg-indigo-600/80 hover:bg-indigo-600 text-white transition-colors disabled:opacity-50"
+                      >
+                        {saving ? "Updating…" : "Mark as Sent"}
+                      </button>
+                    )}
+                    {status === "scope_received" && !proposal && (
+                      <span className="text-[10px] text-gray-600">Create a proposal first, then mark as sent.</span>
                     )}
                     {status === "converted" && project && (
                       <div className="flex items-center gap-3">
@@ -5665,7 +5755,7 @@ export default function LeadDetailPage() {
             PROPOSAL ENGINE — structured proposal workspace
             ════════════════════════════════════════════════════════════════ */}
         {briefEligible && (
-          <div>
+          <div id="proposal-engine">
             <Section title="Proposal Engine">
               {proposalLoading ? (
                 <p className="text-xs text-gray-500">Loading proposal…</p>
