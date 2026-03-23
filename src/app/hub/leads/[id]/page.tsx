@@ -3927,7 +3927,7 @@ export default function LeadDetailPage() {
             MEETINGS — standalone section for post-first-stage.
             In first-stage, meeting access is via Add Information.
             ════════════════════════════════════════════════════════════════ */}
-        {!["enquiry_received", "scope_analysis"].includes(status) && (
+        {!["enquiry_received", "scope_analysis", "ready_for_proposal", "proposal_sent"].includes(status) && (
         <div>
           <Section title="Meetings">
             <div className="space-y-3">
