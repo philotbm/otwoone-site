@@ -2054,40 +2054,48 @@ export default function LeadDetailPage() {
     complexityClass: string,
     analysisText: string,
   ): number {
-    let m = 1;
     const lc = analysisText.toLowerCase();
 
-    // ── Structural indicator 1: signal density ──
-    // Many signals = genuinely complex platform, not a simple site
-    if (signals.length >= 8) m += 0.25;
-    else if (signals.length >= 6) m += 0.15;
+    // ── Collect indicator contributions ──
+    const contributions: number[] = [];
 
-    // ── Structural indicator 2: complexity class / score ──
+    // 1. Signal density
+    if (signals.length >= 8) contributions.push(0.25);
+    else if (signals.length >= 6) contributions.push(0.15);
+
+    // 2. Complexity class / score
     const isOperational = complexityClass === "operational_platform" || complexityClass === "enterprise_system";
     const isHighScore = complexityScore >= 70;
-    if (isOperational && isHighScore) m += 0.25;
-    else if (isOperational || isHighScore) m += 0.15;
+    if (isOperational && isHighScore) contributions.push(0.25);
+    else if (isOperational || isHighScore) contributions.push(0.15);
 
-    // ── Structural indicator 3: integration density ──
-    // Multiple external systems = real integration complexity
+    // 3. Integration density
     const integrationTerms = ["integration", "api", "sync", "import", "export", "migrate", "legacy", "pos", "tee_sheet", "crm", "erp", "accounting"];
     const integrationHits = integrationTerms.filter(t => lc.includes(t)).length;
-    if (integrationHits >= 5) m += 0.3;
-    else if (integrationHits >= 3) m += 0.15;
+    if (integrationHits >= 5) contributions.push(0.3);
+    else if (integrationHits >= 3) contributions.push(0.15);
 
-    // ── Structural indicator 4: operational / real-time dependency ──
+    // 4. Operational / real-time dependency
     const operationalTerms = ["real-time", "real_time", "realtime", "live data", "booking", "reservation", "payment", "transaction", "balance", "pos", "point of sale", "stock", "inventory", "scheduling"];
     const operationalHits = operationalTerms.filter(t => lc.includes(t)).length;
-    if (operationalHits >= 4) m += 0.2;
-    else if (operationalHits >= 2) m += 0.1;
+    if (operationalHits >= 4) contributions.push(0.2);
+    else if (operationalHits >= 2) contributions.push(0.1);
 
-    // ── Structural indicator 5: portal / multi-role complexity ──
+    // 5. Portal / multi-role complexity
     const portalTerms = ["portal", "dashboard", "admin panel", "member", "staff", "instructor", "role", "multi-role", "permission"];
     const portalHits = portalTerms.filter(t => lc.includes(t)).length;
-    if (portalHits >= 3) m += 0.15;
+    if (portalHits >= 3) contributions.push(0.15);
 
-    // Clamp to safe bounds (1.0 – 2.2)
-    return Math.max(1, Math.min(m, 2.2));
+    // ── Dampened stacking: top indicator full, 2nd at 50%, 3rd at 25% ──
+    contributions.sort((a, b) => b - a);
+    let m = 1;
+    for (let i = 0; i < contributions.length; i++) {
+      const weight = i === 0 ? 1.0 : i === 1 ? 0.5 : i === 2 ? 0.25 : 0;
+      m += contributions[i] * weight;
+    }
+
+    // Clamp to safe bounds (1.0 – 1.8)
+    return Math.max(1, Math.min(m, 1.8));
   }
 
   const buildPricing = useMemo((): BuildPricingResult | null => {
