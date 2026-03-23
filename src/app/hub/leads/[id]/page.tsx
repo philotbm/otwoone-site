@@ -3108,8 +3108,11 @@ export default function LeadDetailPage() {
     const s = (v: unknown) => String(v ?? "").trim();
     const lines: string[] = [];
 
-    // ── Use proposal-facing values where available, fall back to brief ──
-    const propPrice = proposal?.build_price != null ? Number(proposal.build_price) : effectiveBuildPrice;
+    // ── Resolve price: proposal-facing first, then internal fallback ──
+    const rawProposalPrice = proposal?.build_price != null ? Number(proposal.build_price) : null;
+    const rawFallbackPrice = effectiveBuildPrice > 0 ? effectiveBuildPrice : null;
+    const propPrice = (rawProposalPrice != null && rawProposalPrice > 0) ? rawProposalPrice : rawFallbackPrice;
+    if (propPrice == null || !isFinite(propPrice) || propPrice <= 0) return ""; // guard: no valid price
     const propDeposit = proposal?.deposit_percent ?? 50;
     const propTimeline = s(proposal?.timeline_summary) || s(briefTimeline);
     const propSummary = s(proposal?.executive_summary) || s(briefSummary);
@@ -3202,9 +3205,8 @@ export default function LeadDetailPage() {
       internalLines.push(`Complexity: ${Math.min(complexityResult.complexity_score, 100)}/100 (${complexityResult.complexity_class.replace(/_/g, " ")}), estimated ${complexityResult.estimated_days_low}–${complexityResult.estimated_days_high} days`);
     }
 
-    // Build pricing context
+    // Build pricing context (no day rate — commercially sensitive)
     if (buildPricing) {
-      internalLines.push(`Build pricing basis: ${buildPricing.recommended_build_days} days × €${buildPricing.day_rate}/day`);
       if (buildPricing.commercial_strategy) {
         internalLines.push(`Commercial strategy: ${buildPricing.commercial_strategy}`);
       }
@@ -3226,6 +3228,7 @@ export default function LeadDetailPage() {
       lines.push("");
       lines.push("## Internal context (do not include in output)");
       lines.push("Use this section only to understand scope, complexity, and delivery reality.");
+      lines.push("Translate technical details into business outcomes, benefits, and deliverables.");
       lines.push("Do NOT mention specific technologies, tools, or implementation details in the proposal unless the client explicitly requested them.");
       lines.push("");
       lines.push(...internalLines);
@@ -5713,22 +5716,36 @@ export default function LeadDetailPage() {
                   <div className="pt-4 border-t border-white/5">
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">ChatGPT proposal prompt</p>
-                      {!proposalComplete ? (
-                        <button
-                          type="button"
-                          disabled={!briefSummary.trim() && !proposal?.executive_summary?.trim()}
-                          onClick={() => { setBriefPromptOutput(buildBriefPrompt()); setBriefPromptCopied(false); }}
-                          className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          Generate prompt
-                        </button>
-                      ) : briefPromptOutput ? (
+                      {!proposalComplete ? (() => {
+                        const hasSummary = !!(briefSummary.trim() || proposal?.executive_summary?.trim());
+                        const rawPP = proposal?.build_price != null ? Number(proposal.build_price) : null;
+                        const rawFP = effectiveBuildPrice > 0 ? effectiveBuildPrice : null;
+                        const hasPrice = (rawPP != null && rawPP > 0) || (rawFP != null && rawFP > 0);
+                        const canGenerate = hasSummary && hasPrice;
+                        return (
+                          <button
+                            type="button"
+                            disabled={!canGenerate}
+                            onClick={() => { const output = buildBriefPrompt(); if (output) { setBriefPromptOutput(output); setBriefPromptCopied(false); } }}
+                            className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            Generate prompt
+                          </button>
+                        );
+                      })() : briefPromptOutput ? (
                         <span className="text-[10px] text-green-400/60">✓ Generated</span>
                       ) : null}
                     </div>
-                    {!briefSummary.trim() && !proposal?.executive_summary?.trim() && !briefPromptOutput && (
-                      <p className="text-xs text-gray-700">Fill the commercial inputs above first, or run analysis.</p>
-                    )}
+                    {!briefPromptOutput && (() => {
+                      const hasSummary = !!(briefSummary.trim() || proposal?.executive_summary?.trim());
+                      const rawPP = proposal?.build_price != null ? Number(proposal.build_price) : null;
+                      const rawFP = effectiveBuildPrice > 0 ? effectiveBuildPrice : null;
+                      const hasPrice = (rawPP != null && rawPP > 0) || (rawFP != null && rawFP > 0);
+                      if (!hasSummary && !hasPrice) return <p className="text-xs text-gray-700">Fill the commercial inputs above first, or run analysis.</p>;
+                      if (!hasPrice) return <p className="text-xs text-amber-400/70">Enter a proposal price before generating the prompt.</p>;
+                      if (!hasSummary) return <p className="text-xs text-gray-700">Add a project summary or run analysis first.</p>;
+                      return null;
+                    })()}
                     {briefPromptOutput && (
                       <div className="relative">
                         <textarea readOnly value={briefPromptOutput} rows={12} className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none leading-relaxed" />
