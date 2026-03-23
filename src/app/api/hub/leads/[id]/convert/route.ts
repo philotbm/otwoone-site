@@ -54,8 +54,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Lead not found', version: OTWOONE_OS_VERSION }, { status: 404 });
   }
 
-  if (lead.status === 'converted') {
-    return NextResponse.json({ error: 'Lead is already converted.', version: OTWOONE_OS_VERSION }, { status: 409 });
+  if (lead.status === 'in_build' || lead.status === 'client_review' || lead.status === 'revisions' || lead.status === 'final_approval' || lead.status === 'full_payment_requested' || lead.status === 'complete') {
+    return NextResponse.json({ error: 'Lead is already past deposit activation.', version: OTWOONE_OS_VERSION }, { status: 409 });
   }
 
   // Prevent duplicate activation — check if a project already exists for this lead
@@ -70,11 +70,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'A project already exists for this lead.', version: OTWOONE_OS_VERSION }, { status: 409 });
   }
 
-  // Gate 1: lead status must be past proposal approval
-  const activatableStatuses = ['deposit_requested', 'deposit_received'];
+  // Gate 1: lead status must be at client_approved or deposit_requested
+  const activatableStatuses = ['client_approved', 'deposit_requested'];
   if (!activatableStatuses.includes(lead.status)) {
     return NextResponse.json(
-      { error: `Deposit activation requires status deposit_requested or deposit_received (current: ${lead.status}).`, version: OTWOONE_OS_VERSION },
+      { error: `Deposit activation requires status client_approved or deposit_requested (current: ${lead.status}).`, version: OTWOONE_OS_VERSION },
       { status: 400 }
     );
   }
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // 1. Update lead status
   const { error: statusErr } = await supabaseServer
     .from('leads')
-    .update({ status: 'converted' })
+    .update({ status: 'in_build' })
     .eq('id', id);
 
   if (statusErr) {

@@ -138,7 +138,7 @@ export async function POST() {
       .from('leads')
       .insert({
         source:            'smoke',
-        status:            'lead_submitted',
+        status:            'enquiry_received',
         contact_name:      `Smoke Tester ${key}`,
         contact_email:     `smoke+${runId}+${key.toLowerCase()}@example.com`,
         company_name:      companyName,
@@ -314,10 +314,10 @@ export async function POST() {
   let projectAId: string | null = null;
 
   if (leadAId) {
-    // Update lead status to 'converted'
+    // Update lead status to 'complete'
     const { error: convLeadErr } = await supabase
       .from('leads')
-      .update({ status: 'converted' })
+      .update({ status: 'complete' })
       .eq('id', leadAId);
 
     if (convLeadErr) {
@@ -372,17 +372,17 @@ export async function POST() {
           note: 'Folder creation is async best-effort; missing SHAREPOINT_DRIVE_ID is expected in CI',
         }));
 
-        // Verify lead status is now 'converted'
+        // Verify lead status is now 'complete'
         const { data: convLead } = await supabase
           .from('leads')
           .select('status')
           .eq('id', leadAId)
           .single();
 
-        if (convLead?.status === 'converted') {
+        if (convLead?.status === 'complete') {
           steps.push(pass('Convert Scenario A: lead.status = converted'));
         } else {
-          steps.push(fail('Convert Scenario A: lead.status', `Expected 'converted', got '${convLead?.status}'`));
+          steps.push(fail('Convert Scenario A: lead.status', `Expected 'complete', got '${convLead?.status}'`));
         }
       }
     }
@@ -471,7 +471,7 @@ export async function POST() {
     steps.push(fail('Negative guard: hosting=true + plan=none → rejected', 'Validation did not catch invalid combo'));
   }
 
-  // Confirm Scenario B lead was NOT affected (still lead_submitted, no project)
+  // Confirm Scenario B lead was NOT affected (still enquiry_received, no project)
   const leadBId = scenarioLeadIds['B'];
   if (leadBId) {
     const { data: bRow } = await supabase
@@ -485,7 +485,7 @@ export async function POST() {
       .select('id')
       .eq('lead_id', leadBId);
 
-    if (bRow?.status === 'lead_submitted' && (bProjects ?? []).length === 0) {
+    if (bRow?.status === 'enquiry_received' && (bProjects ?? []).length === 0) {
       steps.push(pass('Negative guard: Scenario B lead untouched', {
         status:   bRow.status,
         projects: 0,
