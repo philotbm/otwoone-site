@@ -119,7 +119,7 @@ const SIGNAL_PATTERNS: Record<SignalKey, { patterns: RegExp; evidenceLabel: stri
     evidenceLabel: 'real-time data requirement',
   },
   staff_dashboard: {
-    patterns: /\b(staff.?dashboard|admin.?dashboard|admin.?panel|management.?panel|operator.?view|staff.?interface|back.?office|internal.?dashboard|management.?dashboard|ops.?dashboard|control.?panel)\b/i,
+    patterns: /\b(staff.?dashboard|admin.?dashboard|admin.?panel|back.?office\s+(?:system|dashboard|panel)|internal.?(?:system|dashboard)|ops.?dashboard|management.?dashboard)\b/i,
     evidenceLabel: 'staff/admin dashboard',
   },
   custom_business_logic: {
@@ -135,7 +135,7 @@ const SIGNAL_PATTERNS: Record<SignalKey, { patterns: RegExp; evidenceLabel: stri
     evidenceLabel: 'notification system',
   },
   analytics_reporting: {
-    patterns: /\b(analytics|reporting|dashboard.?report|usage.?report|occupancy.?report|revenue.?report|conversion.?track|data.?visualis|chart|metric|kpi|business.?intelligence)\b/i,
+    patterns: /\b(reporting.?dashboard|admin.?reporting|metrics.?dashboard|revenue.?report|occupancy.?report|usage.?report|business.?intelligence|data.?visualis(?:ation|ization)\s+dashboard|kpi.?dashboard)\b/i,
     evidenceLabel: 'analytics/reporting',
   },
   authentication_roles: {
@@ -143,7 +143,7 @@ const SIGNAL_PATTERNS: Record<SignalKey, { patterns: RegExp; evidenceLabel: stri
     evidenceLabel: 'authentication & roles',
   },
   infrastructure_deployment_complexity: {
-    patterns: /\b(ci.?cd|docker|kubernetes|staging.?environment|production.?deploy|database.?migration|cdn|load.?balanc|scaling|microservice|serverless|edge.?function|cron.?job|background.?job|queue|redis|caching.?layer)\b/i,
+    patterns: /\b(custom.?hosting|scaling.?system|multi.?region|high.?traffic.?system|kubernetes|docker.?orchestrat|microservice.?architect|load.?balanc(?:er|ing)\s+(?:system|cluster)|database.?cluster|self.?hosted.?infra)\b/i,
     evidenceLabel: 'infrastructure complexity',
   },
   customer_portal: {
@@ -338,10 +338,11 @@ function detectSignals(searchText: string): DetectedSignal[] {
     }
   }
 
-  // v1.94.0: Growth website guardrails
-  // If no booking, no dashboard, no user accounts, no automation, no multi-role
-  // → remove custom_business_logic, authentication_roles, payments (platform-implied)
+  // v1.94.0 + v1.94.2: Website guardrails (hardened)
   const detectedKeys = new Set(detected.map(d => d.key));
+  const removeSet = new Set<string>();
+
+  // Guardrail 1: No complex systems → remove platform-implied signals
   const hasNoComplexSystems =
     !detectedKeys.has("booking_system") &&
     !detectedKeys.has("staff_dashboard") &&
@@ -349,20 +350,29 @@ function detectSignals(searchText: string): DetectedSignal[] {
     !detectedKeys.has("workflow_states");
 
   if (hasNoComplexSystems) {
-    const growthGuardRemove: SignalKey[] = ["custom_business_logic", "authentication_roles", "payments"];
-    for (const removeKey of growthGuardRemove) {
-      if (detectedKeys.has(removeKey)) {
-        filtered.push({ key: removeKey, reason: "growth website guardrail: no booking/dashboard/portal/workflow detected" });
+    for (const k of ["custom_business_logic", "authentication_roles", "payments"] as const) {
+      if (detectedKeys.has(k)) {
+        filtered.push({ key: k, reason: "website guardrail: no booking/dashboard/portal/workflow detected" });
+        removeSet.add(k);
       }
     }
-    const kept = detected.filter(d => !growthGuardRemove.includes(d.key as SignalKey));
-    // Log filtered signals in rationale (attached to result later)
-    (kept as unknown as { _filtered?: typeof filtered })._filtered = filtered;
-    return kept;
   }
 
-  (detected as unknown as { _filtered?: typeof filtered })._filtered = filtered;
-  return detected;
+  // Guardrail 2 (v1.94.2): Website project types → auto-remove system-level signals
+  // unless they survived as explicitly required (booking/customer_portal present)
+  const isWebsiteType = searchText.toLowerCase().match(/\b(growth.?website|business.?website|brochure|lead.?gen|marketing.?site|corporate.?site|landing.?page)\b/i);
+  if (isWebsiteType && hasNoComplexSystems) {
+    for (const k of ["staff_dashboard", "analytics_reporting", "infrastructure_deployment_complexity"] as const) {
+      if (detectedKeys.has(k) && !removeSet.has(k)) {
+        filtered.push({ key: k, reason: "website type guardrail: system-level signal not required for website" });
+        removeSet.add(k);
+      }
+    }
+  }
+
+  const finalDetected = removeSet.size > 0 ? detected.filter(d => !removeSet.has(d.key)) : detected;
+  (finalDetected as unknown as { _filtered?: typeof filtered })._filtered = filtered;
+  return finalDetected;
 }
 
 // ── Build component derivation ───────────────────────────────────────────────
