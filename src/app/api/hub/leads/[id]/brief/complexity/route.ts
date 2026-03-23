@@ -21,6 +21,21 @@ type SignalKey =
   | 'workflow_states'
   | 'multi_step_forms';
 
+// v1.95.0: Architecture-level signals (system complexity, not feature presence)
+type ArchitectureSignalKey =
+  | 'multi_system_integration'
+  | 'external_dependency_critical'
+  | 'financial_transaction_logic'
+  | 'data_migration'
+  | 'real_time_multi_source_sync'
+  | 'operational_core_system';
+
+type ArchitectureSignal = {
+  key: ArchitectureSignalKey;
+  score: number;
+  evidence: string;
+};
+
 type ComplexityClass =
   | 'brochure_site'
   | 'dynamic_website'
@@ -89,6 +104,53 @@ const BUILD_COMPONENTS: Record<string, { label: string; days_low: number; days_h
   document_upload: { label: 'Document upload & storage', days_low: 2, days_high: 4 },
   workflow_management: { label: 'Workflow & status management', days_low: 3, days_high: 5 },
   multi_step_forms: { label: 'Multi-step forms', days_low: 2, days_high: 4 },
+};
+
+// ── v1.95.0: Architecture signal definitions ────────────────────────────────
+// These detect system-level architectural complexity: multi-system integration,
+// financial logic, data migration, real-time sync, operational criticality.
+// They are scored separately and applied as a multiplier on top of feature signals.
+
+const ARCHITECTURE_SIGNALS: Record<ArchitectureSignalKey, { patterns: RegExp; score: number; evidenceLabel: string }> = {
+  multi_system_integration: {
+    patterns: /\b(multiple\s+systems|centrali[sz]ed\s+system|replace\s+existing\s+systems?|unify\s+systems?|single\s+platform|one\s+system\s+for|currently\s+using\s+\d+|bring\s+(?:everything|all)\s+(?:into|together)|consolidat)/i,
+    score: 20,
+    evidenceLabel: 'multi-system integration',
+  },
+  external_dependency_critical: {
+    patterns: /\b(brs|golf\s+ireland|third[- ]party\s+api|external\s+system|pos\s+system|point[- ]of[- ]sale|integration\s+required|must\s+integrate\s+with|tee\s*sheet|handicap\s+system|epos|till\s+system)\b/i,
+    score: 15,
+    evidenceLabel: 'critical external dependency',
+  },
+  financial_transaction_logic: {
+    patterns: /\b(balance|wallet|top[- ]?up|ledger|credit\s+(?:system|account|balance)|debit|financial\s+transaction|account\s+balance|prepaid|stored\s+value|member\s+(?:account|credit|balance)|bar\s+tab|spending\s+limit)\b/i,
+    score: 20,
+    evidenceLabel: 'financial/transactional logic',
+  },
+  data_migration: {
+    patterns: /\b(move\s+from|migrat(?:ion|e|ing)|existing\s+system|legacy\s+system|transfer\s+(?:data|records|members?)|import\s+(?:existing|current|historical)|replace\s+(?:current|existing)|switch\s+from)\b/i,
+    score: 15,
+    evidenceLabel: 'data migration / legacy replacement',
+  },
+  real_time_multi_source_sync: {
+    patterns: /\b(real[- ]?time\s+sync|synchroni[sz](?:ation|e|ing)|sync\s+across|live\s+(?:data|feed|update|availability|status)|real[- ]?time\s+(?:update|availab|inventory|stock))\b/i,
+    score: 15,
+    evidenceLabel: 'real-time multi-source sync',
+  },
+  operational_core_system: {
+    patterns: /\b(run\s+the\s+(?:business|club|operation)|daily\s+operations?|staff\s+(?:use|rely|depend)|manage\s+(?:all\s+)?operations?|core\s+(?:system|platform)|business[- ]critical|operationally\s+critical|entire\s+(?:business|operation))\b/i,
+    score: 15,
+    evidenceLabel: 'operational core system',
+  },
+};
+
+// Architecture-driven build effort additions
+const ARCHITECTURE_BUILD_COMPONENTS: Record<string, { label: string; days_low: number; days_high: number }> = {
+  system_integration: { label: 'System integration layer', days_low: 5, days_high: 8 },
+  external_api_bridge: { label: 'External API bridge', days_low: 4, days_high: 7 },
+  financial_engine: { label: 'Financial transaction engine', days_low: 5, days_high: 8 },
+  data_migration_work: { label: 'Data migration & import', days_low: 4, days_high: 7 },
+  sync_layer: { label: 'Real-time sync layer', days_low: 3, days_high: 5 },
 };
 
 // ── Complexity class mapping ─────────────────────────────────────────────────
@@ -375,6 +437,34 @@ function detectSignals(searchText: string): DetectedSignal[] {
   return finalDetected;
 }
 
+// ── v1.95.0: Architecture signal detection ──────────────────────────────────
+// Uses same rules: allowed sources only, optional/phased filter applied.
+
+function detectArchitectureSignals(searchText: string): ArchitectureSignal[] {
+  const detected: ArchitectureSignal[] = [];
+
+  for (const [key, config] of Object.entries(ARCHITECTURE_SIGNALS)) {
+    const archKey = key as ArchitectureSignalKey;
+    config.patterns.lastIndex = 0;
+    const match = config.patterns.exec(searchText);
+    if (match) {
+      // Apply same optional/phased filter
+      const surroundStart = Math.max(0, match.index - 80);
+      const surroundEnd = Math.min(searchText.length, match.index + match[0].length + 80);
+      const surrounding = searchText.slice(surroundStart, surroundEnd);
+      if (OPTIONAL_CONTEXT_RE.test(surrounding)) continue;
+
+      detected.push({
+        key: archKey,
+        score: config.score,
+        evidence: `Detected ${config.evidenceLabel} (matched: "${match[0]}")`,
+      });
+    }
+  }
+
+  return detected;
+}
+
 // ── Build component derivation ───────────────────────────────────────────────
 // Maps detected signals to effort estimates. Always includes discovery + deployment.
 
@@ -439,20 +529,18 @@ function buildRationale(
   cls: ComplexityClass,
   signals: DetectedSignal[],
   sourcesUsed: string[],
+  archSignals?: ArchitectureSignal[],
+  archMultiplier?: string,
 ): string {
   const parts: string[] = [];
 
-  const sourceLabels: Record<string, string> = {
+  const sourceLabelsMap: Record<string, string> = {
     consultant_brief: 'reviewed consultant brief',
     technical_research: 'technical research',
     intake_clarifiers: 'intake clarifiers',
     lead_scoring: 'lead scoring',
     revision_context: 'revised information',
     raw_context_fallback: 'raw client context (fallback)',
-  };
-
-  const sourceLabelsMap: Record<string, string> = {
-    ...sourceLabels,
     technical_research_excluded: 'technical research (excluded from signal detection)',
     client_request: 'client request',
   };
@@ -471,6 +559,12 @@ function buildRationale(
   const filteredList = (signals as unknown as { _filtered?: Array<{ key: string; reason: string }> })._filtered;
   if (filteredList && filteredList.length > 0) {
     parts.push(`Filtered signals: ${filteredList.map(f => `${f.key.replace(/_/g, ' ')} (${f.reason})`).join('; ')}.`);
+  }
+
+  // v1.95.0: Architecture signals
+  if (archSignals && archSignals.length > 0) {
+    parts.push(`Architecture signals detected: ${archSignals.map(a => a.key.replace(/_/g, ' ')).join(', ')}.`);
+    parts.push(`Architecture multiplier applied: ${archMultiplier || 'none'}.`);
   }
 
   return parts.join(' ');
@@ -563,40 +657,86 @@ export async function POST(req: NextRequest, { params }: Params) {
   // ── Detect complexity signals ──────────────────────────────────────────
   const signals = detectSignals(searchText);
 
+  // ── v1.95.0: Detect architecture signals ───────────────────────────────
+  const archSignals = detectArchitectureSignals(searchText);
+  const archCount = archSignals.length;
+
   // ── Calculate raw score ────────────────────────────────────────────────
-  const rawScore = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0));
+  let rawScore = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0));
+
+  // ── v1.95.0: Architecture multiplier ───────────────────────────────────
+  // Architecture signals amplify score to reflect system-level complexity
+  // that feature detection alone underestimates.
+  let archMultiplierLabel = "none";
+  if (archCount >= 5) {
+    rawScore = Math.round(rawScore * 1.6);
+    archMultiplierLabel = "1.6x";
+  } else if (archCount >= 3) {
+    rawScore = Math.round(rawScore * 1.35);
+    archMultiplierLabel = "1.35x";
+  } else if (archCount >= 1) {
+    rawScore = Math.round(rawScore * 1.15);
+    archMultiplierLabel = "1.15x";
+  }
+
+  // ── v1.95.0: Platform floor rule ───────────────────────────────────────
+  // Multi-system + financial logic = minimum 75 complexity
+  const hasMultiSystem = archSignals.some(a => a.key === "multi_system_integration");
+  const hasFinancial = archSignals.some(a => a.key === "financial_transaction_logic");
+  if (hasMultiSystem && hasFinancial && rawScore < 75) {
+    rawScore = 75;
+  }
+
+  // Cap at 100
+  rawScore = Math.min(100, rawScore);
 
   // ── v1.93.5: SMB system calibration ────────────────────────────────────
-  // Detect SMB operational system vs true enterprise/platform work.
-  // SMB: single-business, booking+payments+accounts, no multi-tenant/marketplace/heavy-migration.
+  // SMB: single-business, booking+payments+accounts, no multi-tenant/marketplace.
+  // v1.95.0: Skip SMB cap when architecture signals indicate real platform complexity.
   const lc = searchText.toLowerCase();
-  const enterpriseIndicators = ["multi-tenant", "multi_tenant", "marketplace", "saas platform", "enterprise integration", "erp", "legacy migration", "data migration", "multiple external system"].filter(t => lc.includes(t)).length;
-  const isSmbOperational = rawScore >= 70 && enterpriseIndicators === 0;
+  const enterpriseIndicators = ["multi-tenant", "multi_tenant", "marketplace", "saas platform", "enterprise integration", "erp"].filter(t => lc.includes(t)).length;
+  const hasArchitecturalComplexity = archCount >= 3;
+  const isSmbOperational = rawScore >= 70 && enterpriseIndicators === 0 && !hasArchitecturalComplexity;
 
-  // Cap SMB systems at 70 to prevent enterprise-level classification
+  // Cap SMB systems at 70 — but NOT if architecture signals show real platform work
   const score = isSmbOperational ? Math.min(rawScore, 70) : rawScore;
   const cls = classifyComplexity(score);
 
   // ── Derive build components and effort ─────────────────────────────────
   const components = deriveBuildComponents(signals);
+
+  // v1.95.0: Add architecture-driven build components
+  const archKeys = new Set(archSignals.map(a => a.key));
+  if (archKeys.has('multi_system_integration')) {
+    components.push({ key: 'system_integration', ...ARCHITECTURE_BUILD_COMPONENTS.system_integration });
+  }
+  if (archKeys.has('external_dependency_critical')) {
+    components.push({ key: 'external_api_bridge', ...ARCHITECTURE_BUILD_COMPONENTS.external_api_bridge });
+  }
+  if (archKeys.has('financial_transaction_logic')) {
+    components.push({ key: 'financial_engine', ...ARCHITECTURE_BUILD_COMPONENTS.financial_engine });
+  }
+  if (archKeys.has('data_migration')) {
+    components.push({ key: 'data_migration_work', ...ARCHITECTURE_BUILD_COMPONENTS.data_migration_work });
+  }
+  if (archKeys.has('real_time_multi_source_sync')) {
+    components.push({ key: 'sync_layer', ...ARCHITECTURE_BUILD_COMPONENTS.sync_layer });
+  }
+
   let daysLow = components.reduce((sum, c) => sum + c.days_low, 0);
   let daysHigh = components.reduce((sum, c) => sum + c.days_high, 0);
 
   // ── v1.93.5: Modern managed-stack MVP dampener ─────────────────────────
-  // Projects on modern managed stacks (Next.js/Vercel, Supabase, Stripe, etc.)
-  // require less effort than traditional bespoke builds.
   const managedStackTerms = ["next.js", "nextjs", "vercel", "supabase", "stripe", "clerk", "resend", "firebase", "netlify", "railway", "planetscale", "neon"];
   const managedStackHits = managedStackTerms.filter(t => lc.includes(t)).length;
   const isManagedStack = managedStackHits >= 2;
 
-  // MVP / phased delivery: price to scoped initial delivery, not full vision
   const mvpTerms = ["mvp", "phase 1", "phase one", "phased delivery", "phased approach", "core features first", "initial release", "accelerator scope", "optional phase 2", "optional enhancements", "launch first"];
   const isMvpPhased = mvpTerms.some(t => lc.includes(t));
 
-  // Apply effort dampening (multiplicative, controlled)
   let effortFactor = 1.0;
-  if (isManagedStack) effortFactor *= 0.85; // 15% reduction for managed stack
-  if (isMvpPhased) effortFactor *= 0.80;    // 20% reduction for MVP/phased scope
+  if (isManagedStack) effortFactor *= 0.85;
+  if (isMvpPhased) effortFactor *= 0.80;
 
   if (effortFactor < 1.0) {
     daysLow = Math.max(4, Math.round(daysLow * effortFactor));
@@ -611,18 +751,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (seoTerms.some(t => lc.includes(t))) contentBoost += 5;
 
   // ── v1.94.1: Baseline complexity floors ────────────────────────────────
-  // Prevent underestimation after signal filtering by enforcing realistic
-  // minimums per project type. UX/quality baseline: discovery 2d + design 3d
-  // + build 4d + QA/launch 1d = 10d minimum for growth websites.
   const projectType = (typeof briefRow?.['project_type'] === 'string' ? briefRow['project_type'] : '').toLowerCase();
   const isGrowthWebsite = ["growth website", "business website", "lead generation"].some(t => projectType.includes(t) || lc.includes(t));
   const isBrochureSite = projectType.includes("brochure") || cls === "brochure_site";
 
   let scoreFloor = 0;
-  let daysFloor = 4; // absolute minimum
+  let daysFloor = 4;
   if (isGrowthWebsite && !isBrochureSite) {
     scoreFloor = 20;
-    daysFloor = 10; // discovery 2 + design 3 + build 4 + QA 1
+    daysFloor = 10;
   } else if (isBrochureSite) {
     scoreFloor = 10;
     daysFloor = 5;
@@ -635,7 +772,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   daysHigh = Math.max(daysFloor + 2, daysHigh);
 
   // ── Build rationale from evidence ──────────────────────────────────────
-  const rationale = buildRationale(finalScore, finalCls, signals, sourcesUsed);
+  const rationale = buildRationale(finalScore, finalCls, signals, sourcesUsed, archSignals, archMultiplierLabel);
 
   const result: ComplexityResult = {
     complexity_score: finalScore,
