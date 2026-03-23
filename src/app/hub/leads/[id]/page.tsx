@@ -1636,25 +1636,21 @@ export default function LeadDetailPage() {
     if (!lead) return "";
     const sections: string[] = [];
 
-    // 1. Client details
+    // 1. Client details (v1.93.2: removed weak signals — role, decision_authority,
+    //    clarifier answers. Kept: identity, engagement type, budget/timeline as context only)
     const clientLines: string[] = [];
     clientLines.push(`Name: ${lead.contact_name ?? "Unknown"}`);
     if (lead.contact_email) clientLines.push(`Email: ${lead.contact_email}`);
     if (lead.company_name) clientLines.push(`Company: ${lead.company_name}`);
     if (lead.company_website) clientLines.push(`Website: ${lead.company_website}`);
-    if (lead.role) clientLines.push(`Role: ${lead.role}`);
-    if (lead.decision_authority) clientLines.push(`Decision authority: ${lead.decision_authority}`);
     if (lead.engagement_type) clientLines.push(`Engagement type: ${ENGAGEMENT_LABELS[lead.engagement_type] ?? lead.engagement_type}`);
-    if (lead.budget) clientLines.push(`Budget range: ${BUDGET_LABELS[lead.budget] ?? lead.budget}`);
+    if (lead.budget) clientLines.push(`Budget range (commercial context only): ${BUDGET_LABELS[lead.budget] ?? lead.budget}`);
     if (lead.timeline) clientLines.push(`Timeline: ${TIMELINE_LABELS[lead.timeline] ?? lead.timeline}`);
     sections.push("## Client details\n" + clientLines.join("\n"));
 
-    // 2. Intake clarifiers
-    const clarifiers = lead.lead_details?.clarifier_answers;
-    if (clarifiers && Object.keys(clarifiers).length > 0) {
-      const lines = Object.entries(clarifiers).map(([k, v]) => `- ${k.replace(/_/g, " ")}: ${v}`);
-      sections.push("## Intake clarifiers\n" + lines.join("\n"));
-    }
+    // 2. Intake clarifiers — REMOVED from analysis context (v1.93.2)
+    // Fields like what_building, design_ready, team_involved are weak self-reported
+    // signals that should not influence complexity/pricing/technical research.
 
     // 3. Client request
     if (lead.lead_details?.success_definition) {
@@ -1666,14 +1662,9 @@ export default function LeadDetailPage() {
       sections.push("## Current tools\n" + lead.lead_details.current_tools);
     }
 
-    // 4. Decision signals context (raw scores still useful for AI analysis)
-    const sigLines: string[] = [];
-    if (lead.total_score != null) sigLines.push(`Overall score: ${Number(lead.total_score).toFixed(1)}/5`);
-    if (lead.clarity_score != null) sigLines.push(`Clarity: ${lead.clarity_score}/5`);
-    if (lead.complexity_score != null) sigLines.push(`Complexity: ${lead.complexity_score}/5`);
-    if (lead.budget) sigLines.push(`Budget: ${lead.budget === "not_sure" ? "not sure" : lead.budget}`);
-    if (lead.timeline) sigLines.push(`Timeline: ${lead.timeline}`);
-    if (sigLines.length > 0) sections.push("## Decision signals\n" + sigLines.join("\n"));
+    // 4. Decision signals — REMOVED from analysis context (v1.93.2)
+    // Raw intake scores (total_score, clarity_score, complexity_score) are
+    // derived from weak self-reported fields and should not influence analysis.
 
     // 5. Workflow state
     const workflowLines: string[] = [];
@@ -2053,23 +2044,50 @@ export default function LeadDetailPage() {
     pricing_rationale: string;
   };
 
-  // ── Complexity Reality Multiplier (v1.93.0) ──
-  // Adjusts build days upward for high-complexity platform builds
-  // to prevent underpricing. Applied AFTER complexity scoring, BEFORE pricing.
-  function getComplexityMultiplier(signals: string[] = []): number {
-    let score = 1;
-    const hasIntegrations = signals.filter(s => s.includes("integration") || s.includes("api")).length >= 2;
-    const hasRealtime = signals.some(s => s.includes("real_time") || s.includes("realtime"));
-    const hasPayments = signals.some(s => s.includes("payment"));
-    const hasCustomLogic = signals.some(s => s.includes("custom"));
-    const hasPortal = signals.some(s => s.includes("portal"));
-    // Core escalation rule (high complexity platform)
-    if (hasIntegrations && hasRealtime && hasCustomLogic) score += 0.6;
-    // Additional weight (stacking but controlled)
-    if (hasPayments) score += 0.2;
-    if (hasPortal) score += 0.1;
-    // Clamp to safe bounds
-    return Math.max(1, Math.min(score, 2.2));
+  // ── Complexity Reality Multiplier (v1.93.2) ──
+  // Hardened: uses structural indicators (signal count, complexity class, score,
+  // analysis text patterns) instead of fragile individual signal labels.
+  // Prevents underpricing on complex integration/platform builds.
+  function getComplexityMultiplier(
+    signals: string[],
+    complexityScore: number,
+    complexityClass: string,
+    analysisText: string,
+  ): number {
+    let m = 1;
+    const lc = analysisText.toLowerCase();
+
+    // ── Structural indicator 1: signal density ──
+    // Many signals = genuinely complex platform, not a simple site
+    if (signals.length >= 8) m += 0.25;
+    else if (signals.length >= 6) m += 0.15;
+
+    // ── Structural indicator 2: complexity class / score ──
+    const isOperational = complexityClass === "operational_platform" || complexityClass === "enterprise_system";
+    const isHighScore = complexityScore >= 70;
+    if (isOperational && isHighScore) m += 0.25;
+    else if (isOperational || isHighScore) m += 0.15;
+
+    // ── Structural indicator 3: integration density ──
+    // Multiple external systems = real integration complexity
+    const integrationTerms = ["integration", "api", "sync", "import", "export", "migrate", "legacy", "pos", "tee_sheet", "crm", "erp", "accounting"];
+    const integrationHits = integrationTerms.filter(t => lc.includes(t)).length;
+    if (integrationHits >= 5) m += 0.3;
+    else if (integrationHits >= 3) m += 0.15;
+
+    // ── Structural indicator 4: operational / real-time dependency ──
+    const operationalTerms = ["real-time", "real_time", "realtime", "live data", "booking", "reservation", "payment", "transaction", "balance", "pos", "point of sale", "stock", "inventory", "scheduling"];
+    const operationalHits = operationalTerms.filter(t => lc.includes(t)).length;
+    if (operationalHits >= 4) m += 0.2;
+    else if (operationalHits >= 2) m += 0.1;
+
+    // ── Structural indicator 5: portal / multi-role complexity ──
+    const portalTerms = ["portal", "dashboard", "admin panel", "member", "staff", "instructor", "role", "multi-role", "permission"];
+    const portalHits = portalTerms.filter(t => lc.includes(t)).length;
+    if (portalHits >= 3) m += 0.15;
+
+    // Clamp to safe bounds (1.0 – 2.2)
+    return Math.max(1, Math.min(m, 2.2));
   }
 
   const buildPricing = useMemo((): BuildPricingResult | null => {
@@ -2079,9 +2097,20 @@ export default function LeadDetailPage() {
     const baseDaysLow = complexityResult.estimated_days_low;
     const baseDaysHigh = complexityResult.estimated_days_high;
 
-    // Apply complexity reality multiplier
+    // Apply complexity reality multiplier (v1.93.2: structural indicators)
     const signalKeys = (complexityResult.detected_signals ?? []).map((s: { key: string }) => s.key);
-    const multiplier = getComplexityMultiplier(signalKeys);
+    // Build analysis text from available structured fields for stable pattern matching
+    const analysisTextForMultiplier = [
+      briefSummary, briefSolution, briefFeatures, briefIntegrations,
+      technicalResearch?.summary ?? "", (technicalResearch?.recommendations ?? []).join(" "),
+      complexityResult.complexity_rationale ?? "",
+    ].join(" ");
+    const multiplier = getComplexityMultiplier(
+      signalKeys,
+      complexityResult.complexity_score,
+      complexityResult.complexity_class,
+      analysisTextForMultiplier,
+    );
     const daysLow = Math.round(baseDaysLow * multiplier);
     const daysHigh = Math.round(baseDaysHigh * multiplier);
 
