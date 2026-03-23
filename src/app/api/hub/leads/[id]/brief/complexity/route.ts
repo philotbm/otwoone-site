@@ -593,12 +593,43 @@ export async function POST(req: NextRequest, { params }: Params) {
     daysHigh = Math.max(6, Math.round(daysHigh * effortFactor));
   }
 
+  // ── v1.94.1: Content-driven complexity boost ───────────────────────────
+  let contentBoost = 0;
+  const contentTerms = ["projects", "portfolio", "case stud", "gallery", "showcase"];
+  if (contentTerms.some(t => lc.includes(t))) contentBoost += 5;
+  const seoTerms = ["seo", "blog", "content marketing", "content strategy", "articles"];
+  if (seoTerms.some(t => lc.includes(t))) contentBoost += 5;
+
+  // ── v1.94.1: Baseline complexity floors ────────────────────────────────
+  // Prevent underestimation after signal filtering by enforcing realistic
+  // minimums per project type. UX/quality baseline: discovery 2d + design 3d
+  // + build 4d + QA/launch 1d = 10d minimum for growth websites.
+  const projectType = (typeof briefRow?.['project_type'] === 'string' ? briefRow['project_type'] : '').toLowerCase();
+  const isGrowthWebsite = ["growth website", "business website", "lead generation"].some(t => projectType.includes(t) || lc.includes(t));
+  const isBrochureSite = projectType.includes("brochure") || cls === "brochure_site";
+
+  let scoreFloor = 0;
+  let daysFloor = 4; // absolute minimum
+  if (isGrowthWebsite && !isBrochureSite) {
+    scoreFloor = 20;
+    daysFloor = 10; // discovery 2 + design 3 + build 4 + QA 1
+  } else if (isBrochureSite) {
+    scoreFloor = 10;
+    daysFloor = 5;
+  }
+
+  // Apply floors and content boost to final score
+  const finalScore = Math.min(100, Math.max(score + contentBoost, scoreFloor));
+  const finalCls = classifyComplexity(finalScore);
+  daysLow = Math.max(daysFloor, daysLow);
+  daysHigh = Math.max(daysFloor + 2, daysHigh);
+
   // ── Build rationale from evidence ──────────────────────────────────────
-  const rationale = buildRationale(score, cls, signals, sourcesUsed);
+  const rationale = buildRationale(finalScore, finalCls, signals, sourcesUsed);
 
   const result: ComplexityResult = {
-    complexity_score: score,
-    complexity_class: cls,
+    complexity_score: finalScore,
+    complexity_class: finalCls,
     detected_signals: signals,
     build_components: components,
     estimated_days_low: daysLow,
