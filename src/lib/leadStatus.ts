@@ -64,7 +64,7 @@ export const MEETING_TYPES = [
 export type MeetingType = typeof MEETING_TYPES[number];
 
 export const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
-  discovery_call:         "Discovery Call",
+  discovery_call:         "Scoping Call",
   proposal_walkthrough:   "Proposal Walkthrough",
   build_review:           "Build Review",
   client_review_session:  "Client Review Session",
