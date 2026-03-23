@@ -107,7 +107,7 @@ function classifyComplexity(score: number): ComplexityClass {
 
 const SIGNAL_PATTERNS: Record<SignalKey, { patterns: RegExp; evidenceLabel: string }> = {
   booking_system: {
-    patterns: /\b(book(?:ing|ed|s)\s+(?:a\s+)?(?:appointment|session|class|slot|time|room|table|court|bay)|appointment\s*booking|reservation\s*system|time.?slot|calendar.?booking|session.?booking|class.?booking|slot.?allocat|capacity.?manag|availability.?(?:check|calendar)|select\s+(?:a\s+)?time|choose\s+(?:a\s+)?date|schedule\s+(?:a\s+)?(?:session|appointment|class|call|meeting|consultation))\b/i,
+    patterns: /\b(book(?:ing|ed|s)\s+(?:a\s+)?(?:appointment|session|class|slot|time|room|table|court|bay)|online\s+booking|booking\s+system|booking\s+flow|booking\s+platform|appointment\s*booking|reservation\s*system|time.?slot|calendar.?booking|session.?booking|class.?booking|slot.?allocat|capacity.?manag|availability.?(?:check|calendar)|select\s+(?:a\s+)?time|choose\s+(?:a\s+)?date|schedule\s+(?:a\s+)?(?:session|appointment|class|call|meeting|consultation))\b/i,
     evidenceLabel: 'booking/scheduling system',
   },
   external_api_integrations: {
@@ -217,16 +217,19 @@ function assembleUpstreamText(
   const sections: string[] = [];
   const sourcesUsed: string[] = [];
 
-  // ── Priority 1: Structured brief fields (consultant brief output) ──────
+  // ── v1.94.0: Signal Integrity Layer ────────────────────────────────────
+  // ONLY include confirmed-requirement sources in signal detection text.
+  // Technical research / suggested integrations / infrastructure suggestions
+  // are EXCLUDED — they describe tooling options, not confirmed requirements.
+
+  // ── Priority 1: Confirmed brief fields (summary, type, solution, features) ───
+  // These represent the consultant's confirmed analysis of what the project requires.
+  // EXCLUDED: suggested_integrations, suggested_pages (tooling suggestions, not requirements),
+  //           timeline_estimate, budget_positioning, risks_and_unknowns (context, not requirements)
   if (briefRow) {
-    const briefFields = [
-      'project_summary', 'project_type', 'recommended_solution',
-      'suggested_pages', 'suggested_features', 'suggested_integrations',
-      'timeline_estimate', 'budget_positioning', 'risks_and_unknowns',
-      'revision_context',
-    ];
+    const confirmedFields = ['project_summary', 'project_type', 'recommended_solution', 'suggested_features'];
     const briefParts: string[] = [];
-    for (const f of briefFields) {
+    for (const f of confirmedFields) {
       const val = briefRow[f];
       if (typeof val === 'string' && val.trim().length > 10) {
         briefParts.push(val.trim());
@@ -236,7 +239,7 @@ function assembleUpstreamText(
       sections.push(briefParts.join(' '));
       sourcesUsed.push('consultant_brief');
     }
-    // Revision context is a first-class upstream input
+    // Revision context is confirmed operator input
     const revCtx = briefRow['revision_context'];
     if (typeof revCtx === 'string' && revCtx.trim().length > 10) {
       sections.push(revCtx.trim());
@@ -244,43 +247,23 @@ function assembleUpstreamText(
     }
   }
 
-  // ── Priority 2: Technical research (structured categories) ─────────────
+  // ── Priority 2: Technical research — EXCLUDED from signal detection ────
+  // (v1.94.0: research describes tooling options, not confirmed requirements.
+  //  Signals must come from what the client actually needs, not what we suggest.)
   if (research) {
-    const researchParts: string[] = [];
-    if (research.summary) researchParts.push(research.summary);
-    if (research.recommendations?.length > 0) researchParts.push(research.recommendations.join(' '));
-
-    for (const key of ['integrations', 'infrastructure', 'third_party_services', 'compliance', 'operating_cost_estimate'] as const) {
-      const cat = research[key] as ResearchCategory | undefined;
-      if (!cat) continue;
-      if (cat.summary) researchParts.push(cat.summary);
-      for (const item of cat.items ?? []) {
-        researchParts.push(`${item.name} ${item.description}`);
-      }
-    }
-
-    if (research.unknowns?.length > 0) researchParts.push(research.unknowns.join(' '));
-    if (research.assumptions?.length > 0) researchParts.push(research.assumptions.join(' '));
-
-    if (researchParts.length > 0) {
-      sections.push(researchParts.join(' '));
-      sourcesUsed.push('technical_research');
-    }
+    sourcesUsed.push('technical_research_excluded');
   }
 
-  // ── Priority 3: Lead details (clarifiers, success definition) ──────────
+  // ── Priority 3: Lead details (client request = primary source of truth) ─
   if (leadDetails) {
     const detailParts: string[] = [];
-    const clarifiers = leadDetails.clarifier_answers as Record<string, string> | null;
-    if (clarifiers && typeof clarifiers === 'object') {
-      detailParts.push(Object.values(clarifiers).join(' '));
-    }
+    // success_definition is the client's own description of what they need
     if (typeof leadDetails.success_definition === 'string' && leadDetails.success_definition.trim()) {
       detailParts.push(leadDetails.success_definition.trim());
     }
     if (detailParts.length > 0) {
       sections.push(detailParts.join(' '));
-      sourcesUsed.push('intake_clarifiers');
+      sourcesUsed.push('client_request');
     }
   }
 
@@ -288,9 +271,6 @@ function assembleUpstreamText(
   if (leadScores) {
     const scoreParts: string[] = [];
     if (leadScores.engagement_type) scoreParts.push(String(leadScores.engagement_type));
-    if (typeof leadScores.complexity_score === 'number' && leadScores.complexity_score >= 3) {
-      scoreParts.push('high_complexity_intake');
-    }
     if (scoreParts.length > 0) {
       sections.push(scoreParts.join(' '));
       sourcesUsed.push('lead_scoring');
@@ -315,21 +295,41 @@ function assembleUpstreamText(
 
 // Contact-only negative filter for booking system false positives
 const CONTACT_ONLY_TERMS = /\b(contact\s+form|get\s+a\s+quote|enquiry\s+form|submit\s+request|email\s+us|lead\s+form|quote\s+request|request\s+a\s+(?:quote|callback)|send\s+(?:us\s+)?(?:a\s+)?message)\b/i;
-const STRONG_BOOKING_TERMS = /\b(book(?:ing|ed|s)\s+(?:a\s+)?(?:appointment|session|class|slot|time|room|table|court|bay)|appointment\s*booking|reservation\s*system|time.?slot|calendar.?booking|session.?booking|class.?booking|slot.?allocat|capacity.?manag|availability.?(?:check|calendar)|select\s+(?:a\s+)?time|choose\s+(?:a\s+)?date|schedule\s+(?:a\s+)?(?:session|appointment|class|call|meeting|consultation))\b/i;
+const STRONG_BOOKING_TERMS = /\b(book(?:ing|ed|s)\s+(?:a\s+)?(?:appointment|session|class|slot|time|room|table|court|bay)|online\s+booking|booking\s+system|booking\s+flow|booking\s+platform|appointment\s*booking|reservation\s*system|time.?slot|calendar.?booking|session.?booking|class.?booking|slot.?allocat|capacity.?manag|availability.?(?:check|calendar)|select\s+(?:a\s+)?time|choose\s+(?:a\s+)?date|schedule\s+(?:a\s+)?(?:session|appointment|class|call|meeting|consultation))\b/i;
+
+// v1.94.0: Optional / phased feature filter
+const OPTIONAL_CONTEXT_RE = /\b(optional|post[- ]launch|phase\s*2|phase\s*two|if\s+desired|could\s+be\s+added|nice\s+to\s+have|future\s+enhancement|later\s+phase|stretch\s+goal|not\s+essential)\b/i;
 
 function detectSignals(searchText: string): DetectedSignal[] {
   const detected: DetectedSignal[] = [];
+  const filtered: Array<{ key: string; reason: string }> = [];
 
   for (const [key, config] of Object.entries(SIGNAL_PATTERNS)) {
     const signalKey = key as SignalKey;
+    config.patterns.lastIndex = 0; // reset regex
     const match = config.patterns.exec(searchText);
     if (match) {
       // Booking system: require strong scheduling terms AND not contact-only context
       if (signalKey === "booking_system") {
         const hasStrongBooking = STRONG_BOOKING_TERMS.test(searchText);
         const hasContactOnly = CONTACT_ONLY_TERMS.test(searchText) && !hasStrongBooking;
-        if (!hasStrongBooking || hasContactOnly) continue;
+        if (!hasStrongBooking || hasContactOnly) {
+          filtered.push({ key: signalKey, reason: "booking false-positive: contact-only context" });
+          continue;
+        }
       }
+
+      // v1.94.0: Optional/phased feature filter
+      // Check if the matched term appears only in optional/phased context
+      const matchIdx = match.index;
+      const surroundStart = Math.max(0, matchIdx - 80);
+      const surroundEnd = Math.min(searchText.length, matchIdx + match[0].length + 80);
+      const surrounding = searchText.slice(surroundStart, surroundEnd);
+      if (OPTIONAL_CONTEXT_RE.test(surrounding)) {
+        filtered.push({ key: signalKey, reason: `optional/phased context: "${surrounding.trim().slice(0, 60)}…"` });
+        continue;
+      }
+
       detected.push({
         key: signalKey,
         weight: SIGNAL_WEIGHTS[signalKey],
@@ -338,6 +338,30 @@ function detectSignals(searchText: string): DetectedSignal[] {
     }
   }
 
+  // v1.94.0: Growth website guardrails
+  // If no booking, no dashboard, no user accounts, no automation, no multi-role
+  // → remove custom_business_logic, authentication_roles, payments (platform-implied)
+  const detectedKeys = new Set(detected.map(d => d.key));
+  const hasNoComplexSystems =
+    !detectedKeys.has("booking_system") &&
+    !detectedKeys.has("staff_dashboard") &&
+    !detectedKeys.has("customer_portal") &&
+    !detectedKeys.has("workflow_states");
+
+  if (hasNoComplexSystems) {
+    const growthGuardRemove: SignalKey[] = ["custom_business_logic", "authentication_roles", "payments"];
+    for (const removeKey of growthGuardRemove) {
+      if (detectedKeys.has(removeKey)) {
+        filtered.push({ key: removeKey, reason: "growth website guardrail: no booking/dashboard/portal/workflow detected" });
+      }
+    }
+    const kept = detected.filter(d => !growthGuardRemove.includes(d.key as SignalKey));
+    // Log filtered signals in rationale (attached to result later)
+    (kept as unknown as { _filtered?: typeof filtered })._filtered = filtered;
+    return kept;
+  }
+
+  (detected as unknown as { _filtered?: typeof filtered })._filtered = filtered;
   return detected;
 }
 
@@ -417,7 +441,13 @@ function buildRationale(
     raw_context_fallback: 'raw client context (fallback)',
   };
 
-  const sources = sourcesUsed.map((s) => sourceLabels[s] || s).join(', ');
+  const sourceLabelsMap: Record<string, string> = {
+    ...sourceLabels,
+    technical_research_excluded: 'technical research (excluded from signal detection)',
+    client_request: 'client request',
+  };
+
+  const sources = sourcesUsed.map((s) => sourceLabelsMap[s] || s).join(', ');
   parts.push(`Score ${score}/100 (${cls.replace(/_/g, ' ')}) derived from: ${sources}.`);
 
   if (signals.length > 0) {
@@ -425,6 +455,12 @@ function buildRationale(
     parts.push(`Detected signals: ${signalNames.join(', ')}.`);
   } else {
     parts.push('No high-complexity signals detected in upstream outputs.');
+  }
+
+  // v1.94.0: Include filtered signals in rationale for operator transparency
+  const filteredList = (signals as unknown as { _filtered?: Array<{ key: string; reason: string }> })._filtered;
+  if (filteredList && filteredList.length > 0) {
+    parts.push(`Filtered signals: ${filteredList.map(f => `${f.key.replace(/_/g, ' ')} (${f.reason})`).join('; ')}.`);
   }
 
   return parts.join(' ');
