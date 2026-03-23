@@ -2053,12 +2053,38 @@ export default function LeadDetailPage() {
     pricing_rationale: string;
   };
 
+  // ── Complexity Reality Multiplier (v1.93.0) ──
+  // Adjusts build days upward for high-complexity platform builds
+  // to prevent underpricing. Applied AFTER complexity scoring, BEFORE pricing.
+  function getComplexityMultiplier(signals: string[] = []): number {
+    let score = 1;
+    const hasIntegrations = signals.filter(s => s.includes("integration") || s.includes("api")).length >= 2;
+    const hasRealtime = signals.some(s => s.includes("real_time") || s.includes("realtime"));
+    const hasPayments = signals.some(s => s.includes("payment"));
+    const hasCustomLogic = signals.some(s => s.includes("custom"));
+    const hasPortal = signals.some(s => s.includes("portal"));
+    // Core escalation rule (high complexity platform)
+    if (hasIntegrations && hasRealtime && hasCustomLogic) score += 0.6;
+    // Additional weight (stacking but controlled)
+    if (hasPayments) score += 0.2;
+    if (hasPortal) score += 0.1;
+    // Clamp to safe bounds
+    return Math.max(1, Math.min(score, 2.2));
+  }
+
   const buildPricing = useMemo((): BuildPricingResult | null => {
     // Continuity: only compute when complexity result exists
     if (!complexityResult || complexityResult.complexity_score === 0) return null;
 
-    const daysLow = complexityResult.estimated_days_low;
-    const daysHigh = complexityResult.estimated_days_high;
+    const baseDaysLow = complexityResult.estimated_days_low;
+    const baseDaysHigh = complexityResult.estimated_days_high;
+
+    // Apply complexity reality multiplier
+    const signalKeys = (complexityResult.detected_signals ?? []).map((s: { key: string }) => s.key);
+    const multiplier = getComplexityMultiplier(signalKeys);
+    const daysLow = Math.round(baseDaysLow * multiplier);
+    const daysHigh = Math.round(baseDaysHigh * multiplier);
+
     const recommendedDays = Math.round((daysLow + daysHigh) / 2);
     const recommendedPrice = recommendedDays * OTWOONE_DAY_RATE;
     const confidenceLow = daysLow * OTWOONE_DAY_RATE;
