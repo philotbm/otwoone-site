@@ -107,7 +107,7 @@ function classifyComplexity(score: number): ComplexityClass {
 
 const SIGNAL_PATTERNS: Record<SignalKey, { patterns: RegExp; evidenceLabel: string }> = {
   booking_system: {
-    patterns: /\b(booking|reservation|appointment|scheduling|slot.?allocat|calendar.?system|capacity.?manag|availability.?check|time.?slot)\b/i,
+    patterns: /\b(book(?:ing|ed|s)\s+(?:a\s+)?(?:appointment|session|class|slot|time|room|table|court|bay)|appointment\s*booking|reservation\s*system|time.?slot|calendar.?booking|session.?booking|class.?booking|slot.?allocat|capacity.?manag|availability.?(?:check|calendar)|select\s+(?:a\s+)?time|choose\s+(?:a\s+)?date|schedule\s+(?:a\s+)?(?:session|appointment|class|call|meeting|consultation))\b/i,
     evidenceLabel: 'booking/scheduling system',
   },
   external_api_integrations: {
@@ -313,6 +313,10 @@ function assembleUpstreamText(
 
 // ── Signal detection ─────────────────────────────────────────────────────────
 
+// Contact-only negative filter for booking system false positives
+const CONTACT_ONLY_TERMS = /\b(contact\s+form|get\s+a\s+quote|enquiry\s+form|submit\s+request|email\s+us|lead\s+form|quote\s+request|request\s+a\s+(?:quote|callback)|send\s+(?:us\s+)?(?:a\s+)?message)\b/i;
+const STRONG_BOOKING_TERMS = /\b(book(?:ing|ed|s)\s+(?:a\s+)?(?:appointment|session|class|slot|time|room|table|court|bay)|appointment\s*booking|reservation\s*system|time.?slot|calendar.?booking|session.?booking|class.?booking|slot.?allocat|capacity.?manag|availability.?(?:check|calendar)|select\s+(?:a\s+)?time|choose\s+(?:a\s+)?date|schedule\s+(?:a\s+)?(?:session|appointment|class|call|meeting|consultation))\b/i;
+
 function detectSignals(searchText: string): DetectedSignal[] {
   const detected: DetectedSignal[] = [];
 
@@ -320,6 +324,12 @@ function detectSignals(searchText: string): DetectedSignal[] {
     const signalKey = key as SignalKey;
     const match = config.patterns.exec(searchText);
     if (match) {
+      // Booking system: require strong scheduling terms AND not contact-only context
+      if (signalKey === "booking_system") {
+        const hasStrongBooking = STRONG_BOOKING_TERMS.test(searchText);
+        const hasContactOnly = CONTACT_ONLY_TERMS.test(searchText) && !hasStrongBooking;
+        if (!hasStrongBooking || hasContactOnly) continue;
+      }
       detected.push({
         key: signalKey,
         weight: SIGNAL_WEIGHTS[signalKey],
