@@ -3765,19 +3765,12 @@ export default function LeadDetailPage() {
         {status === "ready_for_proposal" && (
           <button
             type="button"
-            onClick={async () => {
-              if (!proposal) {
-                await createProposal();
-              }
-              setProposalOpen(true);
-              setTimeout(() => {
-                document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }, 100);
+            onClick={() => {
+              document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" });
             }}
-            disabled={proposalSaving || proposalLoading}
-            className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+            className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
           >
-            {proposalSaving ? "Creating…" : proposal ? "Open Proposal" : "Create Proposal"}
+            Go to Proposal
           </button>
         )}
       </div>
@@ -5078,20 +5071,15 @@ export default function LeadDetailPage() {
                           {!proposalApproved && (
                             <button
                               type="button"
-                              onClick={async () => {
-                                if (!proposalExists) await createProposal();
-                                setProposalOpen(true);
-                                setTimeout(() => { document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100);
-                              }}
-                              disabled={proposalSaving || proposalLoading}
+                              onClick={() => { document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
                               className={cx(
-                                "w-full px-4 py-3 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50",
+                                "w-full px-4 py-3 rounded-lg text-sm font-semibold transition-colors",
                                 needsStatusAdvance
                                   ? "bg-indigo-600/60 hover:bg-indigo-600 text-white/80"
                                   : "bg-indigo-600 hover:bg-indigo-500 text-white",
                               )}
                             >
-                              {proposalSaving ? "Creating…" : proposalExists ? "Open Proposal" : "Create Proposal"}
+                              Go to Proposal Workspace
                             </button>
                           )}
                           {proposalApproved && (
@@ -5131,30 +5119,18 @@ export default function LeadDetailPage() {
                 ) : null;
               })()}
 
-              {/* ── ready_for_proposal with readiness → show create proposal ── */}
-              {status === "ready_for_proposal" && briefEligible && (scopeReady === true || overrideScopeWarning) && (() => {
-                const proposalApproved = proposal && ["approved", "signed", "deposit_requested", "deposit_received"].includes(proposal.status);
-                const proposalExists = !!proposal;
-                return (
-                  <div className="space-y-2">
-                    {!proposalApproved && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!proposalExists) await createProposal();
-                          setProposalOpen(true);
-                          setTimeout(() => { document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100);
-                        }}
-                        disabled={proposalSaving || proposalLoading}
-                        className="w-full px-4 py-3 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-                      >
-                        {proposalSaving ? "Creating…" : proposalExists ? "Open Proposal" : "Create Proposal"}
-                      </button>
-                    )}
-                    {proposalError && <p className="text-xs text-red-400">{proposalError}</p>}
-                  </div>
-                );
-              })()}
+              {/* ── ready_for_proposal with readiness → scroll to workspace ── */}
+              {status === "ready_for_proposal" && briefEligible && (scopeReady === true || overrideScopeWarning) && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+                    className="w-full px-4 py-3 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                  >
+                    Go to Proposal Workspace
+                  </button>
+                </div>
+              )}
 
               {/* ── Post-proposal status — show status + link back ── */}
               {["proposal_sent", "client_approved", "deposit_requested", "in_build", "client_review", "revisions", "final_approval", "full_payment_requested", "complete"].includes(status) && (
@@ -5169,16 +5145,6 @@ export default function LeadDetailPage() {
                   </span>
                   {proposal?.view_token && (
                     <a href={`/proposal/${proposal.view_token}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors">View proposal ↗</a>
-                  )}
-                  {!proposal && briefEligible && (
-                    <button
-                      type="button"
-                      onClick={async () => { await createProposal(); setProposalOpen(true); setTimeout(() => { document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }}
-                      disabled={proposalSaving}
-                      className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-indigo-600/80 hover:bg-indigo-600 text-white transition-colors disabled:opacity-50"
-                    >
-                      {proposalSaving ? "Creating…" : "Create Proposal"}
-                    </button>
                   )}
                 </div>
               )}
@@ -5619,379 +5585,38 @@ export default function LeadDetailPage() {
         )}
 
         {/* ════════════════════════════════════════════════════════════════
-            PROPOSAL PREP — proposal prompt, draft, and handoff actions
+            PROPOSAL WORKSPACE — unified linear proposal flow
+            A. Commercial inputs → B. Prompt pack → C. Draft → D. Actions
             ════════════════════════════════════════════════════════════════ */}
         {briefEligible && (() => {
           const proposalComplete = ["proposal_sent", "client_approved", "deposit_requested", "in_build", "client_review", "revisions", "final_approval", "full_payment_requested", "complete"].includes(status);
+          const proposalExists = !!proposal;
           return (
-          <div>
-            <Section title={proposalComplete ? "Proposal Prep (Completed)" : "Proposal Prep"}>
-
-              {/* ── Workflow progress indicator ─────────────────────────── */}
-              {(() => {
-                const hasBrief   = briefSummary.trim().length > 0;
-                const hasPrompt  = briefPromptOutput.trim().length > 0;
-                const hasDraft   = briefProposal.trim().length > 0;
-                const isSent     = proposalComplete;
-
-                type StepState = "done" | "active" | "upcoming";
-                const steps: Array<{ label: string; state: StepState }> = [
-                  { label: "Analysis complete",       state: hasBrief && scopeReady !== null ? "done" : hasBrief ? "active" : "upcoming" },
-                  { label: "Brief finalised",         state: hasBrief && (scopeReady || overrideScopeWarning) ? "done" : hasBrief ? "active" : "upcoming" },
-                  { label: "Proposal prompt ready",   state: hasPrompt ? "done" : hasBrief ? "active" : "upcoming" },
-                  { label: "Proposal draft prepared",  state: hasDraft ? "done" : hasPrompt ? "active" : "upcoming" },
-                  { label: "Ready to send",            state: isSent ? "done" : hasDraft ? "active" : "upcoming" },
-                ];
-
-                return (
-                  <div className="mb-5 px-4 py-3 rounded-lg bg-white/[0.02] border border-white/5">
-                    <div className="flex items-center gap-4 flex-wrap">
-                      {steps.map((s, i) => (
-                        <div key={i} className="flex items-center gap-1.5">
-                          <span className={cx(
-                            "w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold shrink-0",
-                            s.state === "done"   && "bg-green-500/20 text-green-400",
-                            s.state === "active"  && "bg-indigo-500/20 text-indigo-400",
-                            s.state === "upcoming" && "bg-white/5 text-gray-600",
-                          )}>
-                            {s.state === "done" ? "✓" : s.state === "active" ? "→" : (i + 1)}
-                          </span>
-                          <span className={cx(
-                            "text-[10px]",
-                            s.state === "done"   && "text-green-400/80",
-                            s.state === "active"  && "text-indigo-300 font-medium",
-                            s.state === "upcoming" && "text-gray-600",
-                          )}>
-                            {s.label}
-                          </span>
-                          {i < steps.length - 1 && <span className="text-gray-700 text-[10px] ml-1">→</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div className="space-y-5">
-
-                {/* ── Proposal status summary ──────────────────────────────── */}
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div>
-                    <p className="text-xs text-gray-500">Status</p>
-                    <p className="text-[10px] text-gray-600 mt-0.5">
-                      {status === "proposal_sent" ? "Proposal sent — awaiting client decision."
-                        : status === "client_approved" ? "Client approved — request deposit."
-                        : status === "deposit_requested" ? "Deposit requested — activate when payment received."
-                        : status === "complete" ? "Project complete."
-                        : ["in_build", "client_review", "revisions", "final_approval", "full_payment_requested"].includes(status) ? "Project in progress."
-                        : "Prepare and send the proposal."}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {status === "proposal_sent" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          saveField({ status: "client_approved" });
-                          setStatus("client_approved");
-                        }}
-                        disabled={saving}
-                        className="px-4 py-2 rounded-lg text-xs font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-50"
-                      >
-                        {saving ? "Updating…" : "Mark Approved"}
-                      </button>
-                    )}
-                    {status === "client_approved" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          saveField({ status: "deposit_requested" });
-                          setStatus("deposit_requested");
-                        }}
-                        disabled={saving}
-                        className="px-4 py-2 rounded-lg text-xs font-medium bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
-                      >
-                        {saving ? "Updating…" : "Request Deposit"}
-                      </button>
-                    )}
-                    {status === "deposit_requested" && (
-                      <button
-                        type="button"
-                        onClick={() => setShowConvert(true)}
-                        className="px-4 py-2 rounded-lg text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white transition-colors"
-                      >
-                        Activate Deposit
-                      </button>
-                    )}
-                    {["enquiry_received", "scope_analysis"].includes(status) && (
-                      <span className="text-[10px] text-gray-600">Lead must reach Ready for Proposal to advance.</span>
-                    )}
-                    {status === "ready_for_proposal" && proposal && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!window.confirm("Mark this proposal as sent? This advances the lead status to Proposal Sent.")) return;
-                          saveField({ status: "proposal_sent" });
-                          setStatus("proposal_sent");
-                        }}
-                        disabled={saving}
-                        className="px-4 py-2 rounded-lg text-xs font-medium bg-indigo-600/80 hover:bg-indigo-600 text-white transition-colors disabled:opacity-50"
-                      >
-                        {saving ? "Updating…" : "Mark as Sent"}
-                      </button>
-                    )}
-                    {status === "ready_for_proposal" && !proposal && (
-                      <span className="text-[10px] text-gray-600">Create a proposal first, then mark as sent.</span>
-                    )}
-                    {status === "complete" && project && (
-                      <div className="flex items-center gap-3">
-                        <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
-                          Deposit Activated
-                        </span>
-                        {(project.deposit_amount != null || project.deposit_reference) && (
-                          <span className="text-[10px] text-gray-500">
-                            {project.deposit_amount != null && <span>{Number(project.deposit_amount).toLocaleString("en-IE", { style: "currency", currency: "EUR" })}</span>}
-                            {project.deposit_amount != null && project.deposit_reference && " · "}
-                            {project.deposit_reference && <span>{project.deposit_reference}</span>}
-                            {project.deposit_paid_at && <span> · {fmt(project.deposit_paid_at)}</span>}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* ── Proposal prompt ─────────────────────────────────── */}
-                <div className="pt-3 border-t border-white/5">
-                  {(scopeReady === true || overrideScopeWarning) && briefSummary.trim() && (
-                    <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-green-500/5 border border-green-500/10 flex-wrap">
-                      <span className="text-[10px] text-green-400 font-medium">✓ Brief confirmed</span>
-                      <span className="text-[10px] text-gray-500">{proposalComplete ? "— Proposal sent" : "→ Generate proposal prompt"}</span>
-                      {buildPricing && (
-                        <span className="text-[10px] text-gray-500 ml-1">
-                          · Build price: <span className="text-gray-400 font-medium">€{effectiveBuildPrice.toLocaleString()}</span> ({buildPricing.recommended_build_days}d)
-                        </span>
-                      )}
-                      {runningCosts && (
-                        <span className="text-[10px] text-gray-500 ml-1">
-                          · Monthly: <span className="text-gray-400 font-medium">€{runningCosts.total_with_retainer_low.toLocaleString()}{runningCosts.total_with_retainer_low !== runningCosts.total_with_retainer_high ? `–€${runningCosts.total_with_retainer_high.toLocaleString()}` : ""}/mo</span>
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal prompt</span>
-                    {!proposalComplete ? (
-                      <button
-                        type="button"
-                        disabled={!briefSummary.trim() || (scopeReady === false && !overrideScopeWarning)}
-                        onClick={() => {
-                          setBriefPromptOutput(buildBriefPrompt());
-                          setBriefPromptCopied(false);
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        Generate proposal prompt
-                      </button>
-                    ) : briefPromptOutput ? (
-                      <span className="text-[10px] text-green-400/60">✓ Generated</span>
-                    ) : null}
-                  </div>
-                  {scopeReady === false && !overrideScopeWarning && briefSummary.trim() && !briefPromptOutput && (
-                    <p className="text-xs text-amber-400/60">Scope not ready. Update readiness in Scope Readiness above, or override to unlock proposal generation.</p>
-                  )}
-                  {!briefSummary.trim() && !briefPromptOutput && (
-                    <p className="text-xs text-gray-700">Complete the analysis in System Analysis above to generate a proposal prompt.</p>
-                  )}
-                  {briefPromptOutput && (
-                    <div className="relative">
-                      <textarea
-                        readOnly
-                        value={briefPromptOutput}
-                        rows={14}
-                        className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none leading-relaxed"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(briefPromptOutput);
-                          setBriefPromptCopied(true);
-                          setTimeout(() => setBriefPromptCopied(false), 2000);
-                        }}
-                        className="absolute top-2 right-2 px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
-                      >
-                        {briefPromptCopied ? "Copied ✓" : "Copy"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* ── Proposal draft ──────────────────────────────────── */}
-                <div className="pt-3 border-t border-white/5">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal draft{proposalComplete && briefProposal.trim() ? " (sent)" : ""}</span>
-                    {briefProposal.trim() && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(briefProposal);
-                          setProposalCopied(true);
-                          setTimeout(() => setProposalCopied(false), 2000);
-                        }}
-                        className="px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
-                      >
-                        {proposalCopied ? "Copied ✓" : "Copy proposal"}
-                      </button>
-                    )}
-                  </div>
-                  {proposalComplete ? (
-                    briefProposal.trim() ? (
-                      <div className="relative">
-                        <textarea
-                          readOnly
-                          value={briefProposal}
-                          rows={6}
-                          className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none resize-y cursor-default"
-                        />
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-600">No draft was saved before sending.</p>
-                    )
-                  ) : (
-                    <textarea
-                      value={briefProposal}
-                      onChange={(e) => setBriefProposal(e.target.value)}
-                      placeholder="Paste or write the proposal email draft here. This can be AI-generated, manually written, or a combination."
-                      rows={8}
-                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
-                    />
-                  )}
-                </div>
-
-                {/* ── Save all ──────────────────────────────────────── */}
-                <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                  <div className="flex items-center gap-3">
-                    <span className={cx("text-xs transition-opacity", briefSaved ? "text-green-400 opacity-100" : "opacity-0")}>
-                      Saved
-                    </span>
-                    {brief && (
-                      <span className="text-[10px] text-gray-700">
-                        Last updated {fmtDateTime(brief.updated_at)}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    onClick={saveBrief}
-                    disabled={briefSaving}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-                  >
-                    {briefSaving ? "Saving…" : "Save all"}
-                  </button>
-                </div>
-
-              </div>
-            </Section>
-
-            {/* ── Discovery call modal ────────────────────────────── */}
-            {showCallModal && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                <div className="bg-[#141519] border border-white/10 rounded-xl w-full max-w-lg mx-4 overflow-hidden">
-                  <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
-                    <h3 className="text-sm font-medium text-gray-200">Speak to client</h3>
-                    <button
-                      type="button"
-                      onClick={() => setShowCallModal(false)}
-                      className="text-gray-500 hover:text-gray-300 text-lg leading-none"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div className="px-5 py-4 space-y-4">
-                    <p className="text-xs text-gray-400">Choose how to reach the client. The email text will be copied to your clipboard.</p>
-
-                    {/* Option 1 — Booking link */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const name = lead?.contact_name?.split(" ")[0] ?? "there";
-                        const text = `Hi ${name},\n\nThanks for the detailed replies \u2014 a quick call will help clarify a few points and avoid unnecessary back-and-forth.\n\nYou can pick a time that suits you here:\n[Microsoft Bookings link]\n\nBest\nPhil`;
-                        navigator.clipboard.writeText(text);
-                        setContactStrategy("bookings");
-                        setShowCallModal(false);
-                      }}
-                      className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"
-                    >
-                      <span className="text-xs font-medium text-gray-200 group-hover:text-indigo-300">Send booking link</span>
-                      <p className="text-[10px] text-gray-500 mt-0.5">Microsoft Bookings — client picks a time</p>
-                    </button>
-
-                    {/* Option 2 — Teams call */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const name = lead?.contact_name?.split(" ")[0] ?? "there";
-                        const text = `Hi ${name},\n\nThanks for the information so far. It might be easier to run through a few details on a quick call.\n\nWould you be available for a 15\u201320 minute Microsoft Teams call this week?\n\nIf so, let me know a time that suits and I\u2019ll send a meeting invite.\n\nBest\nPhil`;
-                        navigator.clipboard.writeText(text);
-                        setContactStrategy("teams");
-                        setShowCallModal(false);
-                      }}
-                      className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"
-                    >
-                      <span className="text-xs font-medium text-gray-200 group-hover:text-indigo-300">Offer Microsoft Teams call</span>
-                      <p className="text-[10px] text-gray-500 mt-0.5">15–20 minute video call — you send the invite</p>
-                    </button>
-
-                    {/* Option 3 — Phone call */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const name = lead?.contact_name?.split(" ")[0] ?? "there";
-                        const text = `Hi ${name},\n\nThanks for the detailed replies so far. A quick call might be the easiest way to clarify a few things.\n\nIf you\u2019d prefer, I\u2019m happy to give you a quick ring to run through it.\n\nJust let me know a time that suits you and the best number to reach you on.\n\nBest\nPhil`;
-                        navigator.clipboard.writeText(text);
-                        setContactStrategy("phone");
-                        setShowCallModal(false);
-                      }}
-                      className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"
-                    >
-                      <span className="text-xs font-medium text-gray-200 group-hover:text-indigo-300">Offer phone call</span>
-                      <p className="text-[10px] text-gray-500 mt-0.5">For less technical clients — you ring them</p>
-                    </button>
-
-                    <p className="text-[10px] text-gray-600 pt-2 border-t border-white/5">Email text will be copied to clipboard. Send via your email client.</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        ); })()}
-
-        {/* ════════════════════════════════════════════════════════════════
-            PROPOSAL ENGINE — structured proposal workspace
-            ════════════════════════════════════════════════════════════════ */}
-        {briefEligible && (
           <div id="proposal-engine">
-            <Section title="Proposal Engine">
+            <Section title="Proposal Workspace">
+
+              {/* ── Create entry point (shown only when no proposal exists) ── */}
               {proposalLoading ? (
                 <p className="text-xs text-gray-500">Loading proposal…</p>
-              ) : !proposal ? (
+              ) : !proposalExists ? (
                 <div className="space-y-3">
                   <p className="text-xs text-gray-400">
-                    No structured proposal record exists for this lead yet.
-                    Create one to start building the formal proposal.
+                    Start building the proposal. This creates a structured proposal record you can edit, generate a prompt from, and export as PDF.
                   </p>
                   {proposalError && <p className="text-xs text-red-400">{proposalError}</p>}
                   <button
                     type="button"
                     onClick={createProposal}
                     disabled={proposalSaving}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                    className="px-5 py-3 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
                   >
                     {proposalSaving ? "Creating…" : "Create Proposal"}
                   </button>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {/* Proposal header info */}
+                <div className="space-y-5">
+
+                  {/* ── Header: status + links ── */}
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-3">
                       <span className={cx(
@@ -6000,92 +5625,26 @@ export default function LeadDetailPage() {
                         proposal.status === "ready" && "bg-indigo-500/15 text-indigo-400",
                         proposal.status === "sent" && "bg-blue-500/15 text-blue-400",
                         proposal.status === "viewed" && "bg-amber-500/15 text-amber-400",
-                        proposal.status === "approved" && "bg-green-500/15 text-green-400",
-                        proposal.status === "signed" && "bg-green-500/15 text-green-400",
+                        ["approved", "signed", "deposit_received"].includes(proposal.status) && "bg-green-500/15 text-green-400",
                         proposal.status === "deposit_requested" && "bg-violet-500/15 text-violet-400",
-                        proposal.status === "deposit_received" && "bg-green-500/15 text-green-400",
                         proposal.status === "superseded" && "bg-gray-500/15 text-gray-600",
                       )}>
                         {proposal.status.replace(/_/g, " ")}
                       </span>
                       <span className="text-[10px] text-gray-600">v{proposal.version_number}</span>
+                      {proposal.terms_version && (
+                        <span className="text-[10px] text-gray-600">· Terms v{proposal.terms_version}</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       {proposal.view_token && (
                         <>
-                          <a
-                            href={`/proposal/${proposal.view_token}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
-                          >
-                            Preview ↗
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const url = `${window.location.origin}/proposal/${proposal.view_token}`;
-                              navigator.clipboard.writeText(url).then(() => {
-                                setProposalSaved(true);
-                                setTimeout(() => setProposalSaved(false), 2000);
-                              });
-                            }}
-                            className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
-                          >
-                            Copy link
-                          </button>
+                          <a href={`/proposal/${proposal.view_token}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors">Preview ↗</a>
+                          <button type="button" onClick={() => { const url = `${window.location.origin}/proposal/${proposal.view_token}`; navigator.clipboard.writeText(url).then(() => { setProposalSaved(true); setTimeout(() => setProposalSaved(false), 2000); }); }} className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors">Copy link</button>
                           <span className="text-white/10">|</span>
                         </>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => setProposalOpen(!proposalOpen)}
-                        className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                      >
-                        {proposalOpen ? "Collapse ▲" : "Expand ▼"}
-                      </button>
                     </div>
-                  </div>
-
-                  {/* Proposal identity row */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div>
-                      <p className="text-[10px] text-gray-600 mb-0.5">Client</p>
-                      <p className="text-xs text-gray-300">{proposal.client_name ?? "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-gray-600 mb-0.5">Company</p>
-                      <p className="text-xs text-gray-300">{proposal.client_company ?? "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-gray-600 mb-0.5">Build price</p>
-                      <p className="text-xs text-gray-300">{proposal.build_price ? `€${Number(proposal.build_price).toLocaleString()}` : "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-gray-600 mb-0.5">Valid until</p>
-                      <p className="text-xs text-gray-300">{proposal.valid_until ?? "—"}</p>
-                    </div>
-                  </div>
-
-                  {/* Commercial summary */}
-                  {proposal.build_price && (
-                    <div className="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/5">
-                      <div className="flex items-center gap-4 flex-wrap text-[10px]">
-                        <span className="text-gray-500">Build: <span className="text-gray-300 font-medium">€{Number(proposal.build_price).toLocaleString()}</span></span>
-                        <span className="text-gray-500">Deposit ({proposal.deposit_percent ?? 50}%): <span className="text-gray-300 font-medium">€{proposal.deposit_amount ? Number(proposal.deposit_amount).toLocaleString() : "—"}</span></span>
-                        <span className="text-gray-500">Balance: <span className="text-gray-300 font-medium">€{proposal.balance_amount ? Number(proposal.balance_amount).toLocaleString() : "—"}</span></span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Terms version */}
-                  <div className="flex items-center gap-2 text-[10px]">
-                    <span className="text-gray-600">Terms:</span>
-                    {proposal.terms_version ? (
-                      <span className="text-gray-400">v{proposal.terms_version}</span>
-                    ) : (
-                      <span className="text-amber-400">No terms attached</span>
-                    )}
                   </div>
 
                   {/* Approval status */}
@@ -6096,208 +5655,243 @@ export default function LeadDetailPage() {
                         <span className="text-green-400 font-medium">Approved</span>
                         <span className="text-gray-600">by</span>
                         <span className="text-gray-400">{proposal.approved_by_name ?? "—"}</span>
-                        {proposal.approved_by_company && (
-                          <span className="text-gray-600">({proposal.approved_by_company})</span>
-                        )}
+                        {proposal.approved_by_company && <span className="text-gray-600">({proposal.approved_by_company})</span>}
                         <span className="text-gray-600">·</span>
                         <span className="text-gray-600">{new Date(proposal.approved_at).toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric" })}</span>
                       </div>
                     </div>
                   )}
 
-                  {/* Autofill from sources */}
-                  {proposal.status === "draft" && (
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => runProposalAutofill(false)}
-                        disabled={autofillRunning || proposalSaving}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50"
-                      >
-                        {autofillRunning ? "Generating…" : "✦ Autofill from Sources"}
-                      </button>
-                      {autofillResult && (
-                        <span className={cx(
-                          "text-[10px]",
-                          autofillResult.confidence === "high" && "text-green-400",
-                          autofillResult.confidence === "medium" && "text-amber-400",
-                          autofillResult.confidence === "low" && "text-red-400",
-                        )}>
-                          {autofillResult.confidence} confidence
-                          {autofillResult.fields_updated?.length > 0
-                            ? ` · ${autofillResult.fields_updated.length} fields filled`
-                            : " · no fields updated"}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {/* ═══════ A. COMMERCIAL INPUTS ═══════ */}
+                  <div className="pt-3 border-t border-white/5">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-3">Commercial inputs</p>
+                    <p className="text-[10px] text-gray-600 mb-3">Review and adjust before generating the proposal prompt. Editing here does not change the internal analysis — only the proposal-facing values.</p>
 
-                  {/* PDF actions */}
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={generateProposalPdf}
-                      disabled={pdfGenerating || proposalSaving}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-50"
-                    >
-                      {pdfGenerating ? "Generating PDF…" : proposal.pdf_url ? "Regenerate PDF" : "Generate PDF"}
-                    </button>
-                    {proposal.pdf_url && (
-                      <a
-                        href={proposal.pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
+                    {/* Autofill from sources — pre-fill commercial inputs */}
+                    {proposal.status === "draft" && (
+                      <div className="flex items-center gap-3 flex-wrap mb-4">
+                        <button
+                          type="button"
+                          onClick={() => runProposalAutofill(false)}
+                          disabled={autofillRunning || proposalSaving}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50"
+                        >
+                          {autofillRunning ? "Generating…" : "✦ Autofill from analysis"}
+                        </button>
+                        {autofillResult && (
+                          <span className={cx("text-[10px]", autofillResult.confidence === "high" ? "text-green-400" : autofillResult.confidence === "medium" ? "text-amber-400" : "text-red-400")}>
+                            {autofillResult.confidence} confidence{autofillResult.fields_updated?.length > 0 ? ` · ${autofillResult.fields_updated.length} fields filled` : " · no fields updated"}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Title */}
+                    <div className="mb-3">
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Proposal title</label>
+                      <input type="text" value={proposal.title ?? ""} onChange={(e) => setProposal(p => p ? { ...p, title: e.target.value } : p)} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60" placeholder="e.g. Web Application Proposal — ClientCo" />
+                    </div>
+
+                    {/* Price / deposit / timeline row */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Build price (€)</label>
+                        <input type="number" value={proposal.build_price ?? ""} onChange={(e) => setProposal(p => p ? { ...p, build_price: e.target.value ? Number(e.target.value) : null } : p)} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60" />
+                        {buildPricing && proposal.build_price !== null && Number(proposal.build_price) !== effectiveBuildPrice && (
+                          <p className="text-[9px] text-gray-600 mt-0.5">Recommended: €{effectiveBuildPrice.toLocaleString()}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Deposit %</label>
+                        <input type="number" value={proposal.deposit_percent ?? 50} onChange={(e) => setProposal(p => p ? { ...p, deposit_percent: e.target.value ? Number(e.target.value) : 50 } : p)} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Payment notes</label>
+                        <input type="text" value={proposal.payment_notes ?? ""} onChange={(e) => setProposal(p => p ? { ...p, payment_notes: e.target.value } : p)} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60" placeholder="e.g. Bank transfer preferred" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Valid until</label>
+                        <input type="date" value={proposal.valid_until ?? ""} onChange={(e) => setProposal(p => p ? { ...p, valid_until: e.target.value } : p)} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60" />
+                      </div>
+                    </div>
+
+                    {/* Scope summary fields */}
+                    <div className="space-y-3 mb-3">
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Executive summary</label>
+                        <textarea value={proposal.executive_summary ?? ""} onChange={(e) => setProposal(p => p ? { ...p, executive_summary: e.target.value } : p)} rows={3} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y" placeholder="Brief overview of the project and proposed solution…" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Recommended solution</label>
+                        <textarea value={proposal.recommended_solution ?? ""} onChange={(e) => setProposal(p => p ? { ...p, recommended_solution: e.target.value } : p)} rows={3} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y" placeholder="What we recommend building…" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Timeline summary</label>
+                        <textarea value={proposal.timeline_summary ?? ""} onChange={(e) => setProposal(p => p ? { ...p, timeline_summary: e.target.value } : p)} rows={2} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y" placeholder="Estimated timeline and delivery approach…" />
+                      </div>
+                    </div>
+
+                    {/* Save commercial inputs */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className={cx("text-xs transition-opacity", proposalSaved ? "text-green-400 opacity-100" : "opacity-0")}>Saved</span>
+                        <span className="text-[10px] text-gray-700">Last updated {proposal.updated_at ? fmtDateTime(proposal.updated_at) : "—"}</span>
+                      </div>
+                      <button
+                        onClick={() => { if (!proposal) return; saveProposal({ title: proposal.title, executive_summary: proposal.executive_summary, problem_statement: proposal.problem_statement, recommended_solution: proposal.recommended_solution, timeline_summary: proposal.timeline_summary, build_price: proposal.build_price, deposit_percent: proposal.deposit_percent, payment_notes: proposal.payment_notes, valid_until: proposal.valid_until }); }}
+                        disabled={proposalSaving}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
                       >
-                        View PDF ↗
-                      </a>
+                        {proposalSaving ? "Saving…" : "Save inputs"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ═══════ B. PROMPT PACK ═══════ */}
+                  <div className="pt-4 border-t border-white/5">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">ChatGPT proposal prompt</p>
+                      {!proposalComplete ? (
+                        <button
+                          type="button"
+                          disabled={!briefSummary.trim()}
+                          onClick={() => { setBriefPromptOutput(buildBriefPrompt()); setBriefPromptCopied(false); }}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          Generate prompt
+                        </button>
+                      ) : briefPromptOutput ? (
+                        <span className="text-[10px] text-green-400/60">✓ Generated</span>
+                      ) : null}
+                    </div>
+                    {!briefSummary.trim() && !briefPromptOutput && (
+                      <p className="text-xs text-gray-700">Run analysis first to generate a proposal prompt.</p>
+                    )}
+                    {briefPromptOutput && (
+                      <div className="relative">
+                        <textarea readOnly value={briefPromptOutput} rows={12} className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 font-mono resize-y focus:outline-none leading-relaxed" />
+                        <button type="button" onClick={() => { navigator.clipboard.writeText(briefPromptOutput); setBriefPromptCopied(true); setTimeout(() => setBriefPromptCopied(false), 2000); }} className="absolute top-2 right-2 px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors">
+                          {briefPromptCopied ? "Copied ✓" : "Copy"}
+                        </button>
+                      </div>
                     )}
                   </div>
 
-                  {proposalError && <p className="text-xs text-red-400">{proposalError}</p>}
-
-                  {/* Expanded workspace */}
-                  {proposalOpen && (
-                    <div className="space-y-4 pt-3 border-t border-white/5">
-                      {/* Title */}
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Proposal title</label>
-                        <input
-                          type="text"
-                          value={proposal.title ?? ""}
-                          onChange={(e) => setProposal(p => p ? { ...p, title: e.target.value } : p)}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
-                          placeholder="Proposal title"
-                        />
-                      </div>
-
-                      {/* Executive summary */}
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Executive summary</label>
-                        <textarea
-                          value={proposal.executive_summary ?? ""}
-                          onChange={(e) => setProposal(p => p ? { ...p, executive_summary: e.target.value } : p)}
-                          rows={4}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
-                          placeholder="Brief overview of the project and proposed solution…"
-                        />
-                      </div>
-
-                      {/* Problem statement */}
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Problem statement</label>
-                        <textarea
-                          value={proposal.problem_statement ?? ""}
-                          onChange={(e) => setProposal(p => p ? { ...p, problem_statement: e.target.value } : p)}
-                          rows={3}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
-                          placeholder="What problem is this solving for the client…"
-                        />
-                      </div>
-
-                      {/* Recommended solution */}
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Recommended solution</label>
-                        <textarea
-                          value={proposal.recommended_solution ?? ""}
-                          onChange={(e) => setProposal(p => p ? { ...p, recommended_solution: e.target.value } : p)}
-                          rows={4}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
-                          placeholder="What we recommend building…"
-                        />
-                      </div>
-
-                      {/* Timeline */}
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Timeline summary</label>
-                        <textarea
-                          value={proposal.timeline_summary ?? ""}
-                          onChange={(e) => setProposal(p => p ? { ...p, timeline_summary: e.target.value } : p)}
-                          rows={2}
-                          className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y"
-                          placeholder="Estimated timeline and delivery approach…"
-                        />
-                      </div>
-
-                      {/* Build price */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Build price (€)</label>
-                          <input
-                            type="number"
-                            value={proposal.build_price ?? ""}
-                            onChange={(e) => setProposal(p => p ? { ...p, build_price: e.target.value ? Number(e.target.value) : null } : p)}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Deposit %</label>
-                          <input
-                            type="number"
-                            value={proposal.deposit_percent ?? 50}
-                            onChange={(e) => setProposal(p => p ? { ...p, deposit_percent: e.target.value ? Number(e.target.value) : 50 } : p)}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Payment notes</label>
-                          <input
-                            type="text"
-                            value={proposal.payment_notes ?? ""}
-                            onChange={(e) => setProposal(p => p ? { ...p, payment_notes: e.target.value } : p)}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60"
-                            placeholder="e.g. Bank transfer preferred"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Valid until</label>
-                          <input
-                            type="date"
-                            value={proposal.valid_until ?? ""}
-                            onChange={(e) => setProposal(p => p ? { ...p, valid_until: e.target.value } : p)}
-                            className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/60"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Save */}
-                      <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                        <div className="flex items-center gap-3">
-                          <span className={cx("text-xs transition-opacity", proposalSaved ? "text-green-400 opacity-100" : "opacity-0")}>
-                            Saved
-                          </span>
-                          <span className="text-[10px] text-gray-700">
-                            Last updated {proposal.updated_at ? fmtDateTime(proposal.updated_at) : "—"}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => {
-                            if (!proposal) return;
-                            saveProposal({
-                              title: proposal.title,
-                              executive_summary: proposal.executive_summary,
-                              problem_statement: proposal.problem_statement,
-                              recommended_solution: proposal.recommended_solution,
-                              timeline_summary: proposal.timeline_summary,
-                              build_price: proposal.build_price,
-                              deposit_percent: proposal.deposit_percent,
-                              payment_notes: proposal.payment_notes,
-                              valid_until: proposal.valid_until,
-                            });
-                          }}
-                          disabled={proposalSaving}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-                        >
-                          {proposalSaving ? "Saving…" : "Save proposal"}
+                  {/* ═══════ C. PROPOSAL DRAFT ═══════ */}
+                  <div className="pt-4 border-t border-white/5">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal draft{proposalComplete && briefProposal.trim() ? " (sent)" : ""}</p>
+                      {briefProposal.trim() && (
+                        <button type="button" onClick={() => { navigator.clipboard.writeText(briefProposal); setProposalCopied(true); setTimeout(() => setProposalCopied(false), 2000); }} className="px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors">
+                          {proposalCopied ? "Copied ✓" : "Copy draft"}
                         </button>
-                      </div>
+                      )}
                     </div>
-                  )}
+                    {proposalComplete ? (
+                      briefProposal.trim() ? (
+                        <textarea readOnly value={briefProposal} rows={6} className="w-full bg-[#0a0b0e] border border-white/5 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none resize-y cursor-default" />
+                      ) : (
+                        <p className="text-xs text-gray-600">No draft was saved before sending.</p>
+                      )
+                    ) : (
+                      <textarea value={briefProposal} onChange={(e) => setBriefProposal(e.target.value)} placeholder="Paste ChatGPT output or write the proposal draft here." rows={8} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-y" />
+                    )}
+                  </div>
+
+                  {/* ═══════ D. FINAL ACTIONS ═══════ */}
+                  <div className="pt-4 border-t border-white/5">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {/* Save draft */}
+                      {!proposalComplete && (
+                        <button onClick={saveBrief} disabled={briefSaving} className="px-4 py-2 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50">
+                          {briefSaving ? "Saving…" : "Save draft"}
+                        </button>
+                      )}
+
+                      {/* Export PDF */}
+                      <button type="button" onClick={generateProposalPdf} disabled={pdfGenerating || proposalSaving} className="px-4 py-2 rounded-lg text-xs font-medium bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-50">
+                        {pdfGenerating ? "Generating PDF…" : proposal.pdf_url ? "Regenerate PDF" : "Export PDF"}
+                      </button>
+                      {proposal.pdf_url && (
+                        <a href={proposal.pdf_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors">View PDF ↗</a>
+                      )}
+
+                      {/* Mark as sent */}
+                      {status === "ready_for_proposal" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!window.confirm("Mark this proposal as sent? This advances the lead to Proposal Sent.")) return;
+                            saveField({ status: "proposal_sent" });
+                            setStatus("proposal_sent");
+                          }}
+                          disabled={saving}
+                          className="px-4 py-2 rounded-lg text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50"
+                        >
+                          {saving ? "Updating…" : "Mark as Sent"}
+                        </button>
+                      )}
+
+                      {/* Post-send lifecycle actions */}
+                      {status === "proposal_sent" && (
+                        <button type="button" onClick={() => { saveField({ status: "client_approved" }); setStatus("client_approved"); }} disabled={saving} className="px-4 py-2 rounded-lg text-xs font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-50">
+                          {saving ? "Updating…" : "Mark Approved"}
+                        </button>
+                      )}
+                      {status === "client_approved" && (
+                        <button type="button" onClick={() => { saveField({ status: "deposit_requested" }); setStatus("deposit_requested"); }} disabled={saving} className="px-4 py-2 rounded-lg text-xs font-medium bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-50">
+                          {saving ? "Updating…" : "Request Deposit"}
+                        </button>
+                      )}
+                      {status === "deposit_requested" && (
+                        <button type="button" onClick={() => setShowConvert(true)} className="px-4 py-2 rounded-lg text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white transition-colors">
+                          Activate Deposit
+                        </button>
+                      )}
+                    </div>
+
+                    {proposalError && <p className="text-xs text-red-400 mt-2">{proposalError}</p>}
+
+                    {/* Saved confirmation */}
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className={cx("text-xs transition-opacity", briefSaved ? "text-green-400 opacity-100" : "opacity-0")}>Saved</span>
+                      {brief && <span className="text-[10px] text-gray-700">Last updated {fmtDateTime(brief.updated_at)}</span>}
+                    </div>
+                  </div>
+
                 </div>
               )}
             </Section>
+
+            {/* ── Contact method modal ────────────────────────────── */}
+            {showCallModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                <div className="bg-[#141519] border border-white/10 rounded-xl w-full max-w-lg mx-4 overflow-hidden">
+                  <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
+                    <h3 className="text-sm font-medium text-gray-200">Speak to client</h3>
+                    <button type="button" onClick={() => setShowCallModal(false)} className="text-gray-500 hover:text-gray-300 text-lg leading-none">×</button>
+                  </div>
+                  <div className="px-5 py-4 space-y-4">
+                    <p className="text-xs text-gray-400">Choose how to reach the client. The email text will be copied to your clipboard.</p>
+                    <button type="button" onClick={() => { const name = lead?.contact_name?.split(" ")[0] ?? "there"; navigator.clipboard.writeText(`Hi ${name},\n\nThanks for the detailed replies \u2014 a quick call will help clarify a few points and avoid unnecessary back-and-forth.\n\nYou can pick a time that suits you here:\n[Microsoft Bookings link]\n\nBest\nPhil`); setContactStrategy("bookings"); setShowCallModal(false); }} className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group">
+                      <span className="text-xs font-medium text-gray-200 group-hover:text-indigo-300">Send booking link</span>
+                      <p className="text-[10px] text-gray-500 mt-0.5">Microsoft Bookings — client picks a time</p>
+                    </button>
+                    <button type="button" onClick={() => { const name = lead?.contact_name?.split(" ")[0] ?? "there"; navigator.clipboard.writeText(`Hi ${name},\n\nThanks for the information so far. It might be easier to run through a few details on a quick call.\n\nWould you be available for a 15\u201320 minute Microsoft Teams call this week?\n\nIf so, let me know a time that suits and I\u2019ll send a meeting invite.\n\nBest\nPhil`); setContactStrategy("teams"); setShowCallModal(false); }} className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group">
+                      <span className="text-xs font-medium text-gray-200 group-hover:text-indigo-300">Offer Microsoft Teams call</span>
+                      <p className="text-[10px] text-gray-500 mt-0.5">15–20 minute video call — you send the invite</p>
+                    </button>
+                    <button type="button" onClick={() => { const name = lead?.contact_name?.split(" ")[0] ?? "there"; navigator.clipboard.writeText(`Hi ${name},\n\nThanks for the detailed replies so far. A quick call might be the easiest way to clarify a few things.\n\nIf you\u2019d prefer, I\u2019m happy to give you a quick ring to run through it.\n\nJust let me know a time that suits you and the best number to reach you on.\n\nBest\nPhil`); setContactStrategy("phone"); setShowCallModal(false); }} className="w-full text-left px-4 py-3 rounded-lg border border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group">
+                      <span className="text-xs font-medium text-gray-200 group-hover:text-indigo-300">Offer phone call</span>
+                      <p className="text-[10px] text-gray-500 mt-0.5">For less technical clients — you ring them</p>
+                    </button>
+                    <p className="text-[10px] text-gray-600 pt-2 border-t border-white/5">Email text will be copied to clipboard. Send via your email client.</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        ); })()}
 
         {/* Project (if converted) */}
         {project && (
