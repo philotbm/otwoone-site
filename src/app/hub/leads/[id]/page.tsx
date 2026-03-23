@@ -585,13 +585,29 @@ function eventIcon(ev: { event_type: string; meta: Record<string, unknown> | nul
 
 // ─── Section wrapper ───────────────────────────────────────────────────────────
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, collapsed, summary, children }: { title: string; collapsed?: boolean; summary?: string; children: React.ReactNode }) {
+  const [manualToggle, setManualToggle] = useState<boolean | null>(null);
+  const open = manualToggle !== null ? manualToggle : !collapsed;
+  if (!collapsed) {
+    return (
+      <div className="bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-white/5">
+          <h2 className="text-xs font-medium tracking-widest uppercase text-gray-500">{title}</h2>
+        </div>
+        <div className="px-5 py-4">{children}</div>
+      </div>
+    );
+  }
   return (
     <div className="bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
-      <div className="px-5 py-3 border-b border-white/5">
-        <h2 className="text-xs font-medium tracking-widest uppercase text-gray-500">{title}</h2>
-      </div>
-      <div className="px-5 py-4">{children}</div>
+      <button type="button" onClick={() => setManualToggle(!open)} className="w-full px-5 py-3 border-b border-white/5 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+        <div className="flex items-center gap-3 min-w-0">
+          <h2 className="text-xs font-medium tracking-widest uppercase text-gray-500 shrink-0">{title}</h2>
+          {!open && summary && <span className="text-[10px] text-gray-600 truncate">{summary}</span>}
+        </div>
+        <span className="text-[10px] text-gray-600 shrink-0 ml-2">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && <div className="px-5 py-4">{children}</div>}
     </div>
   );
 }
@@ -1296,6 +1312,7 @@ export default function LeadDetailPage() {
   // Brief accessible from enquiry_received onward; full brief editing only at ready_for_proposal+
   const briefAccessible = ['enquiry_received', 'scope_analysis', 'ready_for_proposal', 'proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
   const briefEligible = ['ready_for_proposal', 'proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
+  const isProposalStage = ["ready_for_proposal", "proposal_sent"].includes(status);
   useEffect(() => { if (briefAccessible && id) fetchBrief(id); }, [briefAccessible, id, fetchBrief]);
 
   // ── Fetch proposal (scope_received+) ────────────────────────────────────────
@@ -3823,7 +3840,7 @@ export default function LeadDetailPage() {
             LEAD CONTEXT SUMMARY — consolidated lead identity + signals
             ════════════════════════════════════════════════════════════════ */}
         <div>
-          <Section title="Lead Context">
+          <Section title="Lead Context" collapsed={isProposalStage} summary={`${lead?.company_name || lead?.contact_name || "Lead"} — ${lead?.lead_details?.success_definition?.slice(0, 60) || "enquiry"}${(lead?.lead_details?.success_definition?.length ?? 0) > 60 ? "…" : ""}`}>
             <div className="space-y-4">
 
               {/* ── Identity row ─────────────────────────────────────────── */}
@@ -4078,7 +4095,7 @@ export default function LeadDetailPage() {
             CLIENT REQUEST — original intake description (full-width)
             ════════════════════════════════════════════════════════════════ */}
         <div>
-          <Section title="Client request">
+          <Section title="Client request" collapsed={isProposalStage} summary="Original enquiry and client intake">
             {lead.lead_details?.success_definition ? (
               <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{lead.lead_details.success_definition}</p>
             ) : (
@@ -4193,7 +4210,7 @@ export default function LeadDetailPage() {
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && analysisPassComplete && (
           <div>
-            <Section title="System Analysis">
+            <Section title="System Analysis" collapsed={isProposalStage} summary={briefSummary ? `${briefType || "Analysis"} · ${briefSummary.slice(0, 50)}…` : "Analysis outputs"}>
               <p className="text-xs text-gray-600 -mt-1 mb-3">
                 Merged view of all client inputs and analysis. Driven by enquiry data, iterations, and brief data.
               </p>
@@ -4383,7 +4400,7 @@ export default function LeadDetailPage() {
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && analysisPassComplete && (
           <div>
-            <Section title="Technical Research">
+            <Section title="Technical Research" collapsed={isProposalStage} summary="Stack recommendations and research">
               {technicalResearch ? (
                 <div className="space-y-4">
                   {/* Overall summary */}
@@ -4483,7 +4500,7 @@ export default function LeadDetailPage() {
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && analysisPassComplete && complexityResult && (
           <div>
-            <Section title="Complexity Engine">
+            <Section title="Complexity Engine" collapsed={isProposalStage} summary={complexityResult ? `${Math.min(complexityResult.complexity_score, 100)}/100 · ${complexityResult.complexity_class.replace(/_/g, " ")} · ${complexityResult.estimated_days_low}–${complexityResult.estimated_days_high}d` : undefined}>
               <div className="space-y-4">
 
                 {/* ── Score + class ─────────────────────────────────────── */}
@@ -4571,7 +4588,7 @@ export default function LeadDetailPage() {
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && analysisPassComplete && buildPricing && (
           <div>
-            <Section title="Build Pricing">
+            <Section title="Build Pricing" collapsed={isProposalStage} summary={buildPricing ? `Recommended €${effectiveBuildPrice.toLocaleString()}${proposal?.build_price != null && Number(proposal.build_price) !== effectiveBuildPrice ? ` · Proposal €${Number(proposal.build_price).toLocaleString()}` : ""}` : undefined}>
               <div className="space-y-4">
 
                 {/* ── Core pricing ─────────────────────────────────────── */}
@@ -4679,7 +4696,7 @@ export default function LeadDetailPage() {
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && analysisPassComplete && (
           <div>
-            <Section title="Monthly Operating Cost">
+            <Section title="Monthly Operating Cost" collapsed={isProposalStage} summary={runningCosts ? `€${runningCosts.total_with_retainer_low.toLocaleString()}${runningCosts.total_with_retainer_low !== runningCosts.total_with_retainer_high ? `–€${runningCosts.total_with_retainer_high.toLocaleString()}` : ""}/mo` : undefined}>
               {/* runningCosts is guaranteed non-null inside analysisPassComplete gate */}
               {runningCosts && (
               <div className="space-y-4">
@@ -4763,7 +4780,7 @@ export default function LeadDetailPage() {
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && (
           <div>
-            <Section title="Add Information">
+            <Section title="Add Information" collapsed={isProposalStage} summary={iterations.length > 0 ? `${iterations.length} input${iterations.length !== 1 ? "s" : ""} captured` : "Gather additional context"}>
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 -mt-1">
                   Capture context from calls, emails, meetings, or other sources. The analysis pipeline updates automatically.
@@ -4935,7 +4952,7 @@ export default function LeadDetailPage() {
             ════════════════════════════════════════════════════════════════ */}
         {briefAccessible && iterations.length > 0 && (
           <div>
-            <Section title="Iteration history">
+            <Section title="Iteration history" collapsed={isProposalStage} summary={`${iterations.length} entr${iterations.length !== 1 ? "ies" : "y"}`}>
               <div className="space-y-2">
                 {iterations.map((it, idx) => {
                   const isOpen = expandedIteration === it.id;
@@ -4972,7 +4989,7 @@ export default function LeadDetailPage() {
 
         {/* ── Readiness — evidence-driven 2-state, no internal gates ────── */}
         {briefAccessible && (
-          <Section title="Readiness">
+          <Section title="Readiness" collapsed={isProposalStage} summary={status === "ready_for_proposal" ? "Ready for proposal" : status === "proposal_sent" ? "Proposal sent" : undefined}>
             <div className="space-y-4">
 
               {/* ── First-stage readiness: exactly 2 states, evidence-driven ── */}
