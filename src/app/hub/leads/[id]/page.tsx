@@ -3105,110 +3105,72 @@ export default function LeadDetailPage() {
 
   function buildBriefPrompt(): string {
     if (!lead) return "";
-    const lines: string[] = [];
     const s = (v: unknown) => String(v ?? "").trim();
+    const lines: string[] = [];
 
-    // Detect whether a consultant brief exists (at least summary + solution populated)
-    const hasConsultantBrief = s(briefSummary).length > 15 && s(briefSolution).length > 15;
+    // ── Use proposal-facing values where available, fall back to brief ──
+    const propTitle = s(proposal?.title) || `Proposal for ${s(lead.contact_name) || s(lead.company_name) || "Client"}`;
+    const propPrice = proposal?.build_price != null ? Number(proposal.build_price) : effectiveBuildPrice;
+    const propDeposit = proposal?.deposit_percent ?? 50;
+    const propTimeline = s(proposal?.timeline_summary) || s(briefTimeline);
+    const propSummary = s(proposal?.executive_summary) || s(briefSummary);
+    const propSolution = s(proposal?.recommended_solution) || s(briefSolution);
+    const propValidUntil = s(proposal?.valid_until);
+    const propPaymentNotes = s(proposal?.payment_notes) || "Bank details provided on invoice. Deposit required to secure build slot.";
+    const clientName = s(lead.contact_name)?.split(" ")[0] || "there";
+    const companyName = s(lead.company_name);
+    const monthlyLow = runningCosts?.total_with_retainer_low;
+    const monthlyHigh = runningCosts?.total_with_retainer_high;
 
-    lines.push("You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You are drafting a professional proposal based on a reviewed consultant brief.");
+    lines.push("Write a professional proposal email from OTwoOne (a web consultancy in Ireland) to the client.");
     lines.push("");
 
-    if (hasConsultantBrief) {
-      // ── PRIMARY: Consultant brief drives the proposal ──────────────────
-      lines.push("## Consultant brief (primary source of truth)");
-      lines.push("This brief was produced by synthesising client intake, technical research, and pricing analysis. Use it as the main basis for the proposal.");
+    // Client
+    lines.push("## Client");
+    lines.push(`Name: ${clientName}`);
+    if (companyName) lines.push(`Company: ${companyName}`);
+    lines.push("");
+
+    // Project overview — concise, outcome-focused
+    lines.push("## Project overview");
+    if (propSummary) lines.push(propSummary);
+    lines.push("");
+
+    // Recommended approach
+    if (propSolution) {
+      lines.push("## Recommended approach");
+      lines.push(propSolution);
       lines.push("");
-      if (s(briefSummary)) lines.push(`**Project summary:** ${s(briefSummary)}`);
-      if (s(briefType)) lines.push(`**Project type:** ${s(briefType)}`);
-      if (s(briefSolution)) lines.push(`**Recommended solution:** ${s(briefSolution)}`);
-      if (s(briefPages)) lines.push(`**Suggested pages:** ${s(briefPages)}`);
-      if (s(briefFeatures)) lines.push(`**Suggested features:** ${s(briefFeatures)}`);
-      if (s(briefIntegrations)) lines.push(`**Suggested integrations:** ${s(briefIntegrations)}`);
-      if (s(briefTimeline)) lines.push(`**Timeline estimate:** ${s(briefTimeline)}`);
-      if (s(briefBudget)) lines.push(`**Budget positioning:** ${s(briefBudget)}`);
-      if (s(briefRisks)) lines.push(`**Risks & unknowns:** ${s(briefRisks)}`);
-      if (s(briefFollowUp)) lines.push(`**Follow-up questions / open items:** ${s(briefFollowUp)}`);
-      lines.push("");
-
-      // Complexity assessment (if available, grounds effort/scope expectations)
-      if (complexityResult && complexityResult.complexity_score > 0) {
-        lines.push("## Complexity assessment");
-        lines.push(`Score: ${Math.min(complexityResult.complexity_score, 100)}/100 (${complexityResult.complexity_class.replace(/_/g, " ")}) | Effort: ${complexityResult.estimated_days_low}–${complexityResult.estimated_days_high} days`);
-        if (complexityResult.detected_signals.length > 0) {
-          lines.push(`Signals: ${complexityResult.detected_signals.map(s => s.key.replace(/_/g, " ")).join(", ")}`);
-        }
-        lines.push("");
-      }
-
-      // Build pricing (if available, grounds the proposal in deterministic pricing)
-      if (buildPricing) {
-        lines.push("## Build pricing");
-        lines.push(`Recommended: €${effectiveBuildPrice.toLocaleString()} (${buildPricing.recommended_build_days} days × €${buildPricing.day_rate}/day)`);
-        lines.push(`Confidence range: €${buildPricing.confidence_range_low.toLocaleString()} – €${buildPricing.confidence_range_high.toLocaleString()}`);
-        if (buildPricing.client_budget_high !== null) {
-          lines.push(`Client budget: €${buildPricing.client_budget_low!.toLocaleString()} – €${buildPricing.client_budget_high.toLocaleString()}`);
-        }
-        lines.push(`Commercial strategy: ${buildPricing.commercial_strategy}`);
-        lines.push("");
-      }
-
-      // Monthly operating cost (if available, provides ongoing monthly cost context)
-      if (runningCosts) {
-        lines.push("## Monthly operating cost");
-        for (const item of runningCosts.items) {
-          lines.push(`- ${item.name}: €${item.low}${item.low !== item.high ? `–€${item.high}` : ""}/mo (${item.relevance})`);
-        }
-        lines.push(`- OTwoOne support retainer: €${runningCosts.support_retainer}/mo`);
-        lines.push(`Total monthly operating cost: €${runningCosts.total_with_retainer_low.toLocaleString()}–€${runningCosts.total_with_retainer_high.toLocaleString()}`);
-        lines.push("");
-      }
-
-      // Supporting context (secondary — for client-specific tone and details)
-      if (mergedClientContext) {
-        lines.push("## Supporting client context");
-        lines.push("Use this for client-specific details (name, tone, stated preferences) but rely on the consultant brief above for scope and commercial decisions.");
-        lines.push(mergedClientContext);
-        lines.push("");
-      }
-    } else {
-      // ── FALLBACK: No consultant brief — use raw context directly ────────
-      lines.push("Note: No reviewed consultant brief is available. Produce the proposal from the client context below.");
-      lines.push("");
-      if (mergedClientContext) {
-        lines.push("## Client context");
-        lines.push(mergedClientContext);
-        lines.push("");
-      }
-      // Include whatever brief fields exist
-      const briefLines: string[] = [];
-      if (s(briefSummary)) briefLines.push(`**Project summary:** ${s(briefSummary)}`);
-      if (s(briefType)) briefLines.push(`**Project type:** ${s(briefType)}`);
-      if (s(briefSolution)) briefLines.push(`**Recommended solution:** ${s(briefSolution)}`);
-      if (s(briefPages)) briefLines.push(`**Suggested pages:** ${s(briefPages)}`);
-      if (s(briefFeatures)) briefLines.push(`**Suggested features:** ${s(briefFeatures)}`);
-      if (s(briefIntegrations)) briefLines.push(`**Suggested integrations:** ${s(briefIntegrations)}`);
-      if (s(briefTimeline)) briefLines.push(`**Timeline estimate:** ${s(briefTimeline)}`);
-      if (s(briefBudget)) briefLines.push(`**Budget positioning:** ${s(briefBudget)}`);
-      if (s(briefRisks)) briefLines.push(`**Risks & unknowns:** ${s(briefRisks)}`);
-      if (s(briefFollowUp)) briefLines.push(`**Follow-up questions / open items:** ${s(briefFollowUp)}`);
-      if (briefLines.length > 0) {
-        lines.push("## Partial brief fields");
-        lines.push(...briefLines);
-        lines.push("");
-      }
     }
 
-    // Required output
-    lines.push("## Required output");
-    lines.push("Draft a professional proposal email that:");
-    lines.push("1. Acknowledges the client's requirements");
-    lines.push("2. Outlines the proposed solution and deliverables");
-    lines.push("3. States the timeline and budget positioning");
-    lines.push("4. Highlights any key assumptions or caveats");
-    lines.push("5. Ends with a clear next step (e.g. deposit to proceed)");
+    // Timeline
+    if (propTimeline) {
+      lines.push("## Timeline");
+      lines.push(propTimeline);
+      lines.push("");
+    }
+
+    // Commercial terms — the key numbers
+    lines.push("## Commercial terms");
+    lines.push(`- Build price: €${propPrice.toLocaleString()}`);
+    lines.push(`- Deposit: ${propDeposit}% (€${Math.round(propPrice * propDeposit / 100).toLocaleString()}) to begin`);
+    lines.push(`- Balance: ${100 - propDeposit}% on completion`);
+    if (monthlyLow != null && monthlyHigh != null) {
+      lines.push(`- Estimated monthly running cost: €${monthlyLow.toLocaleString()}${monthlyLow !== monthlyHigh ? `–€${monthlyHigh.toLocaleString()}` : ""}/mo (hosting, tools, support)`);
+    }
+    if (propValidUntil) lines.push(`- Valid until: ${propValidUntil}`);
+    lines.push(`- Payment: ${propPaymentNotes}`);
     lines.push("");
-    lines.push("Write in a professional but approachable tone. Keep it concise — aim for a single-page email. Address the client by first name.");
+
+    // Output instructions
+    lines.push("## Instructions");
+    lines.push(`- Address the client as "${clientName}"`);
+    lines.push("- Professional but approachable tone");
+    lines.push("- Keep it concise — aim for a single-page email");
+    lines.push("- Focus on outcomes and deliverables, not technical implementation");
+    lines.push("- End with a clear next step: deposit to secure the build slot");
+    lines.push("- Do not include technical stack, tool names, or internal analysis");
+    lines.push("- Sign off as Phil from OTwoOne");
 
     return lines.join("\n");
   }
@@ -4102,50 +4064,7 @@ export default function LeadDetailPage() {
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════════════════════
-            PROPOSAL READINESS — lightweight checklist for scope_received+
-            ════════════════════════════════════════════════════════════════ */}
-        {briefEligible && (() => {
-          const checks = [
-            { label: "Client intake",     ok: !!(lead?.lead_details?.success_definition?.trim()),    tip: "Client request / success definition submitted" },
-            { label: "Scope clarity",     ok: !!(briefReply.trim() || rounds.some(r => r.status === "replied" || r.status === "closed")),  tip: "Scoping reply or clarification round answered" },
-            { label: "Full analysis",     ok: analysisPassComplete,            tip: "System analysis, complexity, build pricing, and running costs computed atomically" },
-            { label: "Scope readiness",   ok: scopeReady === true || (scopeReady === false && overrideScopeWarning), tip: "Scope marked ready or override applied" },
-          ];
-          const doneCount = checks.filter(c => c.ok).length;
-          const allDone = doneCount === checks.length;
-          const pct = Math.round((doneCount / checks.length) * 100);
-
-          return (
-            <div>
-              <div className="px-5 py-3 rounded-xl border border-white/[0.06] bg-[#12131a]">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Proposal Readiness</span>
-                  <span className={cx(
-                    "text-[10px] font-semibold px-2 py-0.5 rounded",
-                    allDone ? "bg-green-500/15 text-green-400" : pct >= 60 ? "bg-amber-500/15 text-amber-400" : "bg-red-500/15 text-red-400",
-                  )}>
-                    {doneCount}/{checks.length} ({pct}%)
-                  </span>
-                </div>
-                <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mb-2">
-                  <div
-                    className={cx("h-full rounded-full transition-all", allDone ? "bg-green-500" : pct >= 60 ? "bg-amber-500" : "bg-red-500")}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1">
-                  {checks.map((c, i) => (
-                    <div key={i} className="flex items-center gap-1.5" title={c.tip}>
-                      <span className={cx("text-[10px]", c.ok ? "text-green-400" : "text-gray-600")}>{c.ok ? "✓" : "○"}</span>
-                      <span className={cx("text-[10px]", c.ok ? "text-gray-400" : "text-gray-600")}>{c.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+        {/* Proposal Readiness checklist removed in v1.92.1 — operator-confusing */}
 
         {/* ════════════════════════════════════════════════════════════════
             ANALYSIS ACTION — single-button pipeline trigger (atomic gate)
@@ -5068,19 +4987,8 @@ export default function LeadDetailPage() {
                               {saving ? "Updating…" : "Move to Ready for Proposal"}
                             </button>
                           )}
-                          {!proposalApproved && (
-                            <button
-                              type="button"
-                              onClick={() => { document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
-                              className={cx(
-                                "w-full px-4 py-3 rounded-lg text-sm font-semibold transition-colors",
-                                needsStatusAdvance
-                                  ? "bg-indigo-600/60 hover:bg-indigo-600 text-white/80"
-                                  : "bg-indigo-600 hover:bg-indigo-500 text-white",
-                              )}
-                            >
-                              Go to Proposal Workspace
-                            </button>
+                          {!proposalApproved && !needsStatusAdvance && (
+                            <p className="text-xs text-gray-500">Scroll down to the Proposal Workspace to continue.</p>
                           )}
                           {proposalApproved && (
                             <div className="flex items-center gap-2">
@@ -5119,17 +5027,9 @@ export default function LeadDetailPage() {
                 ) : null;
               })()}
 
-              {/* ── ready_for_proposal with readiness → scroll to workspace ── */}
+              {/* ── ready_for_proposal with readiness → lightweight hint ── */}
               {status === "ready_for_proposal" && briefEligible && (scopeReady === true || overrideScopeWarning) && (
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => { document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
-                    className="w-full px-4 py-3 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                  >
-                    Go to Proposal Workspace
-                  </button>
-                </div>
+                <p className="text-xs text-gray-500">Proposal Workspace is ready below.</p>
               )}
 
               {/* ── Post-proposal status — show status + link back ── */}
@@ -5667,22 +5567,25 @@ export default function LeadDetailPage() {
                     <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mb-3">Commercial inputs</p>
                     <p className="text-[10px] text-gray-600 mb-3">Review and adjust before generating the proposal prompt. Editing here does not change the internal analysis — only the proposal-facing values.</p>
 
-                    {/* Autofill from sources — pre-fill commercial inputs */}
+                    {/* Fill from reviewed brief — pre-fill commercial inputs */}
                     {proposal.status === "draft" && (
-                      <div className="flex items-center gap-3 flex-wrap mb-4">
-                        <button
-                          type="button"
-                          onClick={() => runProposalAutofill(false)}
-                          disabled={autofillRunning || proposalSaving}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50"
-                        >
-                          {autofillRunning ? "Generating…" : "✦ Autofill from analysis"}
-                        </button>
-                        {autofillResult && (
-                          <span className={cx("text-[10px]", autofillResult.confidence === "high" ? "text-green-400" : autofillResult.confidence === "medium" ? "text-amber-400" : "text-red-400")}>
-                            {autofillResult.confidence} confidence{autofillResult.fields_updated?.length > 0 ? ` · ${autofillResult.fields_updated.length} fields filled` : " · no fields updated"}
-                          </span>
-                        )}
+                      <div className="mb-4">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => runProposalAutofill(false)}
+                            disabled={autofillRunning || proposalSaving}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50"
+                          >
+                            {autofillRunning ? "Filling…" : "Fill from reviewed brief"}
+                          </button>
+                          {autofillResult && (
+                            <span className={cx("text-[10px]", autofillResult.confidence === "high" ? "text-green-400" : autofillResult.confidence === "medium" ? "text-amber-400" : "text-red-400")}>
+                              {autofillResult.confidence} confidence{autofillResult.fields_updated?.length > 0 ? ` · ${autofillResult.fields_updated.length} fields filled` : " · no fields updated"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-600 mt-1">Pulls summary, solution, timeline, price, and running costs from the approved analysis into the fields below.</p>
                       </div>
                     )}
 
@@ -5707,7 +5610,7 @@ export default function LeadDetailPage() {
                       </div>
                       <div>
                         <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Payment notes</label>
-                        <input type="text" value={proposal.payment_notes ?? ""} onChange={(e) => setProposal(p => p ? { ...p, payment_notes: e.target.value } : p)} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60" placeholder="e.g. Bank transfer preferred" />
+                        <input type="text" value={proposal.payment_notes ?? ""} onChange={(e) => setProposal(p => p ? { ...p, payment_notes: e.target.value } : p)} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60" placeholder="Bank details on invoice. Deposit to secure slot." />
                       </div>
                       <div>
                         <label className="text-[10px] text-gray-500 uppercase tracking-wide font-medium block mb-1">Valid until</label>
@@ -5754,7 +5657,7 @@ export default function LeadDetailPage() {
                       {!proposalComplete ? (
                         <button
                           type="button"
-                          disabled={!briefSummary.trim()}
+                          disabled={!briefSummary.trim() && !proposal?.executive_summary?.trim()}
                           onClick={() => { setBriefPromptOutput(buildBriefPrompt()); setBriefPromptCopied(false); }}
                           className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                         >
@@ -5764,8 +5667,8 @@ export default function LeadDetailPage() {
                         <span className="text-[10px] text-green-400/60">✓ Generated</span>
                       ) : null}
                     </div>
-                    {!briefSummary.trim() && !briefPromptOutput && (
-                      <p className="text-xs text-gray-700">Run analysis first to generate a proposal prompt.</p>
+                    {!briefSummary.trim() && !proposal?.executive_summary?.trim() && !briefPromptOutput && (
+                      <p className="text-xs text-gray-700">Fill the commercial inputs above first, or run analysis.</p>
                     )}
                     {briefPromptOutput && (
                       <div className="relative">
