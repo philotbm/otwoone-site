@@ -680,11 +680,10 @@ function useDecisionSignals(lead: Lead | null, pricingRec: { pricingFit?: string
       commercialFit = "Likely fit";
     }
 
-    // ── Next best action — aligned with readiness, no contradictions ──
+    // ── Next best action — aligned with evidence-driven readiness ──
     const nextBestAction =
       stage1Rec?.label === "Proceed to proposal" ? "Ready for proposal"
-      : stage1Rec?.label ? "Gather more information"
-      : "Review enquiry data";
+      : "Gather more information";
 
     return { inputQuality, budgetClarity, scopeMaturity, commercialFit, nextBestAction };
   }, [lead, pricingRec, stage1Rec]);
@@ -4084,17 +4083,12 @@ export default function LeadDetailPage() {
                   const scopeReadyDone = scopeReady !== null;
                   const proposalDone = briefProposal.trim().length > 0;
 
-                  const steps = analysisPassComplete
-                    ? [
-                        { label: "Full Analysis", done: true },
-                        { label: "Readiness", done: scopeReadyDone },
-                        { label: "Proposal", done: proposalDone },
-                      ]
-                    : [
-                        { label: "Full Analysis", done: false },
-                        { label: "Readiness", done: scopeReadyDone },
-                        { label: "Proposal", done: proposalDone },
-                      ];
+                  const isEvidenceReady = analysisPassComplete || (scopeReadyDone && scopeReady === true);
+                  const steps = [
+                    { label: "Gather info", done: analysisPassComplete || iterations.length > 0 },
+                    { label: "Ready", done: isEvidenceReady },
+                    { label: "Proposal", done: proposalDone },
+                  ];
 
                   return steps.map((s, i) => (
                     <div key={i} className="flex items-center gap-1">
@@ -5002,74 +4996,85 @@ export default function LeadDetailPage() {
           </div>
         )}
 
-        {/* ── Readiness — coherent 3-state model, no contradictions ────── */}
+        {/* ── Readiness — evidence-driven 2-state, no internal gates ────── */}
         {briefAccessible && (
           <Section title="Readiness">
             <div className="space-y-4">
 
-              {/* ── First-stage readiness: exactly one state, one recommendation ── */}
+              {/* ── First-stage readiness: exactly 2 states, evidence-driven ── */}
               {["enquiry_received", "scope_analysis"].includes(status) && (() => {
-                // Derive readiness from concrete evidence — no contradiction possible
+                // ── Evidence collection ──
                 const hasAnalysis = analysisPassComplete;
                 const hasIterations = iterations.length > 0;
                 const hasMeetingsDone = meetings.filter(m => m.completed_at).length > 0;
+                const enquiryQuality = (lead.total_score ?? 0) >= 3.5;
+                const hasBudget = Boolean(lead.budget && lead.budget !== "not_sure");
+                const hasSuccessDef = Boolean(lead.lead_details?.success_definition?.trim());
 
-                // Three mutually exclusive states
-                type ReadinessState = "MORE_INFORMATION_NEEDED" | "REVIEWING" | "READY_FOR_PROPOSAL";
-                let readiness: ReadinessState;
+                // ── Evidence-driven readiness: exactly 2 states ──
+                // READY when: (analysis done) OR (strong enquiry + follow-up evidence)
+                // MORE_INFO when: gaps remain that make proposal premature
+                const isReady =
+                  scopeReady === true ||                                              // explicit scope check passed
+                  (hasAnalysis && scopeReady !== false) ||                            // analysis complete, not explicitly flagged as unready
+                  (enquiryQuality && hasSuccessDef && hasBudget && (hasIterations || hasMeetingsDone)); // strong enquiry + evidence
+
                 let reason: string;
-                let action: string;
-
-                if (scopeReady === true) {
-                  readiness = "READY_FOR_PROPOSAL";
-                  reason = "Analysis complete and scope confirmed.";
-                  action = "Create proposal";
-                } else if (hasAnalysis && scopeReady === false) {
-                  readiness = "MORE_INFORMATION_NEEDED";
-                  reason = readinessReason || "Analysis indicates more detail is needed before proposing.";
-                  action = "Gather more information using Add Information above";
-                } else if (hasAnalysis && scopeReady === null && (hasIterations || hasMeetingsDone)) {
-                  readiness = "REVIEWING";
-                  reason = "Analysis complete with additional context gathered. Run scope check to confirm readiness.";
-                  action = "Review analysis outputs and run scope check";
-                } else if (hasAnalysis) {
-                  readiness = "REVIEWING";
-                  reason = "Initial analysis complete. Review outputs to determine if enough detail exists.";
-                  action = "Review analysis outputs or gather more information";
-                } else if (hasIterations || hasMeetingsDone) {
-                  readiness = "REVIEWING";
-                  reason = `${iterations.length + meetings.filter(m => m.completed_at).length} source${(iterations.length + meetings.filter(m => m.completed_at).length) !== 1 ? "s" : ""} gathered. Run full analysis to assess readiness.`;
-                  action = "Run full analysis";
+                if (isReady) {
+                  if (scopeReady === true) {
+                    reason = "Scope confirmed — enough detail to prepare a proposal.";
+                  } else if (hasAnalysis && hasIterations) {
+                    reason = `Analysis complete with ${iterations.length} additional input${iterations.length !== 1 ? "s" : ""}. Enough context to prepare a proposal.`;
+                  } else if (hasAnalysis) {
+                    reason = "Analysis complete. Enough information from the enquiry to prepare a proposal.";
+                  } else {
+                    reason = "Strong enquiry with follow-up information gathered. Ready to prepare a proposal.";
+                  }
                 } else {
-                  readiness = "MORE_INFORMATION_NEEDED";
-                  reason = "No additional context captured yet beyond the original enquiry.";
-                  action = "Gather more information using Add Information above";
+                  if (scopeReady === false) {
+                    reason = readinessReason || "Key details are still needed before a proposal can be prepared.";
+                  } else if (!hasSuccessDef) {
+                    reason = "No clear project description from the client yet. Capture requirements via Add Information above.";
+                  } else if (!hasBudget) {
+                    reason = "Budget not confirmed. Gather budget clarity before preparing a proposal.";
+                  } else if (!hasIterations && !hasMeetingsDone) {
+                    reason = "Only the original enquiry available. Add context from a call, email, or meeting to strengthen the scope.";
+                  } else {
+                    reason = "Some context gathered but not enough to confidently prepare a proposal. Continue gathering information.";
+                  }
                 }
-
-                const stateConfig = {
-                  MORE_INFORMATION_NEEDED: { label: "More information needed", colour: "amber" as const, bg: "bg-amber-500/5 border-amber-500/20", text: "text-amber-400" },
-                  REVIEWING:              { label: "In review",              colour: "blue"  as const, bg: "bg-blue-500/5 border-blue-500/20",   text: "text-blue-400" },
-                  READY_FOR_PROPOSAL:     { label: "Ready for proposal",     colour: "green" as const, bg: "bg-green-500/5 border-green-500/20", text: "text-green-400" },
-                };
-                const cfg = stateConfig[readiness];
 
                 return (
                   <div className="space-y-3">
-                    <div className={cx("px-4 py-3 rounded-lg border", cfg.bg)}>
-                      <p className={cx("text-sm font-medium mb-1", cfg.text)}>{cfg.label}</p>
+                    {/* Readiness badge */}
+                    <div className={cx(
+                      "px-4 py-3 rounded-lg border",
+                      isReady ? "bg-green-500/5 border-green-500/20" : "bg-amber-500/5 border-amber-500/20",
+                    )}>
+                      <p className={cx("text-sm font-medium mb-1", isReady ? "text-green-400" : "text-amber-400")}>
+                        {isReady ? "Ready for proposal" : "More information needed"}
+                      </p>
                       <p className="text-xs text-gray-500 leading-relaxed">{reason}</p>
-                      <p className="text-xs text-gray-400 mt-1.5 font-medium">{action}</p>
                     </div>
-                    {overrideScopeWarning && (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-amber-500/15 text-amber-400">Readiness override used</span>
-                    )}
 
-                    {/* Proposal path — only when READY_FOR_PROPOSAL */}
-                    {(readiness === "READY_FOR_PROPOSAL" || overrideScopeWarning) && briefEligible && (() => {
+                    {/* Progression CTA when ready */}
+                    {isReady && (() => {
                       const proposalApproved = proposal && ["approved", "signed", "deposit_requested", "deposit_received"].includes(proposal.status);
                       const proposalExists = !!proposal;
+                      const needsStatusAdvance = status === "enquiry_received" || status === "scope_analysis";
                       return (
-                        <div className="pt-3 border-t border-white/5 space-y-2">
+                        <div className="space-y-2">
+                          {/* Primary CTA: advance status if needed, then create proposal */}
+                          {!proposalApproved && needsStatusAdvance && (
+                            <button
+                              type="button"
+                              onClick={() => { saveField({ status: "ready_for_proposal" }); setStatus("ready_for_proposal"); }}
+                              disabled={saving}
+                              className="w-full px-4 py-3 rounded-lg text-sm font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors disabled:opacity-50"
+                            >
+                              {saving ? "Updating…" : "Move to Ready for Proposal"}
+                            </button>
+                          )}
                           {!proposalApproved && (
                             <button
                               type="button"
@@ -5079,7 +5084,12 @@ export default function LeadDetailPage() {
                                 setTimeout(() => { document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100);
                               }}
                               disabled={proposalSaving || proposalLoading}
-                              className="w-full px-4 py-3 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                              className={cx(
+                                "w-full px-4 py-3 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50",
+                                needsStatusAdvance
+                                  ? "bg-indigo-600/60 hover:bg-indigo-600 text-white/80"
+                                  : "bg-indigo-600 hover:bg-indigo-500 text-white",
+                              )}
                             >
                               {proposalSaving ? "Creating…" : proposalExists ? "Open Proposal" : "Create Proposal"}
                             </button>
