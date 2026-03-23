@@ -517,14 +517,45 @@ export async function POST(req: NextRequest, { params }: Params) {
   // ── Detect complexity signals ──────────────────────────────────────────
   const signals = detectSignals(searchText);
 
-  // ── Calculate score ────────────────────────────────────────────────────
-  const score = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0));
+  // ── Calculate raw score ────────────────────────────────────────────────
+  const rawScore = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0));
+
+  // ── v1.93.5: SMB system calibration ────────────────────────────────────
+  // Detect SMB operational system vs true enterprise/platform work.
+  // SMB: single-business, booking+payments+accounts, no multi-tenant/marketplace/heavy-migration.
+  const lc = searchText.toLowerCase();
+  const enterpriseIndicators = ["multi-tenant", "multi_tenant", "marketplace", "saas platform", "enterprise integration", "erp", "legacy migration", "data migration", "multiple external system"].filter(t => lc.includes(t)).length;
+  const isSmbOperational = rawScore >= 70 && enterpriseIndicators === 0;
+
+  // Cap SMB systems at 70 to prevent enterprise-level classification
+  const score = isSmbOperational ? Math.min(rawScore, 70) : rawScore;
   const cls = classifyComplexity(score);
 
   // ── Derive build components and effort ─────────────────────────────────
   const components = deriveBuildComponents(signals);
-  const daysLow = components.reduce((sum, c) => sum + c.days_low, 0);
-  const daysHigh = components.reduce((sum, c) => sum + c.days_high, 0);
+  let daysLow = components.reduce((sum, c) => sum + c.days_low, 0);
+  let daysHigh = components.reduce((sum, c) => sum + c.days_high, 0);
+
+  // ── v1.93.5: Modern managed-stack MVP dampener ─────────────────────────
+  // Projects on modern managed stacks (Next.js/Vercel, Supabase, Stripe, etc.)
+  // require less effort than traditional bespoke builds.
+  const managedStackTerms = ["next.js", "nextjs", "vercel", "supabase", "stripe", "clerk", "resend", "firebase", "netlify", "railway", "planetscale", "neon"];
+  const managedStackHits = managedStackTerms.filter(t => lc.includes(t)).length;
+  const isManagedStack = managedStackHits >= 2;
+
+  // MVP / phased delivery: price to scoped initial delivery, not full vision
+  const mvpTerms = ["mvp", "phase 1", "phase one", "phased delivery", "phased approach", "core features first", "initial release", "accelerator scope", "optional phase 2", "optional enhancements", "launch first"];
+  const isMvpPhased = mvpTerms.some(t => lc.includes(t));
+
+  // Apply effort dampening (multiplicative, controlled)
+  let effortFactor = 1.0;
+  if (isManagedStack) effortFactor *= 0.85; // 15% reduction for managed stack
+  if (isMvpPhased) effortFactor *= 0.80;    // 20% reduction for MVP/phased scope
+
+  if (effortFactor < 1.0) {
+    daysLow = Math.max(4, Math.round(daysLow * effortFactor));
+    daysHigh = Math.max(6, Math.round(daysHigh * effortFactor));
+  }
 
   // ── Build rationale from evidence ──────────────────────────────────────
   const rationale = buildRationale(score, cls, signals, sourcesUsed);
