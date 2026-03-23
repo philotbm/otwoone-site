@@ -245,7 +245,7 @@ export async function POST(req: NextRequest) {
       .from('leads')
       .insert({
         source:            'elevate',
-        status:            'lead_submitted',
+        status:            'enquiry_received',
         contact_name,
         contact_email,
         company_name,

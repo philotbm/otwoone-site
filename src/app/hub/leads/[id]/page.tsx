@@ -5,6 +5,20 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { PROJECT_STATUSES, type ProjectStatus } from "@/lib/projectStatus";
 import type { Proposal, ProposalStatus } from "@/lib/proposalTypes";
+import {
+  LEAD_STATUSES,
+  type LeadStatus,
+  LEAD_STATUS_LABELS,
+  MEETING_TYPES,
+  MEETING_TYPE_LABELS,
+  MEETING_STAGES,
+  MEETING_OUTCOMES,
+  MEETING_OUTCOME_LABELS,
+  type Meeting,
+  type MeetingType,
+  type MeetingStage,
+  type MeetingOutcome,
+} from "@/lib/leadStatus";
 
 // ─── Safe JSON fetch ─────────────────────────────────────────────────────────
 // Defensively fetches JSON from an API route. Checks res.ok and content-type
@@ -54,16 +68,6 @@ async function safeFetch<T = unknown>(
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type LeadStatus =
-  | "lead_submitted"
-  | "scoping_sent"
-  | "scope_received"
-  | "proposal_sent"
-  | "deposit_requested"
-  | "deposit_received"
-  | "lost_pre_deposit"
-  | "converted";
 
 type Project = {
   id: string;
@@ -416,34 +420,57 @@ const AUTHORITY_LABELS: Record<string, string> = {
   no:     "No — gathering info",
 };
 
-const STATUS_OPTIONS: LeadStatus[] = [
-  "lead_submitted", "scoping_sent", "scope_received", "proposal_sent",
-  "deposit_requested", "deposit_received", "lost_pre_deposit", "converted",
-];
+const STATUS_OPTIONS: LeadStatus[] = [...LEAD_STATUSES];
 
-/** Operator-facing status labels (simplified business model) */
-const STATUS_LABELS: Record<LeadStatus, string> = {
-  lead_submitted:    "Enquiry Received",
-  scoping_sent:      "In Progress",
-  scope_received:    "Ready for Proposal",
-  proposal_sent:     "Proposal Sent",
-  deposit_requested: "Deposit Requested",
-  deposit_received:  "Won",
-  lost_pre_deposit:  "Lost",
-  converted:         "Won",
-};
+/** Operator-facing status labels — delegates to shared module */
+const STATUS_LABELS = LEAD_STATUS_LABELS;
 
 /** Operator-facing next action guidance per status */
 const NEXT_ACTION: Record<LeadStatus, string> = {
-  lead_submitted:    "Run full analysis to assess this enquiry",
-  scoping_sent:      "Awaiting client details",
-  scope_received:    "Prepare proposal",
-  proposal_sent:     "Awaiting client decision",
-  deposit_requested: "Awaiting deposit payment",
-  deposit_received:  "Ready to activate deposit",
-  lost_pre_deposit:  "Closed lost",
-  converted:         "Deposit activated",
+  enquiry_received:       "Run full analysis to assess this enquiry",
+  scope_analysis:         "Analyse scope and schedule discovery call",
+  ready_for_proposal:     "Prepare proposal",
+  proposal_sent:          "Awaiting client decision — offer walkthrough",
+  client_approved:        "Request deposit",
+  deposit_requested:      "Awaiting deposit payment",
+  in_build:               "Schedule build progress review",
+  client_review:          "Run client review session",
+  revisions:              "Apply revisions and re-submit",
+  final_approval:         "Awaiting final sign-off",
+  full_payment_requested: "Awaiting final payment",
+  complete:               "Project complete",
 };
+
+/** Stage auto-select based on current lead status */
+const STATUS_TO_MEETING_STAGE: Partial<Record<LeadStatus, MeetingStage>> = {
+  enquiry_received:       "scope_analysis",
+  scope_analysis:         "scope_analysis",
+  ready_for_proposal:     "proposal_sent",
+  proposal_sent:          "proposal_sent",
+  client_approved:        "proposal_sent",
+  deposit_requested:      "in_build",
+  in_build:               "in_build",
+  client_review:          "client_review",
+  revisions:              "client_review",
+  final_approval:         "final_approval",
+  full_payment_requested: "final_approval",
+  complete:               "final_approval",
+};
+
+/** Next best action logic — meeting-aware hints */
+function meetingNextAction(status: LeadStatus, meetings: Meeting[]): string | null {
+  const hasMeetings = meetings.length > 0;
+  const recentMeeting = meetings.find(m => {
+    const diff = Date.now() - new Date(m.scheduled_at).getTime();
+    return diff < 7 * 86_400_000; // within last 7 days
+  });
+
+  if (status === "scope_analysis" && !hasMeetings) return "Schedule discovery call";
+  if (status === "proposal_sent" && !hasMeetings) return "Offer proposal walkthrough";
+  if (status === "in_build" && !recentMeeting) return "Schedule build progress review";
+  if (status === "client_review") return "Run client review session";
+  return null;
+}
 
 const CTA_LABELS: Record<string, string> = {
   call:         "Phone call",
@@ -970,7 +997,7 @@ export default function LeadDetailPage() {
   const [draftReplies, setDraftReplies]         = useState<Record<string, string>>({});
 
   // Local edit state
-  const [status, setStatus]                     = useState<LeadStatus>("lead_submitted");
+  const [status, setStatus]                     = useState<LeadStatus>("enquiry_received");
   const [discoveryDepth, setDiscoveryDepth]     = useState("");
   const [proposedHosting, setProposedHosting]   = useState<"yes" | "no" | "">("");
   const [proposedPlan, setProposedPlan]         = useState("");
@@ -1039,6 +1066,18 @@ export default function LeadDetailPage() {
   const [expandedRuns,           setExpandedRuns]           = useState<Set<string>>(new Set());
   const [expandedRunSections,    setExpandedRunSections]    = useState<Set<string>>(new Set());
 
+  // Meetings state
+  const [meetings,              setMeetings]              = useState<Meeting[]>([]);
+  const [meetingsLoading,       setMeetingsLoading]       = useState(false);
+  const [meetingFormOpen,       setMeetingFormOpen]       = useState(false);
+  const [mtgType,               setMtgType]               = useState<MeetingType>("discovery_call");
+  const [mtgStage,              setMtgStage]              = useState<MeetingStage>("scope_analysis");
+  const [mtgDate,               setMtgDate]               = useState("");
+  const [mtgNotes,              setMtgNotes]              = useState("");
+  const [mtgSaving,             setMtgSaving]             = useState(false);
+  const [mtgCompleteId,         setMtgCompleteId]         = useState<string | null>(null);
+  const [mtgOutcome,            setMtgOutcome]            = useState<MeetingOutcome | "">("");
+
   // Atomic analysis gate — tracks whether the operator has explicitly run analysis
   // (or whether the lead already has analysis data from a previous session).
   // All analysis-derived sections are gated behind this flag.
@@ -1087,6 +1126,52 @@ export default function LeadDetailPage() {
   }, [id]);
 
   useEffect(() => { fetchLead(); }, [fetchLead]);
+
+  // ── Meetings fetch ──────────────────────────────────────────────────────────
+  const fetchMeetings = useCallback(async () => {
+    setMeetingsLoading(true);
+    try {
+      const result = await safeFetch<{ meetings: Meeting[] }>(`/api/hub/leads/${id}/meetings`);
+      if (result.ok) setMeetings(result.data.meetings ?? []);
+    } catch {
+      // silent — non-critical
+    } finally {
+      setMeetingsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => { fetchMeetings(); }, [fetchMeetings]);
+
+  async function scheduleMeeting() {
+    if (!mtgDate) return;
+    setMtgSaving(true);
+    const result = await safeFetch<{ meeting: Meeting }>(`/api/hub/leads/${id}/meetings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: mtgType, stage: mtgStage, scheduled_at: mtgDate, notes: mtgNotes }),
+    });
+    setMtgSaving(false);
+    if (result.ok) {
+      setMeetingFormOpen(false);
+      setMtgNotes("");
+      setMtgDate("");
+      fetchMeetings();
+    }
+  }
+
+  async function completeMeeting(meetingId: string) {
+    if (!mtgOutcome) return;
+    setMtgSaving(true);
+    await safeFetch(`/api/hub/leads/${id}/meetings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ meeting_id: meetingId, completed_at: new Date().toISOString(), outcome: mtgOutcome }),
+    });
+    setMtgSaving(false);
+    setMtgCompleteId(null);
+    setMtgOutcome("");
+    fetchMeetings();
+  }
 
   const fetchEvents = useCallback(async (projectId: string) => {
     setEventsLoading(true);
@@ -1206,9 +1291,9 @@ export default function LeadDetailPage() {
     }
   }, []);
 
-  // Brief accessible from lead_submitted onward; full brief editing only at scope_received+
-  const briefAccessible = ['lead_submitted', 'scoping_sent', 'scope_received', 'proposal_sent', 'deposit_requested', 'deposit_received', 'converted'].includes(status);
-  const briefEligible = ['scope_received', 'proposal_sent', 'deposit_requested', 'deposit_received', 'converted'].includes(status);
+  // Brief accessible from enquiry_received onward; full brief editing only at ready_for_proposal+
+  const briefAccessible = ['enquiry_received', 'scope_analysis', 'ready_for_proposal', 'proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
+  const briefEligible = ['ready_for_proposal', 'proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
   useEffect(() => { if (briefAccessible && id) fetchBrief(id); }, [briefAccessible, id, fetchBrief]);
 
   // ── Fetch proposal (scope_received+) ────────────────────────────────────────
@@ -1311,7 +1396,7 @@ export default function LeadDetailPage() {
   const bootstrapBriefFromEnquiry = useCallback(async () => {
     if (!lead || !id || bootstrapDone) return;
     // Only bootstrap for early stages where there's no scoping reply yet
-    if (!['lead_submitted', 'scoping_sent'].includes(status)) return;
+    if (!['enquiry_received', 'scope_analysis'].includes(status)) return;
 
     setBootstrapDone(true);
 
@@ -1410,7 +1495,7 @@ export default function LeadDetailPage() {
 
   const stage1Recommendation = useMemo((): Stage1Recommendation | null => {
     if (!lead) return null;
-    if (!['lead_submitted', 'scoping_sent'].includes(status)) return null;
+    if (!['enquiry_received', 'scope_analysis'].includes(status)) return null;
 
     const totalScore = lead.total_score ?? 0;
     const complexity = lead.complexity_score ?? 0;
@@ -3567,8 +3652,9 @@ export default function LeadDetailPage() {
   }
 
   const project     = lead.projects?.[0] ?? null;
-  const isConverted = lead.status === "converted";
-  const canActivateDeposit = lead.status === "deposit_requested" || lead.status === "deposit_received";
+  const isConverted = lead.status === "complete";
+  const canActivateDeposit = lead.status === "deposit_requested" || lead.status === "client_approved";
+  const meetingHint = meetingNextAction(status, meetings);
 
   return (
     <div className="min-h-screen bg-[#05060a] text-gray-200">
@@ -3640,67 +3726,57 @@ export default function LeadDetailPage() {
       {/* Next Action panel */}
       <div className="border-b border-white/5 px-6 py-3 flex items-center gap-3">
         <span className="text-[10px] text-gray-600 uppercase tracking-wide shrink-0">Next action</span>
-        {/* Passive / waiting states */}
-        {status === "scoping_sent" && (
-          <span className="text-xs text-yellow-400/80 italic">Waiting for client response</span>
+        <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
+        {meetingHint && (
+          <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-400 font-medium">{meetingHint}</span>
         )}
+        {/* Quick actions */}
         {status === "proposal_sent" && (
-          <>
-            <span className="text-xs text-yellow-400/80 italic">Awaiting client decision</span>
-            <button
-              type="button"
-              onClick={() => { saveField({ status: "deposit_requested" }); setStatus("deposit_requested"); }}
-              disabled={saving}
-              className="ml-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
-            >
-              {saving ? "Updating…" : "Request Deposit"}
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => { saveField({ status: "client_approved" }); setStatus("client_approved"); }}
+            disabled={saving}
+            className="ml-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-50"
+          >
+            {saving ? "Updating…" : "Mark Approved"}
+          </button>
         )}
-        {(status === "deposit_requested" || status === "deposit_received") && (
-          <>
-            <span className="text-xs text-yellow-400/80 italic">Awaiting deposit activation</span>
-            {!isConverted && canActivateDeposit && (
-              <button
-                type="button"
-                onClick={() => setShowConvert(true)}
-                className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors"
-              >
-                Activate Deposit
-              </button>
-            )}
-          </>
+        {status === "client_approved" && (
+          <button
+            type="button"
+            onClick={() => { saveField({ status: "deposit_requested" }); setStatus("deposit_requested"); }}
+            disabled={saving}
+            className="ml-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-amber-600/80 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
+          >
+            {saving ? "Updating…" : "Request Deposit"}
+          </button>
         )}
-        {status === "converted" && (
-          <span className="text-xs text-green-400/80">Deposit activated — project created</span>
+        {status === "deposit_requested" && (
+          <button
+            type="button"
+            onClick={() => setShowConvert(true)}
+            className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors"
+          >
+            Activate Deposit
+          </button>
         )}
-        {status === "lost_pre_deposit" && (
-          <span className="text-xs text-red-400/80">Lead closed lost</span>
-        )}
-        {/* Active / primary action states */}
-        {status === "lead_submitted" && (
-          <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
-        )}
-        {status === "scope_received" && (
-          <>
-            <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
-            <button
-              type="button"
-              onClick={async () => {
-                if (!proposal) {
-                  await createProposal();
-                }
-                setProposalOpen(true);
-                setTimeout(() => {
-                  document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }, 100);
-              }}
-              disabled={proposalSaving || proposalLoading}
-              className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-            >
-              {proposalSaving ? "Creating…" : proposal ? "Open Proposal" : "Create Proposal"}
-            </button>
-          </>
+        {status === "ready_for_proposal" && (
+          <button
+            type="button"
+            onClick={async () => {
+              if (!proposal) {
+                await createProposal();
+              }
+              setProposalOpen(true);
+              setTimeout(() => {
+                document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }, 100);
+            }}
+            disabled={proposalSaving || proposalLoading}
+            className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+          >
+            {proposalSaving ? "Creating…" : proposal ? "Open Proposal" : "Create Proposal"}
+          </button>
         )}
       </div>
 
@@ -3824,6 +3900,154 @@ export default function LeadDetailPage() {
                 </div>
               )}
 
+            </div>
+          </Section>
+        </div>
+
+        {/* ════════════════════════════════════════════════════════════════
+            MEETINGS — structured meeting objects
+            ════════════════════════════════════════════════════════════════ */}
+        <div>
+          <Section title="Meetings">
+            <div className="space-y-3">
+              {/* Meeting list */}
+              {meetingsLoading && <p className="text-xs text-gray-500 italic">Loading meetings…</p>}
+              {!meetingsLoading && meetings.length === 0 && (
+                <p className="text-xs text-gray-500 italic">No meetings scheduled yet.</p>
+              )}
+              {meetings.map((m) => (
+                <div key={m.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-b-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-gray-200">{MEETING_TYPE_LABELS[m.type]}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400">{m.stage.replace(/_/g, " ")}</span>
+                      {m.completed_at && m.outcome && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">{MEETING_OUTCOME_LABELS[m.outcome]}</span>
+                      )}
+                      {!m.completed_at && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">Scheduled</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {new Date(m.scheduled_at).toLocaleString("en-IE", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                    {m.notes && <p className="text-xs text-gray-400 mt-1">{m.notes}</p>}
+                  </div>
+                  {/* Complete meeting */}
+                  {!m.completed_at && mtgCompleteId !== m.id && (
+                    <button
+                      onClick={() => { setMtgCompleteId(m.id); setMtgOutcome(""); }}
+                      className="shrink-0 px-2.5 py-1 rounded text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors"
+                    >
+                      Complete
+                    </button>
+                  )}
+                  {mtgCompleteId === m.id && (
+                    <div className="shrink-0 flex items-center gap-2">
+                      <select
+                        value={mtgOutcome}
+                        onChange={(e) => setMtgOutcome(e.target.value as MeetingOutcome)}
+                        className="bg-[#0e0f14] border border-white/10 rounded px-2 py-1 text-[11px] text-gray-200"
+                      >
+                        <option value="">Outcome…</option>
+                        {MEETING_OUTCOMES.map((o) => (
+                          <option key={o} value={o}>{MEETING_OUTCOME_LABELS[o]}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => completeMeeting(m.id)}
+                        disabled={!mtgOutcome || mtgSaving}
+                        className="px-2.5 py-1 rounded text-[11px] font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50"
+                      >
+                        {mtgSaving ? "…" : "Save"}
+                      </button>
+                      <button
+                        onClick={() => setMtgCompleteId(null)}
+                        className="px-2 py-1 rounded text-[11px] text-gray-500 hover:text-gray-300"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* Schedule meeting form */}
+              {!meetingFormOpen && (
+                <button
+                  onClick={() => {
+                    setMtgStage(STATUS_TO_MEETING_STAGE[status] ?? "scope_analysis");
+                    setMeetingFormOpen(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600/80 hover:bg-indigo-600 text-white transition-colors"
+                >
+                  Schedule Meeting
+                </button>
+              )}
+              {meetingFormOpen && (
+                <div className="p-3 rounded-lg border border-white/10 bg-white/[0.02] space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Type</label>
+                      <select
+                        value={mtgType}
+                        onChange={(e) => setMtgType(e.target.value as MeetingType)}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200"
+                      >
+                        {MEETING_TYPES.map((t) => (
+                          <option key={t} value={t}>{MEETING_TYPE_LABELS[t]}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Stage</label>
+                      <select
+                        value={mtgStage}
+                        onChange={(e) => setMtgStage(e.target.value as MeetingStage)}
+                        className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200"
+                      >
+                        {MEETING_STAGES.map((s) => (
+                          <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Date / Time</label>
+                    <input
+                      type="datetime-local"
+                      value={mtgDate}
+                      onChange={(e) => setMtgDate(e.target.value)}
+                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Notes</label>
+                    <textarea
+                      value={mtgNotes}
+                      onChange={(e) => setMtgNotes(e.target.value)}
+                      rows={2}
+                      className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 resize-none"
+                      placeholder="Meeting agenda or notes…"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={scheduleMeeting}
+                      disabled={!mtgDate || mtgSaving}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                    >
+                      {mtgSaving ? "Saving…" : "Schedule"}
+                    </button>
+                    <button
+                      onClick={() => setMeetingFormOpen(false)}
+                      className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:text-gray-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </Section>
         </div>
@@ -4923,7 +5147,7 @@ export default function LeadDetailPage() {
                 })()}
 
                 {/* ── Scope received but not ready — show missing inputs ───── */}
-                {status === "scope_received" && scopeReady !== true && !overrideScopeWarning && (() => {
+                {status === "ready_for_proposal" && scopeReady !== true && !overrideScopeWarning && (() => {
                   const missingInputs: string[] = [];
                   if (!briefSummary.trim()) missingInputs.push("System analysis");
                   if (!technicalResearch) missingInputs.push("Technical research");
@@ -4943,17 +5167,17 @@ export default function LeadDetailPage() {
                   ) : null;
                 })()}
 
-                {["lead_submitted", "scoping_sent"].includes(status) && (
+                {["enquiry_received", "scope_analysis"].includes(status) && (
                   <span className="text-xs text-gray-500">Lead must reach Ready for Proposal before proceeding.</span>
                 )}
 
                 {/* ── Post-proposal status — always show link back to proposal ── */}
-                {["proposal_sent", "deposit_requested", "deposit_received", "converted"].includes(status) && (
+                {["proposal_sent", "client_approved", "deposit_requested", "in_build", "client_review", "revisions", "final_approval", "full_payment_requested", "complete"].includes(status) && (
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={cx(
                       "px-3 py-1.5 rounded-lg text-xs font-medium border",
                       status === "proposal_sent" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
-                      status === "converted" ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                      status === "complete" ? "bg-green-500/10 text-green-400 border-green-500/20" :
                       "bg-violet-500/10 text-violet-400 border-violet-500/20"
                     )}>
                       {STATUS_LABELS[status]}
@@ -5422,7 +5646,7 @@ export default function LeadDetailPage() {
             PROPOSAL PREP — proposal prompt, draft, and handoff actions
             ════════════════════════════════════════════════════════════════ */}
         {briefEligible && (() => {
-          const proposalComplete = ["proposal_sent", "deposit_requested", "deposit_received", "converted"].includes(status);
+          const proposalComplete = ["proposal_sent", "client_approved", "deposit_requested", "in_build", "client_review", "revisions", "final_approval", "full_payment_requested", "complete"].includes(status);
           return (
           <div>
             <Section title={proposalComplete ? "Proposal Prep (Completed)" : "Proposal Prep"}>
@@ -5432,7 +5656,7 @@ export default function LeadDetailPage() {
                 const hasBrief   = briefSummary.trim().length > 0;
                 const hasPrompt  = briefPromptOutput.trim().length > 0;
                 const hasDraft   = briefProposal.trim().length > 0;
-                const isSent     = status === "proposal_sent" || status === "deposit_requested" || status === "deposit_received" || status === "converted";
+                const isSent     = proposalComplete;
 
                 type StepState = "done" | "active" | "upcoming";
                 const steps: Array<{ label: string; state: StepState }> = [
@@ -5479,15 +5703,29 @@ export default function LeadDetailPage() {
                   <div>
                     <p className="text-xs text-gray-500">Status</p>
                     <p className="text-[10px] text-gray-600 mt-0.5">
-                      {status === "proposal_sent" ? "Proposal sent — request deposit when ready."
+                      {status === "proposal_sent" ? "Proposal sent — awaiting client decision."
+                        : status === "client_approved" ? "Client approved — request deposit."
                         : status === "deposit_requested" ? "Deposit requested — activate when payment received."
-                        : status === "deposit_received" ? "Deposit received — activate to create project."
-                        : status === "converted" ? "Deposit activated — project created."
+                        : status === "complete" ? "Project complete."
+                        : ["in_build", "client_review", "revisions", "final_approval", "full_payment_requested"].includes(status) ? "Project in progress."
                         : "Prepare and send the proposal."}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     {status === "proposal_sent" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          saveField({ status: "client_approved" });
+                          setStatus("client_approved");
+                        }}
+                        disabled={saving}
+                        className="px-4 py-2 rounded-lg text-xs font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors disabled:opacity-50"
+                      >
+                        {saving ? "Updating…" : "Mark Approved"}
+                      </button>
+                    )}
+                    {status === "client_approved" && (
                       <button
                         type="button"
                         onClick={() => {
@@ -5500,7 +5738,7 @@ export default function LeadDetailPage() {
                         {saving ? "Updating…" : "Request Deposit"}
                       </button>
                     )}
-                    {(status === "deposit_requested" || status === "deposit_received") && (
+                    {status === "deposit_requested" && (
                       <button
                         type="button"
                         onClick={() => setShowConvert(true)}
@@ -5509,10 +5747,10 @@ export default function LeadDetailPage() {
                         Activate Deposit
                       </button>
                     )}
-                    {["lead_submitted", "scoping_sent"].includes(status) && (
+                    {["enquiry_received", "scope_analysis"].includes(status) && (
                       <span className="text-[10px] text-gray-600">Lead must reach Ready for Proposal to advance.</span>
                     )}
-                    {status === "scope_received" && proposal && (
+                    {status === "ready_for_proposal" && proposal && (
                       <button
                         type="button"
                         onClick={() => {
@@ -5526,10 +5764,10 @@ export default function LeadDetailPage() {
                         {saving ? "Updating…" : "Mark as Sent"}
                       </button>
                     )}
-                    {status === "scope_received" && !proposal && (
+                    {status === "ready_for_proposal" && !proposal && (
                       <span className="text-[10px] text-gray-600">Create a proposal first, then mark as sent.</span>
                     )}
-                    {status === "converted" && project && (
+                    {status === "complete" && project && (
                       <div className="flex items-center gap-3">
                         <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
                           Deposit Activated
