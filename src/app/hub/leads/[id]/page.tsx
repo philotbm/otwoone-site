@@ -3109,7 +3109,6 @@ export default function LeadDetailPage() {
     const lines: string[] = [];
 
     // ── Use proposal-facing values where available, fall back to brief ──
-    const propTitle = s(proposal?.title) || `Proposal for ${s(lead.contact_name) || s(lead.company_name) || "Client"}`;
     const propPrice = proposal?.build_price != null ? Number(proposal.build_price) : effectiveBuildPrice;
     const propDeposit = proposal?.deposit_percent ?? 50;
     const propTimeline = s(proposal?.timeline_summary) || s(briefTimeline);
@@ -3122,35 +3121,47 @@ export default function LeadDetailPage() {
     const monthlyLow = runningCosts?.total_with_retainer_low;
     const monthlyHigh = runningCosts?.total_with_retainer_high;
 
+    // ── Helper: strip known tech/tool names from text for client-facing narrative ──
+    const TECH_TERMS = /\b(Next\.js|React|React Native|Supabase|PostgreSQL|Expo|Stripe|Clerk|Resend|Cloudflare R2|Vercel|Node\.js|TypeScript|Tailwind|TailwindCSS|REST API|GraphQL|Docker|Redis|AWS|Firebase|MongoDB)\b/gi;
+    function stripTech(text: string): string {
+      // Remove tech terms and clean up artefacts (double spaces, orphaned parens, semicolons)
+      return text
+        .replace(TECH_TERMS, "")
+        .replace(/\([^)]*\)/g, (m) => { const inner = m.replace(TECH_TERMS, "").replace(/[,;]\s*[,;]/g, ",").replace(/^\(\s*[,;]?\s*\)$/, ""); return inner === "()" || inner === "( )" ? "" : inner; })
+        .replace(/:\s*[,;.]\s*/g, ": ")
+        .replace(/\s{2,}/g, " ")
+        .replace(/ ([,;.])/g, "$1")
+        .trim();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // LAYER 1 — CLIENT-FACING NARRATIVE (clean, commercial, no tech)
+    // ════════════════════════════════════════════════════════════════════
+
     lines.push("Write a professional proposal email from OTwoOne (a web consultancy in Ireland) to the client.");
     lines.push("");
 
-    // Client
     lines.push("## Client");
     lines.push(`Name: ${clientName}`);
     if (companyName) lines.push(`Company: ${companyName}`);
     lines.push("");
 
-    // Project overview — concise, outcome-focused
     lines.push("## Project overview");
-    if (propSummary) lines.push(propSummary);
+    if (propSummary) lines.push(stripTech(propSummary));
     lines.push("");
 
-    // Recommended approach
     if (propSolution) {
       lines.push("## Recommended approach");
-      lines.push(propSolution);
+      lines.push(stripTech(propSolution));
       lines.push("");
     }
 
-    // Timeline
     if (propTimeline) {
       lines.push("## Timeline");
-      lines.push(propTimeline);
+      lines.push(stripTech(propTimeline));
       lines.push("");
     }
 
-    // Commercial terms — the key numbers
     lines.push("## Commercial terms");
     lines.push(`- Build price: €${propPrice.toLocaleString()}`);
     lines.push(`- Deposit: ${propDeposit}% (€${Math.round(propPrice * propDeposit / 100).toLocaleString()}) to begin`);
@@ -3162,15 +3173,63 @@ export default function LeadDetailPage() {
     lines.push(`- Payment: ${propPaymentNotes}`);
     lines.push("");
 
-    // Output instructions
     lines.push("## Instructions");
     lines.push(`- Address the client as "${clientName}"`);
     lines.push("- Professional but approachable tone");
     lines.push("- Keep it concise — aim for a single-page email");
     lines.push("- Focus on outcomes and deliverables, not technical implementation");
     lines.push("- End with a clear next step: deposit to secure the build slot");
-    lines.push("- Do not include technical stack, tool names, or internal analysis");
+    lines.push("- Do not include technical stack, tool names, or internal analysis in the proposal");
     lines.push("- Sign off as Phil from OTwoOne");
+
+    // ════════════════════════════════════════════════════════════════════
+    // LAYER 2 — INTERNAL CONTEXT (hidden from output)
+    // ════════════════════════════════════════════════════════════════════
+
+    const internalLines: string[] = [];
+
+    // Technical stack from the raw solution/brief
+    if (propSolution && TECH_TERMS.test(propSolution)) {
+      TECH_TERMS.lastIndex = 0; // reset regex state
+      const techMatches = [...new Set(propSolution.match(TECH_TERMS) || [])];
+      if (techMatches.length > 0) {
+        internalLines.push(`Technical stack: ${techMatches.join(", ")}`);
+      }
+    }
+
+    // Complexity context
+    if (complexityResult && complexityResult.complexity_score > 0) {
+      internalLines.push(`Complexity: ${Math.min(complexityResult.complexity_score, 100)}/100 (${complexityResult.complexity_class.replace(/_/g, " ")}), estimated ${complexityResult.estimated_days_low}–${complexityResult.estimated_days_high} days`);
+    }
+
+    // Build pricing context
+    if (buildPricing) {
+      internalLines.push(`Build pricing basis: ${buildPricing.recommended_build_days} days × €${buildPricing.day_rate}/day`);
+      if (buildPricing.commercial_strategy) {
+        internalLines.push(`Commercial strategy: ${buildPricing.commercial_strategy}`);
+      }
+    }
+
+    // Running costs breakdown
+    if (runningCosts && runningCosts.items.length > 0) {
+      internalLines.push(`Monthly cost breakdown: ${runningCosts.items.map(i => `${i.name} €${i.low}${i.low !== i.high ? `–€${i.high}` : ""}`).join(", ")}; support retainer €${runningCosts.support_retainer}`);
+    }
+
+    // Raw solution (with tech names) for context
+    if (propSolution && internalLines.length > 0) {
+      internalLines.push("");
+      internalLines.push("Full technical solution context:");
+      internalLines.push(propSolution);
+    }
+
+    if (internalLines.length > 0) {
+      lines.push("");
+      lines.push("## Internal context (do not include in output)");
+      lines.push("Use this section only to understand scope, complexity, and delivery reality.");
+      lines.push("Do NOT mention specific technologies, tools, or implementation details in the proposal unless the client explicitly requested them.");
+      lines.push("");
+      lines.push(...internalLines);
+    }
 
     return lines.join("\n");
   }
