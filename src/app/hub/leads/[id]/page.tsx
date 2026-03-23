@@ -465,7 +465,7 @@ function meetingNextAction(status: LeadStatus, meetings: Meeting[]): string | nu
     return diff < 7 * 86_400_000; // within last 7 days
   });
 
-  if (status === "scope_analysis" && !hasMeetings) return "Gather more information";
+  if (status === "scope_analysis" && !hasMeetings) return "Gather information";
   if (status === "proposal_sent" && !hasMeetings) return "Offer proposal walkthrough";
   if (status === "in_build" && !recentMeeting) return "Schedule build progress review";
   if (status === "client_review") return "Run client review session";
@@ -680,8 +680,11 @@ function useDecisionSignals(lead: Lead | null, pricingRec: { pricingFit?: string
       commercialFit = "Likely fit";
     }
 
-    // ── Next best action ──
-    const nextBestAction = stage1Rec?.label ?? "Review enquiry data";
+    // ── Next best action — aligned with readiness, no contradictions ──
+    const nextBestAction =
+      stage1Rec?.label === "Proceed to proposal" ? "Ready for proposal"
+      : stage1Rec?.label ? "Gather more information"
+      : "Review enquiry data";
 
     return { inputQuality, budgetClarity, scopeMaturity, commercialFit, nextBestAction };
   }, [lead, pricingRec, stage1Rec]);
@@ -1070,7 +1073,7 @@ export default function LeadDetailPage() {
   const [meetings,              setMeetings]              = useState<Meeting[]>([]);
   const [meetingsLoading,       setMeetingsLoading]       = useState(false);
   const [meetingFormOpen,       setMeetingFormOpen]       = useState(false);
-  const [mtgType,               setMtgType]               = useState<MeetingType>("build_review");
+  const [mtgType,               setMtgType]               = useState<MeetingType>("discovery_call");
   const [mtgStage,              setMtgStage]              = useState<MeetingStage>("scope_analysis");
   const [mtgDate,               setMtgDate]               = useState("");
   const [mtgNotes,              setMtgNotes]              = useState("");
@@ -3905,8 +3908,10 @@ export default function LeadDetailPage() {
         </div>
 
         {/* ════════════════════════════════════════════════════════════════
-            MEETINGS — structured meeting objects
+            MEETINGS — standalone section for post-first-stage.
+            In first-stage, meeting access is via Add Information.
             ════════════════════════════════════════════════════════════════ */}
+        {!["enquiry_received", "scope_analysis"].includes(status) && (
         <div>
           <Section title="Meetings">
             <div className="space-y-3">
@@ -4051,6 +4056,7 @@ export default function LeadDetailPage() {
             </div>
           </Section>
         </div>
+        )}
 
         {/* ════════════════════════════════════════════════════════════════
             CLIENT REQUEST — original intake description (full-width)
@@ -4081,12 +4087,12 @@ export default function LeadDetailPage() {
                   const steps = analysisPassComplete
                     ? [
                         { label: "Full Analysis", done: true },
-                        { label: "Scope Readiness", done: scopeReadyDone },
+                        { label: "Readiness", done: scopeReadyDone },
                         { label: "Proposal", done: proposalDone },
                       ]
                     : [
                         { label: "Full Analysis", done: false },
-                        { label: "Scope Readiness", done: scopeReadyDone },
+                        { label: "Readiness", done: scopeReadyDone },
                         { label: "Proposal", done: proposalDone },
                       ];
 
@@ -4792,36 +4798,94 @@ export default function LeadDetailPage() {
             <Section title="Add Information">
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 -mt-1">
-                  Central place to capture context from any source. After adding, the analysis pipeline will update automatically.
+                  Capture context from calls, emails, meetings, or other sources. The analysis pipeline updates automatically.
                 </p>
 
-                {/* Quick action helpers — lightweight communication shortcuts */}
+                {/* Helper actions — communication + meeting scheduling */}
                 {["enquiry_received", "scope_analysis"].includes(status) && (
-                  <div className="flex flex-wrap gap-2 pb-3 border-b border-white/5">
-                    {lead?.contact_email && (
+                  <div className="space-y-2 pb-3 border-b border-white/5">
+                    <div className="flex flex-wrap gap-2">
+                      {lead?.contact_email && (
+                        <a
+                          href={`mailto:${lead.contact_email}?subject=${encodeURIComponent("Following up — " + (lead.company_name ?? lead.contact_name ?? "your enquiry"))}`}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300 transition-all inline-flex items-center gap-1"
+                        >
+                          Send email
+                        </a>
+                      )}
                       <a
-                        href={`mailto:${lead.contact_email}?subject=${encodeURIComponent("Following up — " + (lead.company_name ?? lead.contact_name ?? "your enquiry"))}`}
+                        href={bookingsUrl ?? `https://outlook.office.com/calendar/action/compose?subject=${encodeURIComponent("Call — " + (lead?.company_name ?? lead?.contact_name ?? "Client"))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300 transition-all inline-flex items-center gap-1"
                       >
-                        Send email
+                        Schedule call
                       </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMtgStage(STATUS_TO_MEETING_STAGE[status] ?? "scope_analysis");
+                          setMeetingFormOpen(true);
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300 transition-all"
+                      >
+                        Schedule meeting
+                      </button>
+                    </div>
+
+                    {/* Inline meeting scheduling form */}
+                    {meetingFormOpen && (
+                      <div className="p-3 rounded-lg border border-white/10 bg-white/[0.02] space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Type</label>
+                            <select value={mtgType} onChange={(e) => setMtgType(e.target.value as MeetingType)} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200">
+                              {MEETING_TYPES.map((t) => (<option key={t} value={t}>{MEETING_TYPE_LABELS[t]}</option>))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Date / Time</label>
+                            <input type="datetime-local" value={mtgDate} onChange={(e) => setMtgDate(e.target.value)} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Notes</label>
+                          <textarea value={mtgNotes} onChange={(e) => setMtgNotes(e.target.value)} rows={2} className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 resize-none" placeholder="Meeting agenda or notes…" />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={scheduleMeeting} disabled={!mtgDate || mtgSaving} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50">{mtgSaving ? "Saving…" : "Schedule"}</button>
+                          <button onClick={() => setMeetingFormOpen(false)} className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+                        </div>
+                      </div>
                     )}
-                    <a
-                      href={bookingsUrl ?? `https://outlook.office.com/calendar/action/compose?subject=${encodeURIComponent("Call — " + (lead?.company_name ?? lead?.contact_name ?? "Client"))}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300 transition-all inline-flex items-center gap-1"
-                    >
-                      Schedule call
-                    </a>
-                    <a
-                      href={`https://teams.microsoft.com/l/meeting/new?subject=${encodeURIComponent("Meeting — " + (lead?.company_name ?? lead?.contact_name ?? "Client"))}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300 transition-all inline-flex items-center gap-1"
-                    >
-                      Schedule meeting
-                    </a>
+
+                    {/* Recent/scheduled meetings — lightweight inline context */}
+                    {meetings.length > 0 && (
+                      <div className="space-y-1">
+                        {meetings.slice(0, 3).map((m) => (
+                          <div key={m.id} className="flex items-center gap-2 text-[11px]">
+                            <span className={cx("px-1.5 py-0.5 rounded", m.completed_at ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400")}>
+                              {m.completed_at ? "Done" : "Scheduled"}
+                            </span>
+                            <span className="text-gray-400">{MEETING_TYPE_LABELS[m.type]}</span>
+                            <span className="text-gray-600">{new Date(m.scheduled_at).toLocaleDateString("en-IE", { day: "numeric", month: "short" })}</span>
+                            {!m.completed_at && mtgCompleteId !== m.id && (
+                              <button onClick={() => { setMtgCompleteId(m.id); setMtgOutcome(""); }} className="text-emerald-400 hover:text-emerald-300 ml-auto">Mark done</button>
+                            )}
+                            {mtgCompleteId === m.id && (
+                              <div className="flex items-center gap-1 ml-auto">
+                                <select value={mtgOutcome} onChange={(e) => setMtgOutcome(e.target.value as MeetingOutcome)} className="bg-[#0e0f14] border border-white/10 rounded px-1.5 py-0.5 text-[10px] text-gray-200">
+                                  <option value="">Outcome…</option>
+                                  {MEETING_OUTCOMES.map((o) => (<option key={o} value={o}>{MEETING_OUTCOME_LABELS[o]}</option>))}
+                                </select>
+                                <button onClick={() => completeMeeting(m.id)} disabled={!mtgOutcome || mtgSaving} className="text-emerald-400 disabled:opacity-50">{mtgSaving ? "…" : "Save"}</button>
+                                <button onClick={() => setMtgCompleteId(null)} className="text-gray-600">×</button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -4938,80 +5002,70 @@ export default function LeadDetailPage() {
           </div>
         )}
 
-        {/* ── Scope Readiness — simplified guidance layer ──────────────── */}
+        {/* ── Readiness — coherent 3-state model, no contradictions ────── */}
         {briefAccessible && (
-          <Section title="Scope Readiness">
+          <Section title="Readiness">
             <div className="space-y-4">
 
-              {/* ── Readiness state — simple operator-friendly status ── */}
+              {/* ── First-stage readiness: exactly one state, one recommendation ── */}
               {["enquiry_received", "scope_analysis"].includes(status) && (() => {
-                // Derive simple readiness state from available evidence
+                // Derive readiness from concrete evidence — no contradiction possible
                 const hasAnalysis = analysisPassComplete;
                 const hasIterations = iterations.length > 0;
-                const hasMeetingsCompleted = meetings.filter(m => m.completed_at).length > 0;
-                const evidenceCount = (hasAnalysis ? 1 : 0) + iterations.length + (hasMeetingsCompleted ? 1 : 0);
+                const hasMeetingsDone = meetings.filter(m => m.completed_at).length > 0;
 
-                // Simple three-state readiness
-                const readinessState: "ready" | "enough_info" | "more_info" =
-                  scopeReady === true ? "ready"
-                  : (hasAnalysis && (hasIterations || hasMeetingsCompleted) && scopeReady !== false) ? "enough_info"
-                  : "more_info";
+                // Three mutually exclusive states
+                type ReadinessState = "MORE_INFORMATION_NEEDED" | "REVIEWING" | "READY_FOR_PROPOSAL";
+                let readiness: ReadinessState;
+                let reason: string;
+                let action: string;
+
+                if (scopeReady === true) {
+                  readiness = "READY_FOR_PROPOSAL";
+                  reason = "Analysis complete and scope confirmed.";
+                  action = "Create proposal";
+                } else if (hasAnalysis && scopeReady === false) {
+                  readiness = "MORE_INFORMATION_NEEDED";
+                  reason = readinessReason || "Analysis indicates more detail is needed before proposing.";
+                  action = "Gather more information using Add Information above";
+                } else if (hasAnalysis && scopeReady === null && (hasIterations || hasMeetingsDone)) {
+                  readiness = "REVIEWING";
+                  reason = "Analysis complete with additional context gathered. Run scope check to confirm readiness.";
+                  action = "Review analysis outputs and run scope check";
+                } else if (hasAnalysis) {
+                  readiness = "REVIEWING";
+                  reason = "Initial analysis complete. Review outputs to determine if enough detail exists.";
+                  action = "Review analysis outputs or gather more information";
+                } else if (hasIterations || hasMeetingsDone) {
+                  readiness = "REVIEWING";
+                  reason = `${iterations.length + meetings.filter(m => m.completed_at).length} source${(iterations.length + meetings.filter(m => m.completed_at).length) !== 1 ? "s" : ""} gathered. Run full analysis to assess readiness.`;
+                  action = "Run full analysis";
+                } else {
+                  readiness = "MORE_INFORMATION_NEEDED";
+                  reason = "No additional context captured yet beyond the original enquiry.";
+                  action = "Gather more information using Add Information above";
+                }
+
+                const stateConfig = {
+                  MORE_INFORMATION_NEEDED: { label: "More information needed", colour: "amber" as const, bg: "bg-amber-500/5 border-amber-500/20", text: "text-amber-400" },
+                  REVIEWING:              { label: "In review",              colour: "blue"  as const, bg: "bg-blue-500/5 border-blue-500/20",   text: "text-blue-400" },
+                  READY_FOR_PROPOSAL:     { label: "Ready for proposal",     colour: "green" as const, bg: "bg-green-500/5 border-green-500/20", text: "text-green-400" },
+                };
+                const cfg = stateConfig[readiness];
 
                 return (
                   <div className="space-y-3">
-                    {/* Status badge */}
-                    <div className={cx(
-                      "px-4 py-3 rounded-lg border",
-                      readinessState === "ready" && "bg-green-500/5 border-green-500/20",
-                      readinessState === "enough_info" && "bg-blue-500/5 border-blue-500/20",
-                      readinessState === "more_info" && "bg-amber-500/5 border-amber-500/20",
-                    )}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={cx(
-                          "text-sm font-medium",
-                          readinessState === "ready" && "text-green-400",
-                          readinessState === "enough_info" && "text-blue-400",
-                          readinessState === "more_info" && "text-amber-400",
-                        )}>
-                          {readinessState === "ready" ? "Ready for proposal"
-                            : readinessState === "enough_info" ? "Enough information to continue analysis"
-                            : "More information needed"}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500 leading-relaxed">
-                        {readinessState === "ready"
-                          ? "All analysis complete and scope confirmed. Ready to create a proposal."
-                          : readinessState === "enough_info"
-                          ? `${evidenceCount} source${evidenceCount !== 1 ? "s" : ""} gathered. Run the analysis to check if enough scope detail exists to prepare a proposal.`
-                          : hasAnalysis
-                          ? "Analysis ran but more detail is needed. Use Add Information above to gather context from calls, emails, or meetings."
-                          : "Not enough information to assess scope. Use Add Information above to capture context, then run the full analysis."}
-                      </p>
+                    <div className={cx("px-4 py-3 rounded-lg border", cfg.bg)}>
+                      <p className={cx("text-sm font-medium mb-1", cfg.text)}>{cfg.label}</p>
+                      <p className="text-xs text-gray-500 leading-relaxed">{reason}</p>
+                      <p className="text-xs text-gray-400 mt-1.5 font-medium">{action}</p>
                     </div>
-
-                    {/* Recommendation from stage1 engine */}
-                    {stage1Recommendation && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-gray-500 uppercase tracking-wide">Suggested</span>
-                        <span className={cx(
-                          "text-xs font-medium",
-                          stage1Recommendation.colour === "green" && "text-green-400",
-                          stage1Recommendation.colour === "blue" && "text-blue-400",
-                          stage1Recommendation.colour === "amber" && "text-amber-400",
-                        )}>{stage1Recommendation.label}</span>
-                      </div>
-                    )}
-
-                    {/* Readiness details */}
-                    {readinessReason && (
-                      <p className="text-xs text-gray-400">{readinessReason}</p>
-                    )}
                     {overrideScopeWarning && (
                       <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-amber-500/15 text-amber-400">Readiness override used</span>
                     )}
 
-                    {/* Natural progression — show Create Proposal when ready */}
-                    {(scopeReady === true || overrideScopeWarning) && briefEligible && (() => {
+                    {/* Proposal path — only when READY_FOR_PROPOSAL */}
+                    {(readiness === "READY_FOR_PROPOSAL" || overrideScopeWarning) && briefEligible && (() => {
                       const proposalApproved = proposal && ["approved", "signed", "deposit_requested", "deposit_received"].includes(proposal.status);
                       const proposalExists = !!proposal;
                       return (
@@ -5022,9 +5076,7 @@ export default function LeadDetailPage() {
                               onClick={async () => {
                                 if (!proposalExists) await createProposal();
                                 setProposalOpen(true);
-                                setTimeout(() => {
-                                  document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                                }, 100);
+                                setTimeout(() => { document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100);
                               }}
                               disabled={proposalSaving || proposalLoading}
                               className="w-full px-4 py-3 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
