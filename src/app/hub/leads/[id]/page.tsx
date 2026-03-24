@@ -19,6 +19,7 @@ import {
   type MeetingStage,
   type MeetingOutcome,
 } from "@/lib/leadStatus";
+import { evaluateContextQuality, buildAssumptionsBlock, type ContextQualityResult } from "@/lib/contextQuality";
 
 // ─── Safe JSON fetch ─────────────────────────────────────────────────────────
 // Defensively fetches JSON from an API route. Checks res.ok and content-type
@@ -1717,6 +1718,17 @@ export default function LeadDetailPage() {
     return sections.join("\n\n");
   }, [lead, intakePath, contactStrategy, briefReply, rounds, briefSummary, briefType, briefSolution, briefPages, briefFeatures, briefIntegrations, briefTimeline, briefBudget, briefRisks, briefFollowUp, revisionContext]);
 
+  // ── v1.100.0: Context Quality Gate ──────────────────────────────────────────
+  const contextQuality = useMemo((): ContextQualityResult | null => {
+    if (!mergedClientContext || mergedClientContext.length < 20) return null;
+    return evaluateContextQuality(mergedClientContext);
+  }, [mergedClientContext]);
+
+  const contextAssumptionsBlock = useMemo(() => {
+    if (!contextQuality) return "";
+    return buildAssumptionsBlock(contextQuality);
+  }, [contextQuality]);
+
   // ── Pricing Engine (deterministic commercial recommendation) ─────────────────
 
   type DeliveryClass = "Brochure site" | "Business website" | "Growth website" | "Custom workflow build" | "Ops platform" | "Needs review";
@@ -2926,7 +2938,9 @@ export default function LeadDetailPage() {
           `[${it.source_type}${it.source_date ? ` — ${it.source_date}` : ""}] ${it.notes}`
         ).join("\n")
       : "";
-    const contextWithIterations = mergedClientContext + iterationText + (extraContext ? `\n\n## New information (just added)\nIMPORTANT: This was just confirmed by the operator. Update analysis to reflect this.\n${extraContext}` : "");
+    // v1.100.0: Inject explicit assumptions when context is incomplete
+    const assumptionsSection = contextAssumptionsBlock ? `\n\n${contextAssumptionsBlock}` : "";
+    const contextWithIterations = mergedClientContext + iterationText + assumptionsSection + (extraContext ? `\n\n## New information (just added)\nIMPORTANT: This was just confirmed by the operator. Update analysis to reflect this.\n${extraContext}` : "");
 
     // v1.99.0: Log evidence context
     const iterCountInCtx = (contextWithIterations.match(/\[(call|meeting|email)/gi) || []).length;
@@ -4302,6 +4316,78 @@ export default function LeadDetailPage() {
         )}
 
         {/* Proposal Readiness checklist removed in v1.92.1 — operator-confusing */}
+
+        {/* ════════════════════════════════════════════════════════════════
+            CONTEXT QUALITY GATE (v1.100.0)
+            ════════════════════════════════════════════════════════════════ */}
+        {briefAccessible && contextQuality && !hasAnyAnalysis && (
+          <div>
+            <Section title="Context Quality">
+              <div className="space-y-3">
+                <div className={cx(
+                  "px-4 py-3 rounded-lg border",
+                  contextQuality.band === "strong" ? "bg-green-500/5 border-green-500/20" :
+                  contextQuality.band === "workable" ? "bg-amber-500/5 border-amber-500/20" :
+                  "bg-red-500/5 border-red-500/20",
+                )}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={cx(
+                      "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
+                      contextQuality.band === "strong" ? "bg-green-500/15 text-green-400" :
+                      contextQuality.band === "workable" ? "bg-amber-500/15 text-amber-400" :
+                      "bg-red-500/15 text-red-400",
+                    )}>
+                      {contextQuality.band}
+                    </span>
+                    <span className="text-[10px] text-gray-500">
+                      {contextQuality.score}/{contextQuality.maxScore} signal coverage
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 leading-relaxed">{contextQuality.rationale}</p>
+                </div>
+
+                {contextQuality.missingSignals.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Missing information areas</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                      {contextQuality.missingSignals.map(s => (
+                        <div key={s.key} className="px-3 py-2 rounded bg-white/[0.02] border border-white/5 text-xs text-gray-400">
+                          {s.prompt}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {contextQuality.band !== "strong" && contextQuality.assumptions.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">
+                      Assumptions used if analysis proceeds
+                    </p>
+                    <ul className="space-y-1">
+                      {contextQuality.assumptions.map((a, i) => (
+                        <li key={i} className="text-[11px] text-gray-500 leading-relaxed pl-3 border-l-2 border-white/5">
+                          {a}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </Section>
+          </div>
+        )}
+
+        {/* After analysis, show confidence indicator if assumptions were used */}
+        {briefAccessible && hasAnyAnalysis && contextQuality && contextQuality.band !== "strong" && (
+          <div className="px-4 py-2 rounded-lg bg-amber-500/5 border border-amber-500/15">
+            <p className="text-[10px] text-amber-400/80">
+              {contextQuality.band === "weak"
+                ? "Analysis generated with limited context — add more detail via Add Information to improve confidence."
+                : `Analysis generated with ${contextQuality.assumptions.length} assumption${contextQuality.assumptions.length !== 1 ? "s" : ""} — add more detail to refine outputs.`}
+            </p>
+          </div>
+        )}
 
         {/* ════════════════════════════════════════════════════════════════
             ANALYSIS ACTION — single-button pipeline trigger (atomic gate)
