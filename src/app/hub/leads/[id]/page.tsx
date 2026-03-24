@@ -4021,28 +4021,24 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {/* Lifecycle stepper — v1.100.9: use derived status for pre-conversion leads */}
-      <div className="px-6 pt-5 pb-2 max-w-4xl mx-auto">
-        <LifecycleStepper
-          currentStep={project
-            ? (STATUS_STEP[project.project_status ?? ''] ?? 1)
-            : displayStatus === 'ready_for_proposal' ? 3
-            : displayStatus === 'scope_analysis' ? 2
-            : 1
-          }
-          onStepClick={(step) => {
-            if (!project) return;
-            const currentStep = STATUS_STEP[project.project_status ?? ''] ?? 1;
-            if (step < currentStep) {
-              const fromLabel = LIFECYCLE_STAGES[currentStep - 1];
-              const toLabel   = LIFECYCLE_STAGES[step - 1];
-              if (!window.confirm(`Move status back from "${fromLabel}" to "${toLabel}"?`)) return;
-            }
-            updateProjectStatus(project.id, STEP_STATUS[step]);
-          }}
-          disabled={saving}
-        />
-      </div>
+      {/* Lifecycle stepper — only for converted projects. Leads use derived status. */}
+      {project && (
+        <div className="px-6 pt-5 pb-2 max-w-4xl mx-auto">
+          <LifecycleStepper
+            currentStep={STATUS_STEP[project.project_status ?? ''] ?? 1}
+            onStepClick={(step) => {
+              const currentStep = STATUS_STEP[project.project_status ?? ''] ?? 1;
+              if (step < currentStep) {
+                const fromLabel = LIFECYCLE_STAGES[currentStep - 1];
+                const toLabel   = LIFECYCLE_STAGES[step - 1];
+                if (!window.confirm(`Move status back from "${fromLabel}" to "${toLabel}"?`)) return;
+              }
+              updateProjectStatus(project.id, STEP_STATUS[step]);
+            }}
+            disabled={saving}
+          />
+        </div>
+      )}
 
       <div className="px-6 py-6 max-w-4xl mx-auto grid grid-cols-1 gap-5">
 
