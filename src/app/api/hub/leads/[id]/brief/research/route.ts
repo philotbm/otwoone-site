@@ -440,6 +440,37 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const research = validation.research;
+
+    // ── v1.95.3: Deterministic unknown-stripping ─────────────────────────
+    // AI may regenerate the same unknowns even when iteration content answers them.
+    // Programmatically remove unknowns that match answered topics in iteration content.
+    if (research.unknowns && research.unknowns.length > 0) {
+      const iterMatch = mergedContext.match(/## Iteration log[\s\S]*?(?=\n##|$)/i)?.[0] ?? '';
+      const newInfoMatch = mergedContext.match(/## New information[\s\S]*?(?=\n##|$)/i)?.[0] ?? '';
+      const answeredText = (iterMatch + ' ' + newInfoMatch).toLowerCase();
+
+      if (answeredText.length > 20) {
+        const ANSWER_SIGNALS: Array<{ topic: RegExp; keywords: string[] }> = [
+          { topic: /pos|point.of.sale|till|square|clover|toast/i, keywords: ['square', 'clover', 'toast', 'pos confirmed', 'till system', 'epos'] },
+          { topic: /brs|tee.?sheet|booking.*api/i, keywords: ['brs', 'rest api', 'nightly batch', 'api confirmed', 'api available'] },
+          { topic: /migrat|clubnet|legacy|existing.*system|data.*(?:transfer|export)/i, keywords: ['migration', 'csv export', 'csv import', 'clubnet', 'member data', 'data transfer'] },
+          { topic: /golf.?ireland|handicap/i, keywords: ['golf ireland', 'handicap api', 'handicap data'] },
+          { topic: /rollout|phased|deployment.*(?:plan|approach)/i, keywords: ['phased', 'phase 1', 'rollout', 'phased approach'] },
+          { topic: /transaction.*volume|throughput/i, keywords: ['transactions/week', 'tx/week', 'per week', 'volume'] },
+        ];
+
+        research.unknowns = research.unknowns.filter(unknown => {
+          const uLower = unknown.toLowerCase();
+          for (const { topic, keywords } of ANSWER_SIGNALS) {
+            if (topic.test(uLower) && keywords.some(kw => answeredText.includes(kw))) {
+              return false; // answered — remove
+            }
+          }
+          return true; // keep
+        });
+      }
+    }
+
     const now = new Date().toISOString();
 
     // Persist via true upsert keyed on lead_id

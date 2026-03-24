@@ -628,6 +628,73 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
 
+    // ── v1.95.3: Deterministic iteration-aware post-processing ──────────
+    // AI models (especially with temperature: 0) may regenerate similar
+    // unknowns/follow-ups even when iteration content clearly answers them.
+    // This step programmatically removes answered items.
+    if (mergedContext) {
+      const iterationSection = mergedContext.match(/## Iteration log[\s\S]*?(?=\n##|$)/i)?.[0] ?? '';
+      const newInfoSection = mergedContext.match(/## New information[\s\S]*?(?=\n##|$)/i)?.[0] ?? '';
+      const answeredText = (iterationSection + ' ' + newInfoSection).toLowerCase();
+
+      if (answeredText.length > 20) {
+        // Keywords that indicate a topic has been answered
+        const ANSWER_SIGNALS: Array<{ topic: RegExp; keywords: string[] }> = [
+          { topic: /pos\s*(system|provider|choice|integration)?|square|clover|toast|lightspeed/i, keywords: ['square', 'clover', 'toast', 'pos', 'till', 'lightspeed', 'epos'] },
+          { topic: /brs|tee\s*sheet|booking\s*system\s*api|brs\s*api/i, keywords: ['brs', 'tee sheet', 'rest api', 'nightly batch', 'api confirmed', 'api available'] },
+          { topic: /migrat|clubnet|legacy|existing\s*system|data\s*(?:transfer|export|import)/i, keywords: ['migration', 'csv export', 'csv import', 'clubnet', 'data transfer', 'member data', 'existing records'] },
+          { topic: /golf\s*ireland|handicap/i, keywords: ['golf ireland', 'handicap', 'handicap api', 'handicap data'] },
+          { topic: /rollout|phased|phase\s*[12]|deployment\s*(?:plan|approach)/i, keywords: ['phased', 'phase 1', 'phase 2', 'rollout', 'phased approach'] },
+          { topic: /transaction\s*volume|throughput|usage\s*(?:volume|estimate)/i, keywords: ['transactions/week', 'tx/week', 'bookings/week', 'per week', 'volume'] },
+          { topic: /support\s*model|ongoing\s*support|maintenance/i, keywords: ['support', 'maintenance', 'sla', 'support model', 'ongoing'] },
+          { topic: /budget|pricing|cost/i, keywords: ['budget confirmed', 'budget agreed', 'approved budget', 'budget range'] },
+        ];
+
+        const isTopicAnswered = (questionText: string): boolean => {
+          const qLower = questionText.toLowerCase();
+          for (const { topic, keywords } of ANSWER_SIGNALS) {
+            if (topic.test(qLower)) {
+              // Check if any keyword appears in the answered text
+              if (keywords.some(kw => answeredText.includes(kw))) return true;
+            }
+          }
+          return false;
+        };
+
+        // Filter follow_up_questions
+        if (parsed.fields.follow_up_questions) {
+          const questions = parsed.fields.follow_up_questions
+            .split(/[;?\n]/)
+            .map(q => q.trim())
+            .filter(q => q.length > 5);
+          const remaining = questions.filter(q => !isTopicAnswered(q));
+          parsed.fields.follow_up_questions = remaining.length > 0
+            ? remaining.join('; ')
+            : '';
+        }
+
+        // Filter risks_and_unknowns — only remove unknown-style items, keep genuine risks
+        if (parsed.fields.risks_and_unknowns) {
+          const items = parsed.fields.risks_and_unknowns
+            .split(/[;\n]/)
+            .map(item => item.trim())
+            .filter(item => item.length > 5);
+          const remaining = items.filter(item => {
+            const isUnknown = /unknown|unconfirmed|not.*specified|not.*confirmed|unclear|tbd|to be determined|needs? (?:clarification|confirmation)/i.test(item);
+            if (!isUnknown) return true; // keep genuine risks
+            return !isTopicAnswered(item);
+          });
+          parsed.fields.risks_and_unknowns = remaining.join('; ');
+        }
+
+        // Re-assess readiness if all follow-ups are now answered
+        if (!parsed.fields.follow_up_questions?.trim() && !parsed.ready) {
+          parsed.ready = true;
+          parsed.readiness_reason = 'Key open questions have been answered via iteration inputs. Scope is sufficiently clear to prepare a proposal.';
+        }
+      }
+    }
+
     return NextResponse.json(parsed);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'AI request failed.';
