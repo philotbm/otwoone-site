@@ -3048,6 +3048,9 @@ export default function LeadDetailPage() {
         setScopeReady(b.scope_ready === true ? true : b.scope_ready === false ? false : null);
         setReadinessReason(s(b.readiness_reason));
       }
+    } else {
+      console.error("[recompute] AUTOFILL FAILED:", autofillResult.error);
+      setAutofillError(autofillResult.error || "Autofill failed");
     }
 
     setRecomputeStep("");

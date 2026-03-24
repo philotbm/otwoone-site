@@ -590,9 +590,128 @@ export async function POST(req: NextRequest, { params }: Params) {
     userPrompt += '\n\n' + pricingContext;
   }
 
+  // ── v1.99.2: Deterministic Evidence Engine runs FIRST, independently of AI ──
+  // This guarantees follow_up_questions, risks, and readiness are always
+  // computed from evidence, even if the AI call fails or returns bad data.
+
+  const allText = (mergedContext ?? '').toLowerCase();
+
+  // Diagnostic logging
+  const iterationCount = (allText.match(/\[(call|meeting|email)/gi) || []).length;
+  console.log(`[autofill] EVIDENCE: ${allText.length} chars, ${iterationCount} iterations, square=${/\bsquare\b/.test(allText)}, brs=${/\bbrs\b/.test(allText)}, migration=${/\bmigrat/.test(allText)}, budget=${/budget/.test(allText)}`);
+
+  // STAGE 1: Extract confirmed facts from ALL evidence
+  const FACT_DETECTORS: Array<{ key: string; label: string; patterns: RegExp[] }> = [
+    { key: 'pos_system', label: 'POS system', patterns: [
+      /\bsquare\b/i, /\bclover\b/i, /\btoast\b/i, /\blightspeed\b/i, /\bivend\b/i, /\bizettle\b/i,
+      /\bpos\s+(system|provider|terminal|integration)\b/i, /\bpos\b.*\b(is|confirmed|chosen|using|selected|live|active)\b/i,
+      /\btill\s+(system|integration)\b/i, /\bepos\b/i, /\b\d+\s*(active\s+)?terminals?\b/i,
+    ]},
+    { key: 'booking_api', label: 'Booking/BRS API', patterns: [
+      /\bbrs\b/i, /\btee\s*sheet/i, /\bbooking\s*(system|provider|api|platform)\b/i,
+      /\b(api|rest|batch)\b.*\b(export|sync|integration)\b/i,
+      /\bnightly\s+batch\b/i, /\breal[- ]?time\s+.*\bsync\b/i,
+    ]},
+    { key: 'migration_strategy', label: 'Data migration', patterns: [
+      /\bmigrat\w*/i, /\bcsv\s+(export|import|available)\b/i, /\bclubnet\b/i,
+      /\bexport\s+(available|ready|possible)\b/i, /\bdata\s+transfer\b/i,
+      /\b(existing|legacy|current)\s+(system|data|records|members)\b.*\b(export|import|transfer|replace|move)\b/i,
+      /\b\d[\d,]*\s*(active\s+)?members?\b/i, /\bfull\s+migration\b/i,
+      /\bmember\s+(data|records|database)\b/i,
+    ]},
+    { key: 'handicap_data', label: 'Handicap/Golf Ireland', patterns: [
+      /\bgolf\s*ireland\b/i, /\bhandicap\b.*\b(api|data|access|sync|confirmed|available)\b/i,
+      /\bhandicap\s+(system|integration|data)\b/i,
+    ]},
+    { key: 'transaction_volume', label: 'Transaction volume', patterns: [
+      /\b\d+[\d,]*\s*(bar|restaurant|booking|online|transaction|top[- ]?up)\w*\s*\/?\s*(per\s+)?(week|day|month)\b/i,
+      /\b\d+[\d,]*\s*\w*\s*transactions?\s*(per|\/)\s*(week|day|month)\b/i,
+      /\btransaction\s*(volume|level|estimate)\b.*\d/i,
+      /\b(approximately|about|roughly|~)\s*\d+\b.*\b(per\s+)?(week|month)\b/i,
+    ]},
+    { key: 'rollout_strategy', label: 'Rollout plan', patterns: [/\bphased\b/i, /\brollout\b/i, /\bphase\s*[12]\b/i, /\b(launch|deliver|implement)\s*(in\s+)?(stages?|phases?)\b/i, /\bcore\s+features?\s+first\b/i, /\bmvp\b/i] },
+    { key: 'platform_scope', label: 'Platform scope', patterns: [/\b(web\s+only|web\s+app|web\s+product|web\s+platform)\b/i, /\b(native\s+app|ios\s+app|android\s+app|mobile\s+app)\b/i, /\b(do\s+not|don'?t)\s+want\s+native\b/i, /\bpwa\b/i, /\bmobile[- ]?optimis/i, /\bresponsive\b/i] },
+    { key: 'support_model', label: 'Support model', patterns: [/\bmanaged\s*(post[- ]?launch)?\s*support\b/i, /\bsupport\s+model\b/i, /\b(sla|ongoing\s+support|maintenance\s+plan)\b/i, /\bprovide\s+.*\bsupport\b/i, /\bpost[- ]?launch\s+(support|maintenance)\b/i, /\bmanaged\s+(support|service|maintenance)\b/i] },
+    { key: 'budget', label: 'Budget', patterns: [/\bbudget\b.*€/i, /€\s*\d{2,}k?/i, /\b\d{2,}k?\s*[–-]\s*€?\d/i, /\bbudget\b.*\b(confirmed|agreed|approved|is|range)\b/i, /\btarget\s+budget\b/i, /\bproject\s+budget\b/i] },
+    { key: 'timeline', label: 'Timeline', patterns: [/\b\d+[–-]\d+\s+weeks?\b/i, /\b\d+\s+weeks?\b/i, /\b\d+\s+months?\b/i, /\bdelivery\s+target\b/i, /\btarget\s+.*\b(launch|delivery|go[- ]?live)\b/i, /\b(launch|deliver|go[- ]?live)\b.*\b(by|before|within|in)\b/i, /\bQ[1-4]\s+\d{4}\b/i] },
+    { key: 'authentication', label: 'Auth approach', patterns: [/\b(member|staff|admin|user)\s+(login|portal|dashboard|account|access)\b/i, /\brole[- ]?based\s+(permissions?|access)\b/i, /\bstaff\s+roles?\b/i, /\bself[- ]?registration\b/i, /\bbulk\s+(email\s+)?invite\b/i, /\bonboarding\b/i] },
+    { key: 'payment_provider', label: 'Payment provider', patterns: [/\bstripe\b/i, /\bpaypal\b/i, /\bsquare\b.*\b(payment|pos|terminal|integration)\b/i, /\bpayment\s+(provider|gateway|processor)\b/i, /\b(online\s+)?top[- ]?ups?\b/i, /\bbalance\s+management\b/i] },
+    { key: 'reporting', label: 'Reporting scope', patterns: [/\breporting\s+(requirements?|scope|confirmed|now)\b/i, /\brevenue\s+by\b/i, /\bfinancial\s+reconciliation\b/i, /\baudit\s+(trail|log)/i, /\breconciliation\s+report/i, /\b(daily|weekly|monthly)\s+report/i] },
+    { key: 'permissions', label: 'Permissions/roles', patterns: [/\brole[- ]?based\s+permissions?\b/i, /\bapproval\s+workflow\b/i, /\bstaff\s+roles?\s+.*\b(need|require|confirmed)\b/i, /\b(office\s+admin|bar\s+staff|restaurant\s+staff)\b/i, /\baudit\s+log/i] },
+  ];
+
+  const confirmedFacts: Record<string, boolean> = {};
+  for (const { key, patterns } of FACT_DETECTORS) {
+    confirmedFacts[key] = patterns.some(p => p.test(allText));
+  }
+  const confirmedKeys = Object.entries(confirmedFacts).filter(([, v]) => v).map(([k]) => k);
+  console.log('[autofill] CONFIRMED_FACTS:', JSON.stringify(confirmedKeys));
+
+  // STAGE 2: Required facts
+  const CORE_REQUIRED = ['platform_scope', 'budget', 'timeline'];
+  const CONDITIONAL_REQUIRED: Array<{ key: string; condition: RegExp }> = [
+    { key: 'pos_system', condition: /\bpos\b|\bpoint.of.sale\b|\btill\b|\bbar\b|\brestaurant\b/i },
+    { key: 'booking_api', condition: /\bbrs\b|\bbooking\s+(system|provider|api)\b|\btee.?sheet\b/i },
+    { key: 'migration_strategy', condition: /\bmigrat\w*\b|\blegacy\b|\bclubnet\b|\bexisting\s+(system|data|members?)\b|\breplace\b/i },
+    { key: 'handicap_data', condition: /\bgolf\s*ireland\b|\bhandicap\b/i },
+    { key: 'transaction_volume', condition: /\btransaction\b|\bvolume\b|\bthroughput\b|\bpayment\b.*\b(process|volume)\b/i },
+    { key: 'rollout_strategy', condition: /\bphased?\b|\brollout\b|\blaunch\s+plan\b|\bphase\s+[12]\b/i },
+    { key: 'support_model', condition: /\bsupport\b|\bmaintenance\b|\bongoing\b|\bsla\b|\bpost[- ]?launch\b/i },
+    { key: 'authentication', condition: /\bmember\b|\blogin\b|\baccount\b|\bauth\b|\bstaff\b.*\baccess\b|\bonboarding\b/i },
+    { key: 'payment_provider', condition: /\bpayment\b|\bcheckout\b|\bstripe\b|\bbilling\b|\btop[- ]?up\b|\bbalance\b/i },
+    { key: 'reporting', condition: /\breport\w*\b|\breconciliation\b|\baudit\b|\bdashboard\b.*\b(report|data)\b/i },
+    { key: 'permissions', condition: /\brole\b|\bpermission\b|\bapproval\b|\bstaff\s+roles?\b/i },
+  ];
+  const requiredFacts = [...CORE_REQUIRED];
+  for (const { key, condition } of CONDITIONAL_REQUIRED) {
+    if (condition.test(allText) && !requiredFacts.includes(key)) requiredFacts.push(key);
+  }
+
+  // STAGE 3: Derive unknowns
+  const derivedUnknowns = requiredFacts.filter(k => !confirmedFacts[k]);
+  console.log('[autofill] UNKNOWNS:', JSON.stringify(derivedUnknowns));
+
+  // STAGE 4: Follow-up questions from unknowns only
+  const QUESTION_MAP: Record<string, string> = {
+    pos_system: 'Which POS system is currently in use (or planned)?',
+    booking_api: 'What booking system/API will be integrated, and how does it expose data?',
+    migration_strategy: 'What is the data migration plan from the existing system?',
+    handicap_data: 'How will handicap data be sourced (Golf Ireland API or manual)?',
+    transaction_volume: 'What are the expected transaction volumes (weekly/monthly)?',
+    rollout_strategy: 'What is the preferred rollout approach (phased, big-bang, pilot)?',
+    platform_scope: 'What platforms are required (web only, web + mobile, native apps)?',
+    support_model: 'What ongoing support model is needed post-launch?',
+    budget: 'Has a budget range been confirmed for this project?',
+    timeline: 'Is there a target launch date or delivery timeline?',
+    authentication: 'What user roles and login requirements are needed?',
+    payment_provider: 'Which payment provider will be used for transactions?',
+    reporting: 'What reporting and analytics are required?',
+    permissions: 'What role-based permissions or approval workflows are needed?',
+  };
+  const deterministicFollowUps = derivedUnknowns.map(k => QUESTION_MAP[k]).filter(Boolean).join('; ');
+
+  // STAGE 5: Deterministic readiness
+  const unknownCount = derivedUnknowns.length;
+  let deterministicReady: boolean;
+  let deterministicReason: string;
+  if (unknownCount === 0) {
+    deterministicReady = true;
+    deterministicReason = 'All required facts confirmed. Ready for proposal.';
+  } else if (unknownCount <= 2) {
+    deterministicReady = true;
+    deterministicReason = `${unknownCount} minor gap${unknownCount > 1 ? 's' : ''} remaining (${derivedUnknowns.join(', ').replace(/_/g, ' ')}), but sufficient for proposal.`;
+  } else {
+    deterministicReady = false;
+    deterministicReason = `${unknownCount} required facts still missing: ${derivedUnknowns.join(', ').replace(/_/g, ' ')}.`;
+  }
+  console.log('[autofill] DETERMINISTIC:', deterministicReady, '—', deterministicReason);
+
+  // ── Now attempt AI call for synthesis fields (summary, solution, etc.) ──
+  // If AI fails, we still return deterministic fields with fallback synthesis.
+
+  let aiFields: AutofillFields | null = null;
   try {
     const anthropic = new Anthropic({ apiKey });
-
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
@@ -605,258 +724,57 @@ export async function POST(req: NextRequest, { params }: Params) {
       .map((block) => block.text)
       .join('');
 
-    let parsed: AutofillResponse;
     try {
-      parsed = extractAndParseJSON(rawText);
+      const parsed = extractAndParseJSON(rawText);
+      if (parsed.fields && typeof parsed.ready === 'boolean') {
+        aiFields = parsed.fields;
+        console.log('[autofill] AI synthesis succeeded.');
+      }
     } catch (parseErr) {
-      console.error('[autofill] Failed to parse AI response.');
-      console.error('[autofill] Raw response:', rawText);
-      console.error('[autofill] Parse error:', parseErr instanceof Error ? parseErr.message : parseErr);
-      return NextResponse.json(
-        { error: 'Failed to parse AI response. Please try again.' },
-        { status: 502 },
-      );
+      console.error('[autofill] AI parse failed — using deterministic fallback for all fields.', parseErr instanceof Error ? parseErr.message : parseErr);
     }
-
-    // Validate shape
-    const requiredFields: (keyof AutofillFields)[] = [
-      'project_summary', 'project_type', 'recommended_solution',
-      'suggested_pages', 'suggested_features', 'suggested_integrations',
-      'timeline_estimate', 'budget_positioning', 'risks_and_unknowns',
-      'follow_up_questions',
-    ];
-    const missingKeys = requiredFields.filter((k) => !(k in parsed.fields));
-    if (!parsed.fields || typeof parsed.ready !== 'boolean') {
-      console.error('[autofill] Unexpected response shape:', JSON.stringify(parsed).slice(0, 500));
-      return NextResponse.json(
-        { error: 'Unexpected AI response format. Please try again.' },
-        { status: 502 },
-      );
-    }
-    if (missingKeys.length > 0) {
-      console.error('[autofill] Missing required fields:', missingKeys.join(', '));
-      return NextResponse.json(
-        { error: `AI response missing fields: ${missingKeys.join(', ')}. Please try again.` },
-        { status: 502 },
-      );
-    }
-
-    // ── v1.98.0: Canonical Evidence Engine ─────────────────────────────
-    // AI is used for synthesis (summary, solution, features, etc.) but
-    // follow_up_questions, risks/unknowns, and readiness are computed
-    // deterministically from confirmed evidence vs required facts.
-
-    const allText = (mergedContext ?? '').toLowerCase();
-
-    // v1.99.0: Diagnostic logging — verify evidence reaches autofill
-    const hasIterationLog = allText.includes('iteration log');
-    const hasNewInfo = allText.includes('new information');
-    const iterationCount = (allText.match(/\[(call|meeting|email)/gi) || []).length;
-    const hasPosEvidence = /\bsquare\b/.test(allText);
-    const hasBrsEvidence = /\bbrs\b/.test(allText);
-    const hasMigrationEvidence = /\bmigrat/.test(allText);
-    const hasBudgetEvidence = /€\d/.test(allText) || /budget/.test(allText);
-    console.log(`[autofill] EVIDENCE CHECK: iterations_in_context=${iterationCount}, has_iteration_log=${hasIterationLog}, has_new_info=${hasNewInfo}`);
-    console.log(`[autofill] KEY EVIDENCE: pos=${hasPosEvidence}, brs=${hasBrsEvidence}, migration=${hasMigrationEvidence}, budget=${hasBudgetEvidence}`);
-    console.log(`[autofill] CONTEXT LENGTH: ${allText.length} chars`);
-
-    // STAGE 1: Extract confirmed facts from ALL evidence
-    // Patterns are intentionally broad — a fact is "confirmed" when evidence
-    // contains substantive detail about it, not just a mention.
-    const FACT_DETECTORS: Array<{ key: string; label: string; patterns: RegExp[] }> = [
-      { key: 'pos_system', label: 'POS system', patterns: [
-        /\bsquare\b/i, /\bclover\b/i, /\btoast\b/i, /\blightspeed\b/i, /\bivend\b/i, /\bizettle\b/i,
-        /\bpos\s+(system|provider|terminal|integration)\b/i, /\bpos\b.*\b(is|confirmed|chosen|using|selected|live|active)\b/i,
-        /\btill\s+(system|integration)\b/i, /\bepos\b/i, /\b\d+\s*(active\s+)?terminals?\b/i,
-      ]},
-      { key: 'booking_api', label: 'Booking/BRS API', patterns: [
-        /\bbrs\b/i, /\btee\s*sheet/i, /\bbooking\s*(system|provider|api|platform)\b/i,
-        /\b(api|rest|batch)\b.*\b(export|sync|integration)\b/i,
-        /\bnightly\s+batch\b/i, /\breal[- ]?time\s+.*\bsync\b/i,
-      ]},
-      { key: 'migration_strategy', label: 'Data migration', patterns: [
-        /\bmigrat\w*/i, /\bcsv\s+(export|import|available)\b/i, /\bclubnet\b/i,
-        /\bexport\s+(available|ready|possible)\b/i, /\bdata\s+transfer\b/i,
-        /\b(existing|legacy|current)\s+(system|data|records|members)\b.*\b(export|import|transfer|replace|move)\b/i,
-        /\b\d[\d,]*\s*(active\s+)?members?\b/i, /\bfull\s+migration\b/i,
-        /\bmember\s+(data|records|database)\b/i,
-      ]},
-      { key: 'handicap_data', label: 'Handicap/Golf Ireland', patterns: [
-        /\bgolf\s*ireland\b/i, /\bhandicap\b.*\b(api|data|access|sync|confirmed|available)\b/i,
-        /\bhandicap\s+(system|integration|data)\b/i,
-      ]},
-      { key: 'transaction_volume', label: 'Transaction volume', patterns: [
-        /\b\d+[\d,]*\s*(bar|restaurant|booking|online|transaction|top[- ]?up)\w*\s*\/?\s*(per\s+)?(week|day|month)\b/i,
-        /\b\d+[\d,]*\s*\w*\s*transactions?\s*(per|\/)\s*(week|day|month)\b/i,
-        /\btransaction\s*(volume|level|estimate)\b.*\d/i,
-        /\b(approximately|about|roughly|~)\s*\d+\b.*\b(per\s+)?(week|month)\b/i,
-      ]},
-      { key: 'rollout_strategy', label: 'Rollout plan', patterns: [
-        /\bphased\b/i, /\brollout\b/i, /\bphase\s*[12]\b/i,
-        /\b(launch|deliver|implement)\s*(in\s+)?(stages?|phases?)\b/i,
-        /\bcore\s+features?\s+first\b/i, /\bmvp\b/i,
-      ]},
-      { key: 'platform_scope', label: 'Platform scope', patterns: [
-        /\b(web\s+only|web\s+app|web\s+product|web\s+platform)\b/i,
-        /\b(native\s+app|ios\s+app|android\s+app|mobile\s+app)\b/i,
-        /\b(do\s+not|don'?t)\s+want\s+native\b/i, /\bpwa\b/i,
-        /\bmobile[- ]?optimis/i, /\bresponsive\b/i,
-      ]},
-      { key: 'support_model', label: 'Support model', patterns: [
-        /\bmanaged\s*(post[- ]?launch)?\s*support\b/i, /\bsupport\s+model\b/i,
-        /\b(sla|ongoing\s+support|maintenance\s+plan)\b/i,
-        /\bprovide\s+.*\bsupport\b/i, /\bpost[- ]?launch\s+(support|maintenance)\b/i,
-        /\bmanaged\s+(support|service|maintenance)\b/i,
-      ]},
-      { key: 'budget', label: 'Budget', patterns: [
-        /\bbudget\b.*€/i, /€\s*\d{2,}k?/i, /\b\d{2,}k?\s*[–-]\s*€?\d/i,
-        /\bbudget\b.*\b(confirmed|agreed|approved|is|range)\b/i,
-        /\btarget\s+budget\b/i, /\bproject\s+budget\b/i,
-      ]},
-      { key: 'timeline', label: 'Timeline', patterns: [
-        /\b\d+[–-]\d+\s+weeks?\b/i, /\b\d+\s+weeks?\b/i, /\b\d+\s+months?\b/i,
-        /\bdelivery\s+target\b/i, /\btarget\s+.*\b(launch|delivery|go[- ]?live)\b/i,
-        /\b(launch|deliver|go[- ]?live)\b.*\b(by|before|within|in)\b/i,
-        /\bQ[1-4]\s+\d{4}\b/i, /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b/i,
-      ]},
-      { key: 'authentication', label: 'Auth approach', patterns: [
-        /\b(member|staff|admin|user)\s+(login|portal|dashboard|account|access)\b/i,
-        /\brole[- ]?based\s+(permissions?|access)\b/i, /\bstaff\s+roles?\b/i,
-        /\b(login|auth\w*)\s+(required|needed|confirmed)\b/i,
-        /\bself[- ]?registration\b/i, /\bbulk\s+(email\s+)?invite\b/i,
-        /\bonboarding\b/i,
-      ]},
-      { key: 'payment_provider', label: 'Payment provider', patterns: [
-        /\bstripe\b/i, /\bpaypal\b/i, /\bsquare\b.*\b(payment|pos|terminal|integration)\b/i,
-        /\bpayment\s+(provider|gateway|processor)\b/i,
-        /\b(online\s+)?top[- ]?ups?\b/i, /\bbalance\s+management\b/i,
-      ]},
-      { key: 'reporting', label: 'Reporting scope', patterns: [
-        /\breporting\s+(requirements?|scope|confirmed|now)\b/i,
-        /\brevenue\s+by\b/i, /\bfinancial\s+reconciliation\b/i,
-        /\baudit\s+(trail|log)/i, /\breconciliation\s+report/i,
-        /\b(daily|weekly|monthly)\s+report/i,
-      ]},
-      { key: 'permissions', label: 'Permissions/roles', patterns: [
-        /\brole[- ]?based\s+permissions?\b/i, /\bapproval\s+workflow\b/i,
-        /\bstaff\s+roles?\s+.*\b(need|require|confirmed)\b/i,
-        /\b(office\s+admin|bar\s+staff|restaurant\s+staff)\b/i,
-        /\baudit\s+log/i,
-      ]},
-    ];
-
-    const confirmedFacts: Record<string, boolean> = {};
-    for (const { key, patterns } of FACT_DETECTORS) {
-      confirmedFacts[key] = patterns.some(p => p.test(allText));
-    }
-    const confirmedKeys = Object.entries(confirmedFacts).filter(([, v]) => v).map(([k]) => k);
-    console.log('[autofill] CONFIRMED_FACTS:', JSON.stringify(confirmedKeys));
-
-    // STAGE 2: Define required facts based on project type
-    // Core facts needed for any proposal — project-type specific facts
-    // are added dynamically based on what the AI analysis detected.
-    const CORE_REQUIRED = ['platform_scope', 'budget', 'timeline'];
-    const CONDITIONAL_REQUIRED: Array<{ key: string; condition: RegExp }> = [
-      { key: 'pos_system', condition: /\bpos\b|\bpoint.of.sale\b|\btill\b|\bbar\b|\brestaurant\b/i },
-      { key: 'booking_api', condition: /\bbrs\b|\bbooking\s+(system|provider|api)\b|\btee.?sheet\b/i },
-      { key: 'migration_strategy', condition: /\bmigrat\w*\b|\blegacy\b|\bclubnet\b|\bexisting\s+(system|data|members?)\b|\breplace\b/i },
-      { key: 'handicap_data', condition: /\bgolf\s*ireland\b|\bhandicap\b/i },
-      { key: 'transaction_volume', condition: /\btransaction\b|\bvolume\b|\bthroughput\b|\bpayment\b.*\b(process|volume)\b/i },
-      { key: 'rollout_strategy', condition: /\bphased?\b|\brollout\b|\blaunch\s+plan\b|\bphase\s+[12]\b/i },
-      { key: 'support_model', condition: /\bsupport\b|\bmaintenance\b|\bongoing\b|\bsla\b|\bpost[- ]?launch\b/i },
-      { key: 'authentication', condition: /\bmember\b|\blogin\b|\baccount\b|\bauth\b|\bstaff\b.*\baccess\b|\bonboarding\b/i },
-      { key: 'payment_provider', condition: /\bpayment\b|\bcheckout\b|\bstripe\b|\bbilling\b|\btop[- ]?up\b|\bbalance\b/i },
-      { key: 'reporting', condition: /\breport\w*\b|\breconciliation\b|\baudit\b|\bdashboard\b.*\b(report|data)\b/i },
-      { key: 'permissions', condition: /\brole\b|\bpermission\b|\bapproval\b|\bstaff\s+roles?\b/i },
-    ];
-
-    const requiredFacts = [...CORE_REQUIRED];
-    for (const { key, condition } of CONDITIONAL_REQUIRED) {
-      if (condition.test(allText) && !requiredFacts.includes(key)) {
-        requiredFacts.push(key);
-      }
-    }
-    console.log('[autofill] REQUIRED_FACTS:', JSON.stringify(requiredFacts));
-
-    // STAGE 3: Derive unknowns = required - confirmed
-    const derivedUnknowns = requiredFacts.filter(k => !confirmedFacts[k]);
-    console.log('[autofill] DERIVED_UNKNOWNS:', JSON.stringify(derivedUnknowns));
-
-    // STAGE 4: Generate follow-up questions from unknowns only
-    const QUESTION_MAP: Record<string, string> = {
-      pos_system: 'Which POS system is currently in use (or planned)?',
-      booking_api: 'What booking system/API will be integrated, and how does it expose data?',
-      migration_strategy: 'What is the data migration plan from the existing system?',
-      handicap_data: 'How will handicap data be sourced (Golf Ireland API or manual)?',
-      transaction_volume: 'What are the expected transaction volumes (weekly/monthly)?',
-      rollout_strategy: 'What is the preferred rollout approach (phased, big-bang, pilot)?',
-      platform_scope: 'What platforms are required (web only, web + mobile, native apps)?',
-      support_model: 'What ongoing support model is needed post-launch?',
-      budget: 'Has a budget range been confirmed for this project?',
-      timeline: 'Is there a target launch date or delivery timeline?',
-      authentication: 'What user roles and login requirements are needed?',
-      payment_provider: 'Which payment provider will be used for transactions?',
-      reporting: 'What reporting and analytics are required?',
-      permissions: 'What role-based permissions or approval workflows are needed?',
-    };
-
-    const followUpQuestions = derivedUnknowns
-      .map(k => QUESTION_MAP[k])
-      .filter(Boolean);
-    parsed.fields.follow_up_questions = followUpQuestions.join('; ');
-    console.log('[autofill] FINAL FOLLOWUPS:', JSON.stringify(followUpQuestions));
-
-    // STAGE 5: Clean risks — keep AI-generated delivery risks, remove unknowns
-    // that are now confirmed (the AI may have generated risk items about topics
-    // that are actually confirmed in evidence)
-    if (parsed.fields.risks_and_unknowns) {
-      const confirmedLabels = FACT_DETECTORS
-        .filter(f => confirmedFacts[f.key])
-        .flatMap(f => [f.key.replace(/_/g, ' '), f.label.toLowerCase()]);
-
-      const riskItems = parsed.fields.risks_and_unknowns
-        .split(/[;\n]/)
-        .map(item => item.trim())
-        .filter(item => item.length > 5);
-
-      const cleanedRisks = riskItems.filter(item => {
-        const itemLower = item.toLowerCase();
-        const isUnknownClaim = /unknown|unconfirmed|not.*specified|not.*confirmed|unclear|tbd|needs?\s+(?:clarification|confirmation)/i.test(item);
-        if (!isUnknownClaim) return true; // genuine risk — keep
-        // If it claims something is unknown but we have confirmed evidence → remove
-        return !confirmedLabels.some(label => itemLower.includes(label));
-      });
-      parsed.fields.risks_and_unknowns = cleanedRisks.join('; ');
-    }
-
-    // STAGE 6: Deterministic readiness
-    const unknownCount = derivedUnknowns.length;
-    if (unknownCount === 0) {
-      parsed.ready = true;
-      parsed.readiness_reason = 'All required facts confirmed. Ready for proposal.';
-    } else if (unknownCount <= 2) {
-      parsed.ready = true;
-      parsed.readiness_reason = `${unknownCount} minor gap${unknownCount > 1 ? 's' : ''} remaining (${derivedUnknowns.join(', ').replace(/_/g, ' ')}), but sufficient for proposal.`;
-    } else {
-      parsed.ready = false;
-      parsed.readiness_reason = `${unknownCount} required facts still missing: ${derivedUnknowns.join(', ').replace(/_/g, ' ')}.`;
-    }
-
-    // STAGE 7: Hard validation guard
-    for (const key of confirmedKeys) {
-      const label = key.replace(/_/g, ' ');
-      if (parsed.fields.follow_up_questions?.toLowerCase().includes(label)) {
-        console.error(`[autofill] INVALID UNKNOWN GENERATED — BLOCKED: "${key}" is confirmed but appears in follow_up_questions`);
-        parsed.fields.follow_up_questions = parsed.fields.follow_up_questions
-          .split(/[;]/).filter(q => !q.toLowerCase().includes(label)).join('; ').trim();
-      }
-    }
-
-    console.log('[autofill] FINAL readiness:', parsed.ready, '—', parsed.readiness_reason);
-
-    return NextResponse.json(parsed);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'AI request failed.';
-    return NextResponse.json({ error: message }, { status: 502 });
+    console.error('[autofill] AI call failed — using deterministic fallback for all fields.', err instanceof Error ? err.message : err);
   }
+
+  // ── Build final response: AI synthesis + deterministic overrides ──
+  // AI provides summary, solution, features, etc.
+  // Deterministic engine ALWAYS provides follow_ups, readiness, risks.
+  const finalFields: AutofillFields = aiFields ?? {
+    project_summary: '(Analysis pending — rerun to generate full brief)',
+    project_type: '',
+    recommended_solution: '',
+    suggested_pages: '',
+    suggested_features: '',
+    suggested_integrations: '',
+    timeline_estimate: '',
+    budget_positioning: '',
+    risks_and_unknowns: '',
+    follow_up_questions: '',
+  };
+
+  // Deterministic overrides — these ALWAYS come from evidence, never AI
+  finalFields.follow_up_questions = deterministicFollowUps;
+
+  // Clean AI-generated risks against confirmed facts
+  if (finalFields.risks_and_unknowns) {
+    const confirmedLabels = FACT_DETECTORS
+      .filter(f => confirmedFacts[f.key])
+      .flatMap(f => [f.key.replace(/_/g, ' '), f.label.toLowerCase()]);
+    const riskItems = finalFields.risks_and_unknowns.split(/[;\n]/).map(i => i.trim()).filter(i => i.length > 5);
+    finalFields.risks_and_unknowns = riskItems.filter(item => {
+      const isUnknownClaim = /unknown|unconfirmed|not.*specified|not.*confirmed|unclear|tbd|needs?\s+(?:clarification|confirmation)/i.test(item);
+      if (!isUnknownClaim) return true;
+      return !confirmedLabels.some(label => item.toLowerCase().includes(label));
+    }).join('; ');
+  }
+
+  const result: AutofillResponse = {
+    fields: finalFields,
+    ready: deterministicReady,
+    readiness_reason: deterministicReason,
+  };
+
+  console.log('[autofill] FINAL:', result.ready, '—', result.readiness_reason, '— follow_ups:', (result.fields.follow_up_questions || '(none)').substring(0, 100));
+  return NextResponse.json(result);
 }
