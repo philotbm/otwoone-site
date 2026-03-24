@@ -3930,32 +3930,16 @@ export default function LeadDetailPage() {
           </p>
         </div>
 
-        {/* v1.100.7: Derived status badge + manual override dropdown */}
-        <div className="flex items-center gap-3">
-          <span className={cx(
-            "px-2.5 py-1 rounded-lg text-xs font-medium",
-            displayStatus === "ready_for_proposal" ? "bg-green-500/10 text-green-400 border border-green-500/20" :
-            displayStatus === "scope_analysis" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
-            displayStatus === "enquiry_received" ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" :
-            "bg-violet-500/10 text-violet-400 border border-violet-500/20",
-          )}>
-            {STATUS_LABELS[displayStatus]}
-          </span>
-          <select
-            value={status}
-            onChange={(e) => {
-              const v = e.target.value as LeadStatus;
-              setStatus(v);
-              saveField({ status: v });
-            }}
-            className="bg-[#0e0f14] border border-white/10 rounded-lg px-2 py-1 text-[10px] text-gray-500 focus:outline-none focus:border-indigo-500/60"
-            title="Manual status override"
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s} className="bg-[#0e0f14] text-gray-200">{STATUS_LABELS[s]}</option>
-            ))}
-          </select>
-        </div>
+        {/* v1.100.8: Single derived status badge — no competing dropdown */}
+        <span className={cx(
+          "px-3 py-1.5 rounded-lg text-xs font-medium",
+          displayStatus === "ready_for_proposal" ? "bg-green-500/10 text-green-400 border border-green-500/20" :
+          displayStatus === "scope_analysis" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
+          displayStatus === "enquiry_received" ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" :
+          "bg-violet-500/10 text-violet-400 border border-violet-500/20",
+        )}>
+          {STATUS_LABELS[displayStatus]}
+        </span>
 
         {/* Deposit activation / status */}
         {!isConverted && canActivateDeposit && (
