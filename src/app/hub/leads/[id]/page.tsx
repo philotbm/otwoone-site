@@ -1295,14 +1295,14 @@ export default function LeadDetailPage() {
         if (b.technical_research_updated_at) setResearchUpdatedAt(b.technical_research_updated_at);
         if (b.complexity_result) setComplexityResult(b.complexity_result as ComplexityResult);
 
-        // Backward compatibility: if the lead already has a full analysis pass
-        // persisted from a previous session, mark the atomic gate as satisfied
-        // so all sections render immediately without flash.
+        // v1.99.3: Mark as analysed if ANY derived state exists from a previous session.
+        // This prevents the page from showing "Run Full Analysis" when analysis outputs
+        // already exist but one subsystem (e.g. pricing) hasn't been computed yet.
         const hasPriorAnalysis =
-          (b.project_summary?.trim()?.length ?? 0) > 0 &&
-          (b.project_type?.trim()?.length ?? 0) > 0 &&
-          b.technical_research !== null &&
-          b.complexity_result !== null;
+          (b.project_summary?.trim()?.length ?? 0) > 0 ||
+          b.technical_research !== null ||
+          b.complexity_result !== null ||
+          b.scope_ready !== null;
         if (hasPriorAnalysis) setAnalysisEverRun(true);
       }
     } finally {
@@ -2342,15 +2342,29 @@ export default function LeadDetailPage() {
   // This prevents showing isolated fragments (e.g. complexity without costs).
   // The flag is true when: (a) operator has explicitly run analysis AND the full
   // chain completed, OR (b) the lead already has prior analysis data on load.
+  // v1.99.3: Two-tier analysis gate to prevent contradictory render state.
+  // hasAnyAnalysis: true if ANY derived analysis exists (brief, research, complexity, or readiness).
+  //   Used to hide "Run Full Analysis" CTA — prevents showing initial + analysed state simultaneously.
+  // analysisPassComplete: true if ALL subsystems are complete (strict gate for pricing/cost sections).
+  const hasAnyAnalysis = useMemo(() => {
+    return (
+      analysisEverRun ||
+      briefSummary.trim().length > 0 ||
+      technicalResearch !== null ||
+      (complexityResult !== null && complexityResult.complexity_score > 0) ||
+      scopeReady !== null
+    );
+  }, [analysisEverRun, briefSummary, technicalResearch, complexityResult, scopeReady]);
+
   const analysisPassComplete = useMemo(() => {
-    if (!analysisEverRun) return false;
+    if (!hasAnyAnalysis) return false;
     const hasBriefAnalysis = briefSummary.trim().length > 0 && briefType.trim().length > 0;
     const hasComplexity = complexityResult !== null && complexityResult.complexity_score > 0;
     const hasResearch = technicalResearch !== null;
     const hasBuildPricing = buildPricing !== null;
     const hasRunningCosts = runningCosts !== null;
     return hasBriefAnalysis && hasComplexity && hasResearch && hasBuildPricing && hasRunningCosts;
-  }, [analysisEverRun, briefSummary, briefType, complexityResult, technicalResearch, buildPricing, runningCosts]);
+  }, [hasAnyAnalysis, briefSummary, briefType, complexityResult, technicalResearch, buildPricing, runningCosts]);
 
   // ── Save lead brief ───────────────────────────────────────────────────────────
 
@@ -4223,9 +4237,9 @@ export default function LeadDetailPage() {
                   const scopeReadyDone = scopeReady !== null;
                   const proposalDone = briefProposal.trim().length > 0;
 
-                  const isEvidenceReady = analysisPassComplete || (scopeReadyDone && scopeReady === true);
+                  const isEvidenceReady = hasAnyAnalysis || (scopeReadyDone && scopeReady === true);
                   const steps = [
-                    { label: "Gather info", done: analysisPassComplete || iterations.length > 0 },
+                    { label: "Gather info", done: hasAnyAnalysis || iterations.length > 0 },
                     { label: "Ready", done: isEvidenceReady },
                     { label: "Proposal", done: proposalDone },
                   ];
@@ -4260,11 +4274,11 @@ export default function LeadDetailPage() {
           <div>
             <div className={cx(
               "px-5 rounded-xl border",
-              analysisPassComplete
+              hasAnyAnalysis
                 ? "py-4 border-white/[0.06] bg-[#12131a]"
                 : "py-6 border-emerald-500/20 bg-emerald-500/[0.03]",
             )}>
-              {!analysisPassComplete && !unifiedRunning && (
+              {!hasAnyAnalysis && !unifiedRunning && (
                 <div className="mb-4">
                   <p className="text-sm font-semibold text-gray-200 mb-1">Enquiry Received</p>
                   <p className="text-xs text-gray-500 leading-relaxed">
@@ -4275,17 +4289,17 @@ export default function LeadDetailPage() {
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                   <p className="text-xs font-semibold text-gray-300 mb-0.5">
-                    {analysisPassComplete ? "Analysis complete" : unifiedRunning ? "Analysis running…" : "Ready to analyse"}
+                    {hasAnyAnalysis ? "Analysis complete" : unifiedRunning ? "Analysis running…" : "Ready to analyse"}
                   </p>
                   <p className="text-[10px] text-gray-500">
-                    {analysisPassComplete
+                    {hasAnyAnalysis
                       ? "Use Add Information below to add new context and refresh analysis."
                       : "Runs system analysis, technical research, complexity, pricing, and monthly costs in one pass."}
                   </p>
                 </div>
-                {/* v1.99.0: Only show Run button BEFORE initial analysis.
+                {/* v1.99.3: Only show Run button BEFORE any analysis exists.
                     After analysis, the only recompute path is Add Information → "Add and refresh analysis". */}
-                {!analysisPassComplete && (
+                {!hasAnyAnalysis && (
                   <button
                     type="button"
                     disabled={(!mergedClientContext.trim()) || unifiedRunning || autofillLoading || researchLoading}
@@ -4296,7 +4310,7 @@ export default function LeadDetailPage() {
                   </button>
                 )}
               </div>
-              {unifiedRunning && !analysisPassComplete && (
+              {unifiedRunning && !hasAnyAnalysis && (
                 <div className="mt-3 flex items-center gap-2">
                   <div className="h-1 flex-1 bg-white/5 rounded-full overflow-hidden">
                     <div className="h-full bg-emerald-500/60 rounded-full animate-pulse" style={{ width: researchLoading ? "25%" : complexityLoading ? "50%" : autofillLoading ? "75%" : "100%" }} />
@@ -4315,7 +4329,7 @@ export default function LeadDetailPage() {
             SYSTEM ANALYSIS — merged context analysis + structured brief
             Gated behind atomic analysis pass — never shown in isolation.
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && analysisPassComplete && (
+        {briefAccessible && hasAnyAnalysis && (
           <div>
             <Section title="System Analysis" collapsed={isProposalStage} summary={briefSummary ? `${briefType || "Analysis"} · ${briefSummary.slice(0, 50)}…` : "Analysis outputs"}>
               <p className="text-xs text-gray-600 -mt-1 mb-3">
@@ -4505,7 +4519,7 @@ export default function LeadDetailPage() {
             TECHNICAL RESEARCH — stack due-diligence from Research Agent
             Gated behind atomic analysis pass — never shown in isolation.
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && analysisPassComplete && (
+        {briefAccessible && hasAnyAnalysis && (
           <div>
             <Section title="Technical Research" collapsed={isProposalStage} summary="Stack recommendations and research">
               {technicalResearch ? (
@@ -4605,7 +4619,7 @@ export default function LeadDetailPage() {
             COMPLEXITY ENGINE — 0–100 scoring from upstream workflow outputs
             Gated behind atomic analysis pass — never shown in isolation.
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && analysisPassComplete && complexityResult && (
+        {briefAccessible && hasAnyAnalysis && complexityResult && (
           <div>
             <Section title="Complexity Engine" collapsed={isProposalStage} summary={complexityResult ? `${Math.min(complexityResult.complexity_score, 100)}/100 · ${complexityResult.complexity_class.replace(/_/g, " ")} · ${complexityResult.estimated_days_low}–${complexityResult.estimated_days_high}d` : undefined}>
               <div className="space-y-4">
@@ -4693,7 +4707,7 @@ export default function LeadDetailPage() {
             BUILD PRICING — deterministic price from complexity engine output
             Gated behind atomic analysis pass — never shown in isolation.
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && analysisPassComplete && buildPricing && (
+        {briefAccessible && hasAnyAnalysis && buildPricing && (
           <div>
             <Section title="Build Pricing" collapsed={isProposalStage} summary={buildPricing ? `Recommended €${effectiveBuildPrice.toLocaleString()}${proposal?.build_price != null && Number(proposal.build_price) !== effectiveBuildPrice ? ` · Proposal €${Number(proposal.build_price).toLocaleString()}` : ""}` : undefined}>
               <div className="space-y-4">
@@ -4801,7 +4815,7 @@ export default function LeadDetailPage() {
             MONTHLY OPERATING COST — recurring infrastructure + support retainer
             Gated behind atomic analysis pass — never shown in isolation.
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && analysisPassComplete && (
+        {briefAccessible && hasAnyAnalysis && (
           <div>
             <Section title="Monthly Operating Cost" collapsed={isProposalStage} summary={runningCosts ? `€${runningCosts.total_with_retainer_low.toLocaleString()}${runningCosts.total_with_retainer_low !== runningCosts.total_with_retainer_high ? `–€${runningCosts.total_with_retainer_high.toLocaleString()}` : ""}/mo` : undefined}>
               {/* runningCosts is guaranteed non-null inside analysisPassComplete gate */}
@@ -5117,7 +5131,7 @@ export default function LeadDetailPage() {
               {/* ── First-stage readiness: exactly 2 states, evidence-driven ── */}
               {["enquiry_received", "scope_analysis"].includes(status) && (() => {
                 // ── Evidence collection ──
-                const hasAnalysis = analysisPassComplete;
+                const hasAnalysis = hasAnyAnalysis;
                 const hasIterations = iterations.length > 0;
                 const hasMeetingsDone = meetings.filter(m => m.completed_at).length > 0;
                 const enquiryQuality = (lead.total_score ?? 0) >= 3.5;
