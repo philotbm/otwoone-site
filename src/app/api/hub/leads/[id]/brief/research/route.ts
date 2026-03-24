@@ -135,6 +135,87 @@ function classifyItem(item: Record<string, unknown>): keyof Pick<TechnicalResear
   return 'integrations'; // default bucket for APIs and external data providers
 }
 
+// ── v1.99.7: Managed stack baseline enrichment ────────────────────────────
+// Known providers with their target category and conservative monthly pricing.
+// If mentioned in recommendations/summary but absent from structured categories,
+// inject a baseline item so the persisted research is cost-complete.
+
+type StackBaselineEntry = {
+  match: RegExp;
+  name: string;
+  category: 'infrastructure' | 'third_party_services';
+  description: string;
+  pricing: string;
+  relevance: 'required' | 'likely';
+};
+
+const STACK_BASELINES: StackBaselineEntry[] = [
+  // Infrastructure
+  { match: /\bvercel\b/i,       name: 'Vercel',       category: 'infrastructure',       description: 'Hosting and edge functions platform', pricing: 'Free hobby tier; Pro €20/month per member', relevance: 'likely' },
+  { match: /\bsupabase\b/i,     name: 'Supabase',     category: 'infrastructure',       description: 'Managed PostgreSQL database with auth and real-time', pricing: 'Free tier available; Pro €25/month', relevance: 'likely' },
+  { match: /\bnetlify\b/i,      name: 'Netlify',      category: 'infrastructure',       description: 'Static and serverless hosting platform', pricing: 'Free tier available; Pro €19/month per member', relevance: 'likely' },
+  { match: /\brailway\b/i,      name: 'Railway',      category: 'infrastructure',       description: 'Application hosting platform', pricing: 'Usage-based; estimated €5–€20/month', relevance: 'likely' },
+  { match: /\bneon\b/i,         name: 'Neon',         category: 'infrastructure',       description: 'Serverless PostgreSQL database', pricing: 'Free tier available; Pro €19/month', relevance: 'likely' },
+  { match: /\bplanetscale\b/i,  name: 'PlanetScale',  category: 'infrastructure',       description: 'Managed MySQL-compatible database', pricing: 'Free tier available; Scaler €29/month', relevance: 'likely' },
+  { match: /\bcloudflare\b/i,   name: 'Cloudflare',   category: 'infrastructure',       description: 'CDN, DDoS protection, and edge workers', pricing: 'Free plan available; Pro €20/month', relevance: 'likely' },
+  { match: /\bsentry\b/i,       name: 'Sentry',       category: 'infrastructure',       description: 'Error tracking and performance monitoring', pricing: 'Free developer tier; Team €26/month', relevance: 'likely' },
+  { match: /\bposthog\b/i,      name: 'PostHog',      category: 'infrastructure',       description: 'Product analytics and session recording', pricing: 'Free tier up to 1M events/month', relevance: 'likely' },
+  { match: /\bplausible\b/i,    name: 'Plausible',    category: 'infrastructure',       description: 'Privacy-friendly web analytics', pricing: '€9/month for up to 10K monthly pageviews', relevance: 'likely' },
+  // Third-party services
+  { match: /\bclerk\b/i,        name: 'Clerk',        category: 'third_party_services', description: 'Authentication and user management', pricing: 'Free tier up to 10,000 MAU; Pro €25/month', relevance: 'likely' },
+  { match: /\bauth0\b/i,        name: 'Auth0',        category: 'third_party_services', description: 'Identity and authentication platform', pricing: 'Free tier up to 25,000 MAU; Essential €23/month', relevance: 'likely' },
+  { match: /\bresend\b/i,       name: 'Resend',       category: 'third_party_services', description: 'Transactional email delivery', pricing: 'Free tier up to 3,000 emails/month; Pro €20/month', relevance: 'likely' },
+  { match: /\bsendgrid\b/i,     name: 'SendGrid',     category: 'third_party_services', description: 'Email delivery and marketing platform', pricing: 'Free tier up to 100 emails/day; Essentials €20/month', relevance: 'likely' },
+];
+
+function enrichResearchWithStackBaseline(research: TechnicalResearch): void {
+  const recText = (research.recommendations?.join(' ') ?? '') + ' ' + (research.summary ?? '');
+  if (recText.trim().length < 20) return;
+
+  // Collect all existing item names across all categories for dedup
+  const allItemNames = new Set<string>();
+  for (const catKey of CATEGORY_KEYS) {
+    const cat = research[catKey] as ResearchCategory | undefined;
+    if (cat?.items) {
+      for (const item of cat.items) {
+        allItemNames.add(item.name.toLowerCase().replace(/[^a-z0-9]/g, ''));
+      }
+    }
+  }
+
+  const injected: string[] = [];
+
+  for (const baseline of STACK_BASELINES) {
+    if (!baseline.match.test(recText)) continue;
+
+    // Check if already present in any category
+    const normName = baseline.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const alreadyPresent = [...allItemNames].some(existing =>
+      existing.includes(normName) || normName.includes(existing)
+    );
+    if (alreadyPresent) continue;
+
+    // Ensure target category exists
+    const cat = research[baseline.category] as ResearchCategory;
+    if (!cat) continue;
+    if (!cat.items) cat.items = [];
+
+    cat.items.push({
+      name: baseline.name,
+      description: baseline.description,
+      pricing: baseline.pricing,
+      relevance: baseline.relevance,
+    });
+
+    allItemNames.add(normName);
+    injected.push(`${baseline.name} → ${baseline.category}`);
+  }
+
+  if (injected.length > 0) {
+    console.log(`[research] Stack baseline enrichment: injected ${injected.length} providers: ${injected.join(', ')}`);
+  }
+}
+
 function normaliseResearch(data: unknown): Record<string, unknown> {
   if (!data || typeof data !== 'object') return data as Record<string, unknown>;
   const d = { ...(data as Record<string, unknown>) };
@@ -490,6 +571,12 @@ export async function POST(req: NextRequest, { params }: Params) {
         console.log(`[research] Deduped ${catKey}: ${beforeCount} → ${cat.items.length} items`);
       }
     }
+
+    // ── v1.99.7: Managed stack baseline enrichment ──────────────────────
+    // If recommendations/summary mention known providers but they're missing
+    // from structured categories, inject baseline items upstream so the
+    // persisted research is complete and cost-usable by all downstream consumers.
+    enrichResearchWithStackBaseline(research);
 
     const now = new Date().toISOString();
 

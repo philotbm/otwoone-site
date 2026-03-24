@@ -2330,48 +2330,8 @@ export default function LeadDetailPage() {
       }
     }
 
-    // v1.99.6: Managed stack cost baseline
-    // If research recommendations mention known providers but they weren't captured
-    // from category items (AI often omits them from structured categories), add
-    // baseline cost items derived from known provider pricing.
-    const STACK_BASELINES: Array<{ match: RegExp; name: string; low: number; high: number }> = [
-      { match: /\bvercel\b/i,                   name: "Vercel (hosting)",        low: 0,  high: 20 },
-      { match: /\bsupabase\b/i,                  name: "Supabase (database)",     low: 0,  high: 25 },
-      { match: /\bclerk\b/i,                     name: "Clerk (auth)",            low: 0,  high: 25 },
-      { match: /\bresend\b/i,                    name: "Resend (email)",          low: 0,  high: 20 },
-      { match: /\bsentry\b/i,                    name: "Sentry (monitoring)",     low: 0,  high: 26 },
-      { match: /\bposthog\b/i,                   name: "PostHog (analytics)",     low: 0,  high: 0  },
-      { match: /\bplausible\b/i,                 name: "Plausible (analytics)",   low: 0,  high: 9  },
-      { match: /\bcloudflare\b/i,                name: "Cloudflare (CDN/protection)", low: 0, high: 20 },
-      { match: /\bauth0\b/i,                     name: "Auth0 (auth)",            low: 0,  high: 23 },
-      { match: /\bsendgrid\b/i,                  name: "SendGrid (email)",        low: 0,  high: 20 },
-      { match: /\bneon\b/i,                      name: "Neon (database)",         low: 0,  high: 19 },
-      { match: /\bplanetscale\b/i,               name: "PlanetScale (database)",  low: 0,  high: 29 },
-      { match: /\brailway\b/i,                   name: "Railway (hosting)",       low: 5,  high: 20 },
-      { match: /\bnetlify\b/i,                   name: "Netlify (hosting)",       low: 0,  high: 19 },
-    ];
-
-    // Build searchable text from recommendations + summary
-    const recText = (research.recommendations?.join(' ') ?? '') + ' ' + (research.summary ?? '');
-    // Track names already captured from category items
-    const capturedNames = new Set(items.map(i => i.name.toLowerCase().trim()));
-
-    for (const baseline of STACK_BASELINES) {
-      if (baseline.match.test(recText)) {
-        // Skip if already captured by a category item with a similar name
-        const alreadyCaptured = [...capturedNames].some(n => baseline.match.test(n));
-        if (!alreadyCaptured) {
-          items.push({
-            name: baseline.name,
-            low: baseline.low,
-            high: baseline.high,
-            source: "stack_baseline",
-            relevance: "likely",
-          });
-          capturedNames.add(baseline.name.toLowerCase().trim());
-        }
-      }
-    }
+    // v1.99.7: Stack baseline enrichment now happens upstream in research route.
+    // page.tsx only consumes structured research categories — no recommendation scanning.
 
     // Deduplicate by name (same service can appear in multiple categories)
     const seen = new Set<string>();
