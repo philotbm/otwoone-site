@@ -2227,14 +2227,42 @@ export default function LeadDetailPage() {
       return null;
     }
 
+    // Reject pure transaction-fee pricing with no monthly baseline
+    // e.g. "2.6% + $0.30 per transaction" — no fixed monthly cost
+    if (/per\s*transaction/i.test(text) && !/month|\/mo/i.test(text)) {
+      return null;
+    }
+
+    // "Included in existing subscription" / "No additional cost" → zero monthly
+    if (/\b(included|no\s+additional\s+(?:cost|fee|charge)|no\s+(?:extra|monthly)\s+(?:cost|fee))\b/i.test(text)) {
+      return { low: 0, high: 0 };
+    }
+
     // v1.98.0: "Free", "Free tier", "$0" → valid as zero-cost monthly
     if (/\bfree\s*(tier|plan)?\b/i.test(text) && !/\bfree\s*trial\b/i.test(text)) {
       return { low: 0, high: 0 };
     }
 
-    // Require explicit monthly context somewhere in the string
-    const hasMonthlyContext = /\/(month|mo|m)\b|per\s*month|monthly|\/mo\b/i.test(pricing);
-    if (!hasMonthlyContext) return null;
+    // v1.99.5: Broadened monthly context detection
+    // Accept: /month, /mo, per month, monthly, plan, subscription, estimated
+    // Also accept pricing that mentions a plan/tier with a price (e.g. "Pro plan €25/month")
+    const hasMonthlyContext = /\/(month|mo|m)\b|per\s*month|monthly|\/mo\b|\bplan\b|\bsubscription\b|\bestimated\b/i.test(pricing);
+
+    // Extract all monetary values from the string
+    const allValues: number[] = [];
+    const valueMatches = pricing.matchAll(/[€$]\s*(\d[\d,]*(?:\.\d+)?)/g);
+    for (const m of valueMatches) {
+      const v = parseFloat(m[1].replace(/,/g, ""));
+      if (!isNaN(v) && v <= MONTHLY_COST_CAP) allValues.push(v);
+    }
+    // Also match bare numbers followed by /month or /mo
+    const bareMonthly = pricing.matchAll(/(\d[\d,]*(?:\.\d+)?)\s*\/\s*(?:month|mo)\b/gi);
+    for (const m of bareMonthly) {
+      const v = parseFloat(m[1].replace(/,/g, ""));
+      if (!isNaN(v) && v <= MONTHLY_COST_CAP && !allValues.includes(v)) allValues.push(v);
+    }
+
+    if (!hasMonthlyContext && allValues.length === 0) return null;
 
     // Range: €0–€25/month, €10-€20/mo, $5 – $15/month
     const rangeMatch = pricing.match(/[€$]\s*(\d[\d,]*(?:\.\d+)?)\s*[-–—]\s*[€$]?\s*(\d[\d,]*(?:\.\d+)?)/);
@@ -2244,19 +2272,25 @@ export default function LeadDetailPage() {
       if (!isNaN(low) && !isNaN(high) && high <= MONTHLY_COST_CAP) {
         return { low, high };
       }
-      // If high exceeds cap, still return capped value if low is reasonable
       if (!isNaN(low) && low <= MONTHLY_COST_CAP) {
         return { low, high: Math.min(high, MONTHLY_COST_CAP) };
       }
-      return null;
     }
 
-    // Single value: €25/month, $10/mo
-    const singleMatch = pricing.match(/[€$]\s*(\d[\d,]*(?:\.\d+)?)/);
-    if (singleMatch) {
-      const val = parseFloat(singleMatch[1].replace(/,/g, ""));
-      if (!isNaN(val) && val <= MONTHLY_COST_CAP) return { low: val, high: val };
-      return null;
+    // "Free tier ... Pro plan €25/month" → low=0, high=25
+    if (/\bfree\s*(tier|plan)?\b/i.test(text) && allValues.length > 0) {
+      const maxVal = Math.max(...allValues);
+      return { low: 0, high: maxVal };
+    }
+
+    // If monthly context and values found, use min/max
+    if (hasMonthlyContext && allValues.length > 0) {
+      return { low: Math.min(...allValues), high: Math.max(...allValues) };
+    }
+
+    // Single explicit monthly value
+    if (allValues.length > 0 && hasMonthlyContext) {
+      return { low: allValues[0], high: allValues[allValues.length - 1] };
     }
 
     return null;
@@ -2270,13 +2304,14 @@ export default function LeadDetailPage() {
 
     const items: RunningCostItem[] = [];
 
-    // v1.98.0: Extract costs from ALL categories, not just operating_cost_estimate
-    // This ensures providers mentioned in infrastructure or third_party_services
-    // are also captured, even if operating_cost_estimate has some items.
+    // v1.99.5: Extract costs from ALL research categories including integrations.
+    // The AI often places recurring services (auth, email, payments) under integrations
+    // rather than infrastructure/third_party/operating_cost. We must scan all.
     const allCategories: Array<{ key: string; cat: typeof research.infrastructure | undefined }> = [
       { key: "operating_cost_estimate", cat: research.operating_cost_estimate },
       { key: "infrastructure", cat: research.infrastructure },
       { key: "third_party_services", cat: research.third_party_services },
+      { key: "integrations", cat: research.integrations },
     ];
     for (const { key, cat } of allCategories) {
       if (cat?.items?.length) {
