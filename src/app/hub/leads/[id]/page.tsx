@@ -1721,8 +1721,14 @@ export default function LeadDetailPage() {
   // ── v1.100.0: Context Quality Gate ──────────────────────────────────────────
   const contextQuality = useMemo((): ContextQualityResult | null => {
     if (!mergedClientContext || mergedClientContext.length < 20) return null;
-    return evaluateContextQuality(mergedClientContext);
-  }, [mergedClientContext]);
+    return evaluateContextQuality(mergedClientContext, {
+      iterationCount: iterations.length,
+      hasTechnicalResearch: technicalResearch !== null,
+      hasComplexityResult: complexityResult !== null && complexityResult.complexity_score > 0,
+      hasBuildPricing: false, // buildPricing computed later; depth still works without it
+      complexitySignalCount: complexityResult?.detected_signals?.length ?? 0,
+    });
+  }, [mergedClientContext, iterations.length, technicalResearch, complexityResult]);
 
   const contextAssumptionsBlock = useMemo(() => {
     if (!contextQuality) return "";
