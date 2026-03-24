@@ -2876,6 +2876,13 @@ export default function LeadDetailPage() {
       : "";
     const contextWithIterations = mergedClientContext + iterationText + (extraContext ? `\n\n## New information (just added)\nIMPORTANT: This was just confirmed by the operator. Update analysis to reflect this.\n${extraContext}` : "");
 
+    // v1.99.0: Log evidence context
+    const iterCountInCtx = (contextWithIterations.match(/\[(call|meeting|email)/gi) || []).length;
+    const hasSquare = contextWithIterations.toLowerCase().includes("square");
+    const hasBrs = contextWithIterations.toLowerCase().includes("brs");
+    const hasMigrat = contextWithIterations.toLowerCase().includes("migrat");
+    console.log(`[recompute] CONTEXT: ${contextWithIterations.length} chars, ${iterCountInCtx} iteration entries, square=${hasSquare}, brs=${hasBrs}, migration=${hasMigrat}`);
+
     // 1. Run technical research
     setRecomputeStep("Recomputing research…");
     setResearchLoading(true);
@@ -2981,6 +2988,11 @@ export default function LeadDetailPage() {
       const newRisks = str(fields.risks_and_unknowns);
       const newFollowUp = str(fields.follow_up_questions);
 
+      // v1.99.0: Log autofill result before setting state
+      console.log("[recompute] AUTOFILL RESULT — ready:", ready, "reason:", readiness_reason);
+      console.log("[recompute] AUTOFILL follow_up:", newFollowUp?.substring(0, 200));
+      console.log("[recompute] AUTOFILL risks:", newRisks?.substring(0, 200));
+
       setBriefSummary(newSummary);
       setBriefType(newType);
       setBriefSolution(newSolution);
@@ -3020,6 +3032,8 @@ export default function LeadDetailPage() {
       const briefRefresh = await safeFetch<{ brief: Record<string, unknown> }>(`/api/hub/leads/${id}/brief`);
       if (briefRefresh.ok && briefRefresh.data.brief) {
         const b = briefRefresh.data.brief;
+        console.log("[recompute] DB REFETCH — scope_ready:", b.scope_ready, "reason:", b.readiness_reason);
+        console.log("[recompute] DB REFETCH follow_up:", (typeof b.follow_up_questions === "string" ? b.follow_up_questions : "").substring(0, 200));
         const s = (v: unknown) => (typeof v === "string" ? v : "");
         setBriefSummary(s(b.project_summary));
         setBriefType(s(b.project_type));

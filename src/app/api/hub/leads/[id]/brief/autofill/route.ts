@@ -648,6 +648,18 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const allText = (mergedContext ?? '').toLowerCase();
 
+    // v1.99.0: Diagnostic logging — verify evidence reaches autofill
+    const hasIterationLog = allText.includes('iteration log');
+    const hasNewInfo = allText.includes('new information');
+    const iterationCount = (allText.match(/\[(call|meeting|email)/gi) || []).length;
+    const hasPosEvidence = /\bsquare\b/.test(allText);
+    const hasBrsEvidence = /\bbrs\b/.test(allText);
+    const hasMigrationEvidence = /\bmigrat/.test(allText);
+    const hasBudgetEvidence = /€\d/.test(allText) || /budget/.test(allText);
+    console.log(`[autofill] EVIDENCE CHECK: iterations_in_context=${iterationCount}, has_iteration_log=${hasIterationLog}, has_new_info=${hasNewInfo}`);
+    console.log(`[autofill] KEY EVIDENCE: pos=${hasPosEvidence}, brs=${hasBrsEvidence}, migration=${hasMigrationEvidence}, budget=${hasBudgetEvidence}`);
+    console.log(`[autofill] CONTEXT LENGTH: ${allText.length} chars`);
+
     // STAGE 1: Extract confirmed facts from ALL evidence
     // Patterns are intentionally broad — a fact is "confirmed" when evidence
     // contains substantive detail about it, not just a mention.
