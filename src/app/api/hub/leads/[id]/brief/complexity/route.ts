@@ -274,6 +274,7 @@ function assembleUpstreamText(
   research: TechnicalResearch | null,
   leadDetails: Record<string, unknown> | null,
   leadScores: Record<string, unknown> | null,
+  iterations: Array<{ notes: string; source_type?: string }> | null,
   fallbackContext?: string,
 ): UpstreamSources {
   const sections: string[] = [];
@@ -285,9 +286,6 @@ function assembleUpstreamText(
   // are EXCLUDED — they describe tooling options, not confirmed requirements.
 
   // ── Priority 1: Confirmed brief fields (summary, type, solution, features) ───
-  // These represent the consultant's confirmed analysis of what the project requires.
-  // EXCLUDED: suggested_integrations, suggested_pages (tooling suggestions, not requirements),
-  //           timeline_estimate, budget_positioning, risks_and_unknowns (context, not requirements)
   if (briefRow) {
     const confirmedFields = ['project_summary', 'project_type', 'recommended_solution', 'suggested_features'];
     const briefParts: string[] = [];
@@ -301,7 +299,6 @@ function assembleUpstreamText(
       sections.push(briefParts.join(' '));
       sourcesUsed.push('consultant_brief');
     }
-    // Revision context is confirmed operator input
     const revCtx = briefRow['revision_context'];
     if (typeof revCtx === 'string' && revCtx.trim().length > 10) {
       sections.push(revCtx.trim());
@@ -309,17 +306,27 @@ function assembleUpstreamText(
     }
   }
 
-  // ── Priority 2: Technical research — EXCLUDED from signal detection ────
-  // (v1.94.0: research describes tooling options, not confirmed requirements.
-  //  Signals must come from what the client actually needs, not what we suggest.)
+  // ── v1.99.4: Priority 2: Raw iteration evidence (operator-confirmed inputs) ─
+  // Iterations are raw evidence: call notes, meeting notes, email replies.
+  // They contain confirmed requirements that MUST influence complexity scoring.
+  // This prevents scope collapse when autofill produces a thin derived summary.
+  if (iterations && iterations.length > 0) {
+    const iterText = iterations.map(it => it.notes).join(' ');
+    if (iterText.trim().length > 10) {
+      sections.push(iterText.trim());
+      sourcesUsed.push('iteration_evidence');
+    }
+  }
+
+  // ── Priority 3: Technical research — EXCLUDED from signal detection ────
+  // (v1.94.0: research describes tooling options, not confirmed requirements.)
   if (research) {
     sourcesUsed.push('technical_research_excluded');
   }
 
-  // ── Priority 3: Lead details (client request = primary source of truth) ─
+  // ── Priority 4: Lead details (client request = primary source of truth) ─
   if (leadDetails) {
     const detailParts: string[] = [];
-    // success_definition is the client's own description of what they need
     if (typeof leadDetails.success_definition === 'string' && leadDetails.success_definition.trim()) {
       detailParts.push(leadDetails.success_definition.trim());
     }
@@ -329,7 +336,7 @@ function assembleUpstreamText(
     }
   }
 
-  // ── Priority 4: Lead scoring context ───────────────────────────────────
+  // ── Priority 5: Lead scoring context ───────────────────────────────────
   if (leadScores) {
     const scoreParts: string[] = [];
     if (leadScores.engagement_type) scoreParts.push(String(leadScores.engagement_type));
@@ -622,18 +629,25 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('lead_id', id)
     .maybeSingle();
 
+  // v1.99.4: Load iteration evidence — raw operator-confirmed inputs
+  const { data: iterationRows } = await supabaseServer
+    .from('lead_iterations')
+    .select('notes, source_type')
+    .eq('lead_id', id)
+    .order('created_at', { ascending: true });
+
   // Extract research if usable
   const research = briefRow?.technical_research && isUsableResearch(briefRow.technical_research)
     ? (briefRow.technical_research as TechnicalResearch)
     : null;
 
-  // ── Assemble searchable text from upstream outputs ─────────────────────
-  // Continuity boundary: structured outputs first, raw context as fallback only
+  // ── Assemble searchable text from upstream outputs + raw evidence ──────
   const { text: searchText, sourcesUsed } = assembleUpstreamText(
     briefRow as Record<string, unknown> | null,
     research,
     details as Record<string, unknown> | null,
     lead as Record<string, unknown>,
+    iterationRows as Array<{ notes: string; source_type?: string }> | null,
     fallbackContext,
   );
 
