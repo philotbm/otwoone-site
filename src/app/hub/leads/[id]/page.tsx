@@ -2929,11 +2929,13 @@ export default function LeadDetailPage() {
     }
 
     // 3. Run consultant brief analysis (autofill) — now has complexity signals
+    // v1.96.0: Pass fresh research directly so autofill never reads stale DB
     setAutofillLoading(true);
     setAutofillError("");
     const autofillBody: Record<string, unknown> = {
       scoping_reply: "(See merged context)",
       merged_context: contextWithIterations,
+      fresh_research: researchResult.ok ? researchResult.data.research : undefined,
     };
     if (pricingRecommendation && pricingRecommendation.deliveryClass !== "Needs review") {
       autofillBody.pricing_signals = {
@@ -3016,6 +3018,25 @@ export default function LeadDetailPage() {
           readiness_reason: readiness_reason,
         }),
       });
+
+      // v1.96.0: Refetch canonical brief from DB to guarantee UI matches persisted truth
+      const briefRefresh = await safeFetch<{ brief: Record<string, unknown> }>(`/api/hub/leads/${id}/brief`);
+      if (briefRefresh.ok && briefRefresh.data.brief) {
+        const b = briefRefresh.data.brief;
+        const s = (v: unknown) => (typeof v === "string" ? v : "");
+        setBriefSummary(s(b.project_summary));
+        setBriefType(s(b.project_type));
+        setBriefSolution(s(b.recommended_solution));
+        setBriefPages(s(b.suggested_pages));
+        setBriefFeatures(s(b.suggested_features));
+        setBriefIntegrations(s(b.suggested_integrations));
+        setBriefTimeline(s(b.timeline_estimate));
+        setBriefBudget(s(b.budget_positioning));
+        setBriefRisks(s(b.risks_and_unknowns));
+        setBriefFollowUp(s(b.follow_up_questions));
+        setScopeReady(b.scope_ready === true ? true : b.scope_ready === false ? false : null);
+        setReadinessReason(s(b.readiness_reason));
+      }
     }
 
     setUnifiedRunning(false);
