@@ -52,6 +52,64 @@ export const LEAD_STATUS_COLOURS: Record<LeadStatus, { label: string; colour: st
   complete:               { label: "Complete",               colour: "text-green-400 bg-green-400/10" },
 };
 
+/**
+ * v1.100.7: Derive UI-facing lead status from system state.
+ * This does NOT modify the DB status — it overrides display only for
+ * early-stage leads (enquiry_received / scope_analysis) so the UI
+ * reflects analysis and readiness state automatically.
+ *
+ * For leads past ready_for_proposal, the DB status is authoritative.
+ */
+export function deriveLeadStatus(inputs: {
+  dbStatus: LeadStatus;
+  analysisEverRun: boolean;
+  hasAnyAnalysis: boolean;
+  isReady: boolean;
+  hasBlockers: boolean;
+}): LeadStatus {
+  const { dbStatus, analysisEverRun, hasAnyAnalysis, isReady, hasBlockers } = inputs;
+
+  // Only override early-stage statuses. Once the operator has manually
+  // advanced past scope_analysis, the DB status is canonical.
+  if (!['enquiry_received', 'scope_analysis'].includes(dbStatus)) {
+    return dbStatus;
+  }
+
+  // Pre-analysis: stay at enquiry_received
+  if (!analysisEverRun || !hasAnyAnalysis) {
+    return 'enquiry_received';
+  }
+
+  // Analysis done + ready + no blockers → ready_for_proposal
+  if (isReady && !hasBlockers) {
+    return 'ready_for_proposal';
+  }
+
+  // Analysis done but not ready → scope_analysis (gathering info)
+  return 'scope_analysis';
+}
+
+/** Derive next action text from system state */
+export function deriveNextAction(inputs: {
+  analysisEverRun: boolean;
+  hasAnyAnalysis: boolean;
+  isReady: boolean;
+  hasBlockers: boolean;
+}): string {
+  const { analysisEverRun, hasAnyAnalysis, isReady, hasBlockers } = inputs;
+
+  if (!analysisEverRun || !hasAnyAnalysis) {
+    return 'Run full analysis to assess this enquiry';
+  }
+  if (hasBlockers) {
+    return 'Gather more information to resolve missing areas';
+  }
+  if (isReady) {
+    return 'Prepare and send proposal';
+  }
+  return 'Gather more information';
+}
+
 /** Meeting types tied to lifecycle stages */
 export const MEETING_TYPES = [
   'discovery_call',
