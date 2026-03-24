@@ -1296,14 +1296,12 @@ export default function LeadDetailPage() {
         if (b.technical_research_updated_at) setResearchUpdatedAt(b.technical_research_updated_at);
         if (b.complexity_result) setComplexityResult(b.complexity_result as ComplexityResult);
 
-        // v1.99.3: Mark as analysed if ANY derived state exists from a previous session.
-        // This prevents the page from showing "Run Full Analysis" when analysis outputs
-        // already exist but one subsystem (e.g. pricing) hasn't been computed yet.
+        // v1.100.3: Mark as analysed ONLY if real analysis outputs exist.
+        // project_summary alone is NOT enough (bootstrap seeds it from enquiry).
+        // Require at least one AI-generated analysis artifact: research OR complexity.
         const hasPriorAnalysis =
-          (b.project_summary?.trim()?.length ?? 0) > 0 ||
           b.technical_research !== null ||
-          b.complexity_result !== null ||
-          b.scope_ready !== null;
+          (b.complexity_result !== null && ((b.complexity_result as unknown as Record<string, number>)?.complexity_score ?? 0) > 0);
         if (hasPriorAnalysis) setAnalysisEverRun(true);
       }
     } finally {
@@ -2398,19 +2396,18 @@ export default function LeadDetailPage() {
   // This prevents showing isolated fragments (e.g. complexity without costs).
   // The flag is true when: (a) operator has explicitly run analysis AND the full
   // chain completed, OR (b) the lead already has prior analysis data on load.
-  // v1.99.3: Two-tier analysis gate to prevent contradictory render state.
-  // hasAnyAnalysis: true if ANY derived analysis exists (brief, research, complexity, or readiness).
-  //   Used to hide "Run Full Analysis" CTA — prevents showing initial + analysed state simultaneously.
-  // analysisPassComplete: true if ALL subsystems are complete (strict gate for pricing/cost sections).
+  // v1.100.3: Atomic analysis gate — requires REAL analysis artifacts.
+  // hasAnyAnalysis: true only when the operator has explicitly run analysis
+  // and at least one AI-generated artifact exists. Brief summary alone is NOT
+  // enough because bootstrap seeds it from the enquiry before any analysis runs.
   const hasAnyAnalysis = useMemo(() => {
+    if (!analysisEverRun) return false;
+    // Require at least one real analysis output
     return (
-      analysisEverRun ||
-      briefSummary.trim().length > 0 ||
       technicalResearch !== null ||
-      (complexityResult !== null && complexityResult.complexity_score > 0) ||
-      scopeReady !== null
+      (complexityResult !== null && complexityResult.complexity_score > 0)
     );
-  }, [analysisEverRun, briefSummary, technicalResearch, complexityResult, scopeReady]);
+  }, [analysisEverRun, technicalResearch, complexityResult]);
 
   const analysisPassComplete = useMemo(() => {
     if (!hasAnyAnalysis) return false;
@@ -5269,22 +5266,26 @@ export default function LeadDetailPage() {
                 const hasSuccessDef = Boolean(lead.lead_details?.success_definition?.trim());
 
                 // ── Evidence-driven readiness: 2 states + context quality gate ──
-                // v1.100.1: Context quality must be at least "workable" for readiness.
-                // Weak context = NOT ready, regardless of other evidence.
+                // v1.100.3: Blocker unknowns override readiness entirely.
+                // If ANY blocker signal is missing, the lead cannot be ready.
                 const ctxBand = contextQuality?.band ?? "workable";
+                const hasBlockers = (contextQuality?.missingSignals ?? []).some(s => s.blocker);
                 const evidenceReady =
                   scopeReady === true ||
                   (hasAnalysis && scopeReady !== false) ||
                   (enquiryQuality && hasSuccessDef && hasBudget && (hasIterations || hasMeetingsDone));
 
-                // Gate: weak context blocks readiness entirely
-                const isReady = ctxBand !== "weak" && evidenceReady;
+                // Gate: weak context OR blocker unknowns block readiness entirely
+                const isReady = ctxBand !== "weak" && !hasBlockers && evidenceReady;
                 // Workable context allows readiness but with warning
                 const isAssumptionBased = ctxBand === "workable" && isReady;
 
                 let reason: string;
-                if (ctxBand === "weak") {
-                  reason = "We need a bit more detail before preparing a reliable proposal. Use Add Information above to capture requirements.";
+                if (ctxBand === "weak" || hasBlockers) {
+                  const blockerLabels = (contextQuality?.missingSignals ?? []).filter(s => s.blocker).map(s => s.label);
+                  reason = blockerLabels.length > 0
+                    ? `Key areas still need clarification: ${blockerLabels.join(", ")}. Use Add Information above to capture these details.`
+                    : "We need a bit more detail before preparing a reliable proposal. Use Add Information above to capture requirements.";
                 } else if (isReady) {
                   if (isAssumptionBased) {
                     reason = "Enough context to prepare a proposal, but some assumptions are being used. Add more detail to improve confidence.";
