@@ -471,6 +471,26 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
     }
 
+    // ── v1.98.0: Deduplicate research items across categories ──────────
+    // AI often repeats the same provider/tool in multiple categories.
+    // Keep the first occurrence, remove duplicates by normalised name.
+    const seenItems = new Set<string>();
+    const categories: Array<keyof TechnicalResearch> = ['integrations', 'infrastructure', 'third_party_services', 'compliance', 'operating_cost_estimate'];
+    for (const catKey of categories) {
+      const cat = research[catKey] as ResearchCategory | undefined;
+      if (!cat?.items) continue;
+      const beforeCount = cat.items.length;
+      cat.items = cat.items.filter(item => {
+        const norm = item.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (seenItems.has(norm)) return false;
+        seenItems.add(norm);
+        return true;
+      });
+      if (cat.items.length < beforeCount) {
+        console.log(`[research] Deduped ${catKey}: ${beforeCount} → ${cat.items.length} items`);
+      }
+    }
+
     const now = new Date().toISOString();
 
     // Persist via true upsert keyed on lead_id

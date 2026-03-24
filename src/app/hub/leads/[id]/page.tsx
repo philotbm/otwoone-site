@@ -2226,8 +2226,13 @@ export default function LeadDetailPage() {
       return null;
     }
 
+    // v1.98.0: "Free", "Free tier", "$0" → valid as zero-cost monthly
+    if (/\bfree\s*(tier|plan)?\b/i.test(text) && !/\bfree\s*trial\b/i.test(text)) {
+      return { low: 0, high: 0 };
+    }
+
     // Require explicit monthly context somewhere in the string
-    const hasMonthlyContext = /\/(month|mo|m)\b|per\s*month|monthly/i.test(pricing);
+    const hasMonthlyContext = /\/(month|mo|m)\b|per\s*month|monthly|\/mo\b/i.test(pricing);
     if (!hasMonthlyContext) return null;
 
     // Range: €0–€25/month, €10-€20/mo, $5 – $15/month
@@ -2264,41 +2269,26 @@ export default function LeadDetailPage() {
 
     const items: RunningCostItem[] = [];
 
-    // Primary source: operating_cost_estimate category
-    if (research.operating_cost_estimate?.items?.length) {
-      for (const item of research.operating_cost_estimate.items) {
-        const cost = parseMonthlyCost(item.pricing);
-        if (cost) {
-          items.push({
-            name: item.name,
-            low: cost.low,
-            high: cost.high,
-            source: "operating_cost_estimate",
-            relevance: item.relevance ?? "likely",
-          });
-        }
-      }
-    }
-
-    // Fallback: if operating_cost_estimate is empty, extract from infrastructure + third_party_services
-    if (items.length === 0) {
-      const fallbackCategories: Array<{ key: string; cat: typeof research.infrastructure }> = [
-        { key: "infrastructure", cat: research.infrastructure },
-        { key: "third_party_services", cat: research.third_party_services },
-      ];
-      for (const { key, cat } of fallbackCategories) {
-        if (cat?.items?.length) {
-          for (const item of cat.items) {
-            const cost = parseMonthlyCost(item.pricing);
-            if (cost && (cost.low > 0 || cost.high > 0)) {
-              items.push({
-                name: item.name,
-                low: cost.low,
-                high: cost.high,
-                source: key,
-                relevance: item.relevance ?? "likely",
-              });
-            }
+    // v1.98.0: Extract costs from ALL categories, not just operating_cost_estimate
+    // This ensures providers mentioned in infrastructure or third_party_services
+    // are also captured, even if operating_cost_estimate has some items.
+    const allCategories: Array<{ key: string; cat: typeof research.infrastructure | undefined }> = [
+      { key: "operating_cost_estimate", cat: research.operating_cost_estimate },
+      { key: "infrastructure", cat: research.infrastructure },
+      { key: "third_party_services", cat: research.third_party_services },
+    ];
+    for (const { key, cat } of allCategories) {
+      if (cat?.items?.length) {
+        for (const item of cat.items) {
+          const cost = parseMonthlyCost(item.pricing);
+          if (cost && (cost.low > 0 || cost.high > 0)) {
+            items.push({
+              name: item.name,
+              low: cost.low,
+              high: cost.high,
+              source: key,
+              relevance: item.relevance ?? "likely",
+            });
           }
         }
       }

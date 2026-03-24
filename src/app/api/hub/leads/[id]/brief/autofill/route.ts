@@ -641,28 +641,96 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
 
-    // ── v1.97.0: Deterministic Evidence Engine ──────────────────────────
+    // ── v1.98.0: Canonical Evidence Engine ─────────────────────────────
     // AI is used for synthesis (summary, solution, features, etc.) but
     // follow_up_questions, risks/unknowns, and readiness are computed
     // deterministically from confirmed evidence vs required facts.
-    // This eliminates AI guessing about what is "unknown".
 
     const allText = (mergedContext ?? '').toLowerCase();
 
     // STAGE 1: Extract confirmed facts from ALL evidence
+    // Patterns are intentionally broad — a fact is "confirmed" when evidence
+    // contains substantive detail about it, not just a mention.
     const FACT_DETECTORS: Array<{ key: string; label: string; patterns: RegExp[] }> = [
-      { key: 'pos_system', label: 'POS system', patterns: [/\bsquare\b/i, /\bclover\b/i, /\btoast\b/i, /\blightspeed\b/i, /\bpos\s+(system\s+)?is\b/i, /\bpos\s+confirmed\b/i, /\btill\s+system\b/i, /\bepos\b/i] },
-      { key: 'booking_api', label: 'Booking/BRS API', patterns: [/\bbrs\b.*\b(api|rest|batch)\b/i, /\b(api|rest)\b.*\bbrs\b/i, /\btee\s*sheet\s*(api|system)\b/i, /\bbooking\s*(system\s+)?api\b/i] },
-      { key: 'migration_strategy', label: 'Data migration', patterns: [/\bmigrat\w*\b.*\b(csv|export|import|clubnet|member)\b/i, /\b(csv|clubnet)\b.*\bmigrat/i, /\bdata\s+transfer\b/i, /\bmember\s+data\b.*\b(export|import|transfer)\b/i] },
-      { key: 'handicap_data', label: 'Handicap/Golf Ireland', patterns: [/\bgolf\s*ireland\b.*\b(api|confirmed|access)\b/i, /\bhandicap\b.*\b(api|data|confirmed)\b/i] },
-      { key: 'transaction_volume', label: 'Transaction volume', patterns: [/\b\d+\s*(transactions?|bookings?|tx)\s*\/?\s*(per\s+)?(week|day|month)\b/i, /\btransaction\s+volume\b.*\b(defined|confirmed|\d)\b/i] },
-      { key: 'rollout_strategy', label: 'Rollout plan', patterns: [/\bphased\s+(rollout|approach|delivery)\b/i, /\brollout\b.*\b(agreed|confirmed|phased)\b/i, /\bphase\s+1\b.*\b(agreed|first|core)\b/i] },
-      { key: 'platform_scope', label: 'Platform scope', patterns: [/\b(web\s+only|web\s+app|native\s+app|ios|android|mobile\s+app)\b/i, /\bplatform\s+(scope|type)\b.*\b(confirmed|defined)\b/i] },
-      { key: 'support_model', label: 'Support model', patterns: [/\bsupport\s+model\b.*\b(managed|confirmed|defined|agreed)\b/i, /\b(sla|ongoing\s+support|maintenance)\b.*\b(agreed|confirmed|defined)\b/i] },
-      { key: 'budget', label: 'Budget', patterns: [/\bbudget\b.*\b(confirmed|agreed|approved|€\d|euro)\b/i, /\b€\s*\d{2,}/i] },
-      { key: 'timeline', label: 'Timeline', patterns: [/\btimeline\b.*\b(confirmed|agreed|defined)\b/i, /\b(launch|go\s*live|deliver)\b.*\b(by|before|within)\b/i] },
-      { key: 'authentication', label: 'Auth approach', patterns: [/\b(auth|login|user\s+accounts?)\b.*\b(confirmed|defined|required)\b/i, /\b(member\s+login|staff\s+login|admin\s+login)\b/i] },
-      { key: 'payment_provider', label: 'Payment provider', patterns: [/\b(stripe|paypal|square\s+payments?|payment\s+provider)\b.*\b(confirmed|chosen|using)\b/i] },
+      { key: 'pos_system', label: 'POS system', patterns: [
+        /\bsquare\b/i, /\bclover\b/i, /\btoast\b/i, /\blightspeed\b/i, /\bivend\b/i, /\bizettle\b/i,
+        /\bpos\s+(system|provider|terminal|integration)\b/i, /\bpos\b.*\b(is|confirmed|chosen|using|selected|live|active)\b/i,
+        /\btill\s+(system|integration)\b/i, /\bepos\b/i, /\b\d+\s*(active\s+)?terminals?\b/i,
+      ]},
+      { key: 'booking_api', label: 'Booking/BRS API', patterns: [
+        /\bbrs\b/i, /\btee\s*sheet/i, /\bbooking\s*(system|provider|api|platform)\b/i,
+        /\b(api|rest|batch)\b.*\b(export|sync|integration)\b/i,
+        /\bnightly\s+batch\b/i, /\breal[- ]?time\s+.*\bsync\b/i,
+      ]},
+      { key: 'migration_strategy', label: 'Data migration', patterns: [
+        /\bmigrat\w*/i, /\bcsv\s+(export|import|available)\b/i, /\bclubnet\b/i,
+        /\bexport\s+(available|ready|possible)\b/i, /\bdata\s+transfer\b/i,
+        /\b(existing|legacy|current)\s+(system|data|records|members)\b.*\b(export|import|transfer|replace|move)\b/i,
+        /\b\d[\d,]*\s*(active\s+)?members?\b/i, /\bfull\s+migration\b/i,
+        /\bmember\s+(data|records|database)\b/i,
+      ]},
+      { key: 'handicap_data', label: 'Handicap/Golf Ireland', patterns: [
+        /\bgolf\s*ireland\b/i, /\bhandicap\b.*\b(api|data|access|sync|confirmed|available)\b/i,
+        /\bhandicap\s+(system|integration|data)\b/i,
+      ]},
+      { key: 'transaction_volume', label: 'Transaction volume', patterns: [
+        /\b\d+[\d,]*\s*(bar|restaurant|booking|online|transaction|top[- ]?up)\w*\s*\/?\s*(per\s+)?(week|day|month)\b/i,
+        /\b\d+[\d,]*\s*\w*\s*transactions?\s*(per|\/)\s*(week|day|month)\b/i,
+        /\btransaction\s*(volume|level|estimate)\b.*\d/i,
+        /\b(approximately|about|roughly|~)\s*\d+\b.*\b(per\s+)?(week|month)\b/i,
+      ]},
+      { key: 'rollout_strategy', label: 'Rollout plan', patterns: [
+        /\bphased\b/i, /\brollout\b/i, /\bphase\s*[12]\b/i,
+        /\b(launch|deliver|implement)\s*(in\s+)?(stages?|phases?)\b/i,
+        /\bcore\s+features?\s+first\b/i, /\bmvp\b/i,
+      ]},
+      { key: 'platform_scope', label: 'Platform scope', patterns: [
+        /\b(web\s+only|web\s+app|web\s+product|web\s+platform)\b/i,
+        /\b(native\s+app|ios\s+app|android\s+app|mobile\s+app)\b/i,
+        /\b(do\s+not|don'?t)\s+want\s+native\b/i, /\bpwa\b/i,
+        /\bmobile[- ]?optimis/i, /\bresponsive\b/i,
+      ]},
+      { key: 'support_model', label: 'Support model', patterns: [
+        /\bmanaged\s*(post[- ]?launch)?\s*support\b/i, /\bsupport\s+model\b/i,
+        /\b(sla|ongoing\s+support|maintenance\s+plan)\b/i,
+        /\bprovide\s+.*\bsupport\b/i, /\bpost[- ]?launch\s+(support|maintenance)\b/i,
+        /\bmanaged\s+(support|service|maintenance)\b/i,
+      ]},
+      { key: 'budget', label: 'Budget', patterns: [
+        /\bbudget\b.*€/i, /€\s*\d{2,}k?/i, /\b\d{2,}k?\s*[–-]\s*€?\d/i,
+        /\bbudget\b.*\b(confirmed|agreed|approved|is|range)\b/i,
+        /\btarget\s+budget\b/i, /\bproject\s+budget\b/i,
+      ]},
+      { key: 'timeline', label: 'Timeline', patterns: [
+        /\b\d+[–-]\d+\s+weeks?\b/i, /\b\d+\s+weeks?\b/i, /\b\d+\s+months?\b/i,
+        /\bdelivery\s+target\b/i, /\btarget\s+.*\b(launch|delivery|go[- ]?live)\b/i,
+        /\b(launch|deliver|go[- ]?live)\b.*\b(by|before|within|in)\b/i,
+        /\bQ[1-4]\s+\d{4}\b/i, /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b/i,
+      ]},
+      { key: 'authentication', label: 'Auth approach', patterns: [
+        /\b(member|staff|admin|user)\s+(login|portal|dashboard|account|access)\b/i,
+        /\brole[- ]?based\s+(permissions?|access)\b/i, /\bstaff\s+roles?\b/i,
+        /\b(login|auth\w*)\s+(required|needed|confirmed)\b/i,
+        /\bself[- ]?registration\b/i, /\bbulk\s+(email\s+)?invite\b/i,
+        /\bonboarding\b/i,
+      ]},
+      { key: 'payment_provider', label: 'Payment provider', patterns: [
+        /\bstripe\b/i, /\bpaypal\b/i, /\bsquare\b.*\b(payment|pos|terminal|integration)\b/i,
+        /\bpayment\s+(provider|gateway|processor)\b/i,
+        /\b(online\s+)?top[- ]?ups?\b/i, /\bbalance\s+management\b/i,
+      ]},
+      { key: 'reporting', label: 'Reporting scope', patterns: [
+        /\breporting\s+(requirements?|scope|confirmed|now)\b/i,
+        /\brevenue\s+by\b/i, /\bfinancial\s+reconciliation\b/i,
+        /\baudit\s+(trail|log)/i, /\breconciliation\s+report/i,
+        /\b(daily|weekly|monthly)\s+report/i,
+      ]},
+      { key: 'permissions', label: 'Permissions/roles', patterns: [
+        /\brole[- ]?based\s+permissions?\b/i, /\bapproval\s+workflow\b/i,
+        /\bstaff\s+roles?\s+.*\b(need|require|confirmed)\b/i,
+        /\b(office\s+admin|bar\s+staff|restaurant\s+staff)\b/i,
+        /\baudit\s+log/i,
+      ]},
     ];
 
     const confirmedFacts: Record<string, boolean> = {};
@@ -682,10 +750,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       { key: 'migration_strategy', condition: /\bmigrat\w*\b|\blegacy\b|\bclubnet\b|\bexisting\s+(system|data|members?)\b|\breplace\b/i },
       { key: 'handicap_data', condition: /\bgolf\s*ireland\b|\bhandicap\b/i },
       { key: 'transaction_volume', condition: /\btransaction\b|\bvolume\b|\bthroughput\b|\bpayment\b.*\b(process|volume)\b/i },
-      { key: 'rollout_strategy', condition: /\bphased?\b|\brollout\b|\blaunch\s+plan\b/i },
-      { key: 'support_model', condition: /\bsupport\b|\bmaintenance\b|\bongoing\b|\bsla\b/i },
-      { key: 'authentication', condition: /\bmember\b|\blogin\b|\baccount\b|\bauth\b|\bstaff\b.*\baccess\b/i },
-      { key: 'payment_provider', condition: /\bpayment\b|\bcheckout\b|\bstripe\b|\bbilling\b/i },
+      { key: 'rollout_strategy', condition: /\bphased?\b|\brollout\b|\blaunch\s+plan\b|\bphase\s+[12]\b/i },
+      { key: 'support_model', condition: /\bsupport\b|\bmaintenance\b|\bongoing\b|\bsla\b|\bpost[- ]?launch\b/i },
+      { key: 'authentication', condition: /\bmember\b|\blogin\b|\baccount\b|\bauth\b|\bstaff\b.*\baccess\b|\bonboarding\b/i },
+      { key: 'payment_provider', condition: /\bpayment\b|\bcheckout\b|\bstripe\b|\bbilling\b|\btop[- ]?up\b|\bbalance\b/i },
+      { key: 'reporting', condition: /\breport\w*\b|\breconciliation\b|\baudit\b|\bdashboard\b.*\b(report|data)\b/i },
+      { key: 'permissions', condition: /\brole\b|\bpermission\b|\bapproval\b|\bstaff\s+roles?\b/i },
     ];
 
     const requiredFacts = [...CORE_REQUIRED];
@@ -714,6 +784,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       timeline: 'Is there a target launch date or delivery timeline?',
       authentication: 'What user roles and login requirements are needed?',
       payment_provider: 'Which payment provider will be used for transactions?',
+      reporting: 'What reporting and analytics are required?',
+      permissions: 'What role-based permissions or approval workflows are needed?',
     };
 
     const followUpQuestions = derivedUnknowns
