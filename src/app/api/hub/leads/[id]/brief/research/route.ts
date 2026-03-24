@@ -269,7 +269,15 @@ Rules:
 - Never fabricate pricing — if not publicly available, state "Commercial license required" or "Quote required"
 - Consider Irish/EU context for compliance (GDPR, cookie consent, data residency)
 - Keep recommendations actionable and specific to the project
-- If you cannot determine a field, return an empty value that respects the schema`;
+- If you cannot determine a field, return an empty value that respects the schema
+
+IMPORTANT — Iteration log and new information:
+- The merged context may contain an "## Iteration log" section and/or a "## New information" section
+- These contain confirmed information from calls, emails, meetings, or operator notes added AFTER the initial enquiry
+- Treat iteration log entries as CONFIRMED FACTS that resolve open questions
+- If an iteration entry confirms a technology choice, POS provider, migration approach, sync method, or similar — reflect that as a confirmed requirement, not an unknown
+- The "unknowns" array must ONLY contain questions that remain genuinely unresolved after accounting for ALL iteration entries and new information
+- Do NOT repeat questions as unknowns if the iteration log or new information section already answers them`;
 
 // ── Structured error helper ─────────────────────────────────────────────────
 
