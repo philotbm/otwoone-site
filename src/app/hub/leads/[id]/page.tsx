@@ -2869,17 +2869,20 @@ export default function LeadDetailPage() {
   // Build pricing + monthly running costs cascade automatically via useMemo.
   // Used by both "Run analysis" and "Refresh analysis" buttons.
 
-  async function runUnifiedAnalysis(extraContext?: string) {
+  async function runUnifiedAnalysis(extraContext?: string, freshIterations?: LeadIteration[]) {
     setUnifiedRunning(true);
     setAnalysisEverRun(true);
 
-    // Build full context including iterations
-    const iterationText = iterations.length > 0
-      ? "\n\n## Iteration log\n" + iterations.map(it =>
+    // Build full context including iterations.
+    // Use freshIterations if provided (avoids React state timing issues when called
+    // from addIterationAndRefresh immediately after setting state).
+    const iters = freshIterations ?? iterations;
+    const iterationText = iters.length > 0
+      ? "\n\n## Iteration log\nThe following entries contain confirmed information gathered after the initial enquiry. Treat each entry as fact.\n" + iters.map(it =>
           `[${it.source_type}${it.source_date ? ` — ${it.source_date}` : ""}] ${it.notes}`
         ).join("\n")
       : "";
-    const contextWithIterations = mergedClientContext + iterationText + (extraContext ? `\n\n## New information\n${extraContext}` : "");
+    const contextWithIterations = mergedClientContext + iterationText + (extraContext ? `\n\n## New information (just added)\nIMPORTANT: This was just confirmed by the operator. Update analysis to reflect this.\n${extraContext}` : "");
 
     // 1. Run technical research
     setResearchLoading(true);
@@ -3060,13 +3063,17 @@ export default function LeadDetailPage() {
     });
 
     if (result.ok) {
-      setIterations(prev => [...prev, result.data.iteration]);
+      // Build the updated iterations list BEFORE setting state,
+      // so runUnifiedAnalysis has the complete list immediately.
+      const updatedIterations = [...iterations, result.data.iteration];
+      setIterations(updatedIterations);
       setIterNotes("");
       setIterSourceDate("");
 
       // Only recompute the full pipeline if analysis has been run before.
       // This prevents "Add Information" from being a back-door analysis trigger.
-      await runUnifiedAnalysis(notes);
+      // Pass the full updated iteration list to avoid React state timing issues.
+      await runUnifiedAnalysis(notes, updatedIterations);
     }
 
     setIterSaving(false);

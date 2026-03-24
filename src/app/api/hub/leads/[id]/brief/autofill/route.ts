@@ -394,7 +394,17 @@ Rules:
 - Set "ready" to true only if scope is clear enough to write a proposal without further clarification
 - Set "ready" to false if key information is missing (e.g. no pages specified, unclear requirements, no timeline)
 - When not ready, ensure follow_up_questions contains the specific questions needed
-- If clarification rounds are provided, incorporate the new information and re-assess readiness`;
+- If clarification rounds are provided, incorporate the new information and re-assess readiness
+
+CRITICAL — Iteration log and new information handling:
+- The merged context may contain "## Iteration log" and/or "## New information" sections
+- These contain confirmed information from calls, emails, meetings, or operator notes added AFTER the initial enquiry
+- Treat these as CONFIRMED FACTS that answer previously open questions
+- When new information answers a question that was previously in follow_up_questions — REMOVE that question
+- When new information confirms a technical choice, migration approach, POS provider, rollout plan, or similar — update the brief fields to reflect the confirmed detail
+- Re-assess "ready" status: if key open questions are now answered by iteration content, readiness should improve
+- Do NOT regenerate the same follow_up_questions if they have already been answered in the iteration log
+- The follow_up_questions field must ONLY contain questions that remain genuinely unresolved after ALL iteration entries`;
 
 /**
  * Extract and parse the first JSON object from a Claude response that may
