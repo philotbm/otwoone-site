@@ -5262,17 +5262,27 @@ export default function LeadDetailPage() {
                 const hasBudget = Boolean(lead.budget && lead.budget !== "not_sure");
                 const hasSuccessDef = Boolean(lead.lead_details?.success_definition?.trim());
 
-                // ── Evidence-driven readiness: exactly 2 states ──
-                // READY when: (analysis done) OR (strong enquiry + follow-up evidence)
-                // MORE_INFO when: gaps remain that make proposal premature
-                const isReady =
-                  scopeReady === true ||                                              // explicit scope check passed
-                  (hasAnalysis && scopeReady !== false) ||                            // analysis complete, not explicitly flagged as unready
-                  (enquiryQuality && hasSuccessDef && hasBudget && (hasIterations || hasMeetingsDone)); // strong enquiry + evidence
+                // ── Evidence-driven readiness: 2 states + context quality gate ──
+                // v1.100.1: Context quality must be at least "workable" for readiness.
+                // Weak context = NOT ready, regardless of other evidence.
+                const ctxBand = contextQuality?.band ?? "workable";
+                const evidenceReady =
+                  scopeReady === true ||
+                  (hasAnalysis && scopeReady !== false) ||
+                  (enquiryQuality && hasSuccessDef && hasBudget && (hasIterations || hasMeetingsDone));
+
+                // Gate: weak context blocks readiness entirely
+                const isReady = ctxBand !== "weak" && evidenceReady;
+                // Workable context allows readiness but with warning
+                const isAssumptionBased = ctxBand === "workable" && isReady;
 
                 let reason: string;
-                if (isReady) {
-                  if (scopeReady === true) {
+                if (ctxBand === "weak") {
+                  reason = "We need a bit more detail before preparing a reliable proposal. Use Add Information above to capture requirements.";
+                } else if (isReady) {
+                  if (isAssumptionBased) {
+                    reason = "Enough context to prepare a proposal, but some assumptions are being used. Add more detail to improve confidence.";
+                  } else if (scopeReady === true) {
                     reason = "Scope confirmed — enough detail to prepare a proposal.";
                   } else if (hasAnalysis && hasIterations) {
                     reason = `Analysis complete with ${iterations.length} additional input${iterations.length !== 1 ? "s" : ""}. Enough context to prepare a proposal.`;
@@ -5300,10 +5310,20 @@ export default function LeadDetailPage() {
                     {/* Readiness badge */}
                     <div className={cx(
                       "px-4 py-3 rounded-lg border",
-                      isReady ? "bg-green-500/5 border-green-500/20" : "bg-amber-500/5 border-amber-500/20",
+                      isReady && !isAssumptionBased ? "bg-green-500/5 border-green-500/20" :
+                      isReady && isAssumptionBased ? "bg-blue-500/5 border-blue-500/20" :
+                      "bg-amber-500/5 border-amber-500/20",
                     )}>
-                      <p className={cx("text-sm font-medium mb-1", isReady ? "text-green-400" : "text-amber-400")}>
-                        {isReady ? "Ready for proposal" : "More information needed"}
+                      <p className={cx("text-sm font-medium mb-1",
+                        isReady && !isAssumptionBased ? "text-green-400" :
+                        isReady && isAssumptionBased ? "text-blue-400" :
+                        "text-amber-400",
+                      )}>
+                        {isReady && isAssumptionBased
+                          ? "Ready for proposal (with assumptions)"
+                          : isReady
+                          ? "Ready for proposal"
+                          : "More information needed"}
                       </p>
                       <p className="text-xs text-gray-500 leading-relaxed">{reason}</p>
                     </div>
