@@ -690,15 +690,37 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Cap at 100
   rawScore = Math.min(100, rawScore);
 
+  // ── v1.95.1: Operational Depth Gate ────────────────────────────────────
+  // A project may only classify as top-tier (operational_platform, score >65)
+  // if it demonstrates genuine operational depth, not just bundled features.
+  //
+  // Condition A (at least one): operational_core_system, data_migration, multi_system_integration
+  // Condition B (at least one): financial_transaction_logic, real_time_multi_source_sync
+  // Both conditions must be met. If not → cap score at 65.
+  const archKeySet = new Set(archSignals.map(a => a.key));
+  const depthConditionA =
+    archKeySet.has("operational_core_system") ||
+    archKeySet.has("data_migration") ||
+    archKeySet.has("multi_system_integration");
+  const depthConditionB =
+    archKeySet.has("financial_transaction_logic") ||
+    archKeySet.has("real_time_multi_source_sync");
+  const hasOperationalDepth = depthConditionA && depthConditionB;
+
+  if (!hasOperationalDepth && rawScore > 65) {
+    rawScore = 65;
+  }
+
   // ── v1.93.5: SMB system calibration ────────────────────────────────────
   // SMB: single-business, booking+payments+accounts, no multi-tenant/marketplace.
-  // v1.95.0: Skip SMB cap when architecture signals indicate real platform complexity.
+  // v1.95.0: Skip SMB cap when architecture signals show real platform work.
+  // v1.95.1: Depth gate already constrains non-platform projects, so SMB cap
+  //          only applies to the narrow band between 65-70 for non-enterprise.
   const lc = searchText.toLowerCase();
   const enterpriseIndicators = ["multi-tenant", "multi_tenant", "marketplace", "saas platform", "enterprise integration", "erp"].filter(t => lc.includes(t)).length;
-  const hasArchitecturalComplexity = archCount >= 3;
-  const isSmbOperational = rawScore >= 70 && enterpriseIndicators === 0 && !hasArchitecturalComplexity;
+  const isSmbOperational = rawScore >= 70 && enterpriseIndicators === 0 && !hasOperationalDepth;
 
-  // Cap SMB systems at 70 — but NOT if architecture signals show real platform work
+  // Cap SMB systems at 70 — but NOT if operational depth gate passed
   const score = isSmbOperational ? Math.min(rawScore, 70) : rawScore;
   const cls = classifyComplexity(score);
 
