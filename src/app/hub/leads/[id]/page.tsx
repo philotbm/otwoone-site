@@ -1719,14 +1719,30 @@ export default function LeadDetailPage() {
   // ── v1.100.0: Context Quality Gate ──────────────────────────────────────────
   const contextQuality = useMemo((): ContextQualityResult | null => {
     if (!mergedClientContext || mergedClientContext.length < 20) return null;
+    // v1.100.5: Build analysed context string for blocker resolution.
+    // Includes research summary/recommendations, complexity signal keys,
+    // and assumption text so blockers are resolved by analysis evidence.
+    const analysedParts: string[] = [];
+    if (technicalResearch) {
+      if (technicalResearch.summary) analysedParts.push(technicalResearch.summary);
+      if (technicalResearch.recommendations?.length) analysedParts.push(technicalResearch.recommendations.join(" "));
+      if (technicalResearch.assumptions?.length) analysedParts.push(technicalResearch.assumptions.join(" "));
+    }
+    if (complexityResult?.detected_signals?.length) {
+      analysedParts.push(complexityResult.detected_signals.map(s => s.key.replace(/_/g, " ") + " " + (s.evidence ?? "")).join(" "));
+    }
+    if (briefSummary.trim()) analysedParts.push(briefSummary);
+    if (briefSolution.trim()) analysedParts.push(briefSolution);
+
     return evaluateContextQuality(mergedClientContext, {
       iterationCount: iterations.length,
       hasTechnicalResearch: technicalResearch !== null,
       hasComplexityResult: complexityResult !== null && complexityResult.complexity_score > 0,
-      hasBuildPricing: false, // buildPricing computed later; depth still works without it
+      hasBuildPricing: false,
       complexitySignalCount: complexityResult?.detected_signals?.length ?? 0,
+      analysedContext: analysedParts.join(" "),
     });
-  }, [mergedClientContext, iterations.length, technicalResearch, complexityResult]);
+  }, [mergedClientContext, iterations.length, technicalResearch, complexityResult, briefSummary, briefSolution]);
 
   const contextAssumptionsBlock = useMemo(() => {
     if (!contextQuality) return "";
