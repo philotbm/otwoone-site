@@ -641,105 +641,134 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
 
-    // ── v1.95.3: Deterministic iteration-aware post-processing ──────────
-    // AI models (especially with temperature: 0) may regenerate similar
-    // unknowns/follow-ups even when iteration content clearly answers them.
-    // This step programmatically removes answered items.
-    if (mergedContext) {
-      const iterationSection = mergedContext.match(/## Iteration log[\s\S]*?(?=\n##|$)/i)?.[0] ?? '';
-      const newInfoSection = mergedContext.match(/## New information[\s\S]*?(?=\n##|$)/i)?.[0] ?? '';
-      const answeredText = (iterationSection + ' ' + newInfoSection).toLowerCase();
+    // ── v1.97.0: Deterministic Evidence Engine ──────────────────────────
+    // AI is used for synthesis (summary, solution, features, etc.) but
+    // follow_up_questions, risks/unknowns, and readiness are computed
+    // deterministically from confirmed evidence vs required facts.
+    // This eliminates AI guessing about what is "unknown".
 
-      if (answeredText.length > 20) {
-        // Keywords that indicate a topic has been answered
-        const ANSWER_SIGNALS: Array<{ topic: RegExp; keywords: string[] }> = [
-          { topic: /pos\s*(system|provider|choice|integration)?|square|clover|toast|lightspeed/i, keywords: ['square', 'clover', 'toast', 'pos', 'till', 'lightspeed', 'epos'] },
-          { topic: /brs|tee\s*sheet|booking\s*system\s*api|brs\s*api/i, keywords: ['brs', 'tee sheet', 'rest api', 'nightly batch', 'api confirmed', 'api available'] },
-          { topic: /migrat|clubnet|legacy|existing\s*system|data\s*(?:transfer|export|import)/i, keywords: ['migration', 'csv export', 'csv import', 'clubnet', 'data transfer', 'member data', 'existing records'] },
-          { topic: /golf\s*ireland|handicap/i, keywords: ['golf ireland', 'handicap', 'handicap api', 'handicap data'] },
-          { topic: /rollout|phased|phase\s*[12]|deployment\s*(?:plan|approach)/i, keywords: ['phased', 'phase 1', 'phase 2', 'rollout', 'phased approach'] },
-          { topic: /transaction\s*volume|throughput|usage\s*(?:volume|estimate)/i, keywords: ['transactions/week', 'tx/week', 'bookings/week', 'per week', 'volume'] },
-          { topic: /support\s*model|ongoing\s*support|maintenance/i, keywords: ['support', 'maintenance', 'sla', 'support model', 'ongoing'] },
-          { topic: /budget|pricing|cost/i, keywords: ['budget confirmed', 'budget agreed', 'approved budget', 'budget range'] },
-        ];
+    const allText = (mergedContext ?? '').toLowerCase();
 
-        const isTopicAnswered = (questionText: string): boolean => {
-          const qLower = questionText.toLowerCase();
-          for (const { topic, keywords } of ANSWER_SIGNALS) {
-            if (topic.test(qLower)) {
-              // Check if any keyword appears in the answered text
-              if (keywords.some(kw => answeredText.includes(kw))) return true;
-            }
-          }
-          return false;
-        };
+    // STAGE 1: Extract confirmed facts from ALL evidence
+    const FACT_DETECTORS: Array<{ key: string; label: string; patterns: RegExp[] }> = [
+      { key: 'pos_system', label: 'POS system', patterns: [/\bsquare\b/i, /\bclover\b/i, /\btoast\b/i, /\blightspeed\b/i, /\bpos\s+(system\s+)?is\b/i, /\bpos\s+confirmed\b/i, /\btill\s+system\b/i, /\bepos\b/i] },
+      { key: 'booking_api', label: 'Booking/BRS API', patterns: [/\bbrs\b.*\b(api|rest|batch)\b/i, /\b(api|rest)\b.*\bbrs\b/i, /\btee\s*sheet\s*(api|system)\b/i, /\bbooking\s*(system\s+)?api\b/i] },
+      { key: 'migration_strategy', label: 'Data migration', patterns: [/\bmigrat\w*\b.*\b(csv|export|import|clubnet|member)\b/i, /\b(csv|clubnet)\b.*\bmigrat/i, /\bdata\s+transfer\b/i, /\bmember\s+data\b.*\b(export|import|transfer)\b/i] },
+      { key: 'handicap_data', label: 'Handicap/Golf Ireland', patterns: [/\bgolf\s*ireland\b.*\b(api|confirmed|access)\b/i, /\bhandicap\b.*\b(api|data|confirmed)\b/i] },
+      { key: 'transaction_volume', label: 'Transaction volume', patterns: [/\b\d+\s*(transactions?|bookings?|tx)\s*\/?\s*(per\s+)?(week|day|month)\b/i, /\btransaction\s+volume\b.*\b(defined|confirmed|\d)\b/i] },
+      { key: 'rollout_strategy', label: 'Rollout plan', patterns: [/\bphased\s+(rollout|approach|delivery)\b/i, /\brollout\b.*\b(agreed|confirmed|phased)\b/i, /\bphase\s+1\b.*\b(agreed|first|core)\b/i] },
+      { key: 'platform_scope', label: 'Platform scope', patterns: [/\b(web\s+only|web\s+app|native\s+app|ios|android|mobile\s+app)\b/i, /\bplatform\s+(scope|type)\b.*\b(confirmed|defined)\b/i] },
+      { key: 'support_model', label: 'Support model', patterns: [/\bsupport\s+model\b.*\b(managed|confirmed|defined|agreed)\b/i, /\b(sla|ongoing\s+support|maintenance)\b.*\b(agreed|confirmed|defined)\b/i] },
+      { key: 'budget', label: 'Budget', patterns: [/\bbudget\b.*\b(confirmed|agreed|approved|€\d|euro)\b/i, /\b€\s*\d{2,}/i] },
+      { key: 'timeline', label: 'Timeline', patterns: [/\btimeline\b.*\b(confirmed|agreed|defined)\b/i, /\b(launch|go\s*live|deliver)\b.*\b(by|before|within)\b/i] },
+      { key: 'authentication', label: 'Auth approach', patterns: [/\b(auth|login|user\s+accounts?)\b.*\b(confirmed|defined|required)\b/i, /\b(member\s+login|staff\s+login|admin\s+login)\b/i] },
+      { key: 'payment_provider', label: 'Payment provider', patterns: [/\b(stripe|paypal|square\s+payments?|payment\s+provider)\b.*\b(confirmed|chosen|using)\b/i] },
+    ];
 
-        // Filter follow_up_questions
-        if (parsed.fields.follow_up_questions) {
-          const questions = parsed.fields.follow_up_questions
-            .split(/[;?\n]/)
-            .map(q => q.trim())
-            .filter(q => q.length > 5);
-          const remaining = questions.filter(q => !isTopicAnswered(q));
-          parsed.fields.follow_up_questions = remaining.length > 0
-            ? remaining.join('; ')
-            : '';
-        }
+    const confirmedFacts: Record<string, boolean> = {};
+    for (const { key, patterns } of FACT_DETECTORS) {
+      confirmedFacts[key] = patterns.some(p => p.test(allText));
+    }
+    const confirmedKeys = Object.entries(confirmedFacts).filter(([, v]) => v).map(([k]) => k);
+    console.log('[autofill] CONFIRMED_FACTS:', JSON.stringify(confirmedKeys));
 
-        // Filter risks_and_unknowns — only remove unknown-style items, keep genuine risks
-        if (parsed.fields.risks_and_unknowns) {
-          const items = parsed.fields.risks_and_unknowns
-            .split(/[;\n]/)
-            .map(item => item.trim())
-            .filter(item => item.length > 5);
-          const remaining = items.filter(item => {
-            const isUnknown = /unknown|unconfirmed|not.*specified|not.*confirmed|unclear|tbd|to be determined|needs? (?:clarification|confirmation)/i.test(item);
-            if (!isUnknown) return true; // keep genuine risks
-            return !isTopicAnswered(item);
-          });
-          parsed.fields.risks_and_unknowns = remaining.join('; ');
-        }
+    // STAGE 2: Define required facts based on project type
+    // Core facts needed for any proposal — project-type specific facts
+    // are added dynamically based on what the AI analysis detected.
+    const CORE_REQUIRED = ['platform_scope', 'budget', 'timeline'];
+    const CONDITIONAL_REQUIRED: Array<{ key: string; condition: RegExp }> = [
+      { key: 'pos_system', condition: /\bpos\b|\bpoint.of.sale\b|\btill\b|\bbar\b|\brestaurant\b/i },
+      { key: 'booking_api', condition: /\bbrs\b|\bbooking\s+(system|provider|api)\b|\btee.?sheet\b/i },
+      { key: 'migration_strategy', condition: /\bmigrat\w*\b|\blegacy\b|\bclubnet\b|\bexisting\s+(system|data|members?)\b|\breplace\b/i },
+      { key: 'handicap_data', condition: /\bgolf\s*ireland\b|\bhandicap\b/i },
+      { key: 'transaction_volume', condition: /\btransaction\b|\bvolume\b|\bthroughput\b|\bpayment\b.*\b(process|volume)\b/i },
+      { key: 'rollout_strategy', condition: /\bphased?\b|\brollout\b|\blaunch\s+plan\b/i },
+      { key: 'support_model', condition: /\bsupport\b|\bmaintenance\b|\bongoing\b|\bsla\b/i },
+      { key: 'authentication', condition: /\bmember\b|\blogin\b|\baccount\b|\bauth\b|\bstaff\b.*\baccess\b/i },
+      { key: 'payment_provider', condition: /\bpayment\b|\bcheckout\b|\bstripe\b|\bbilling\b/i },
+    ];
 
-        // Re-assess readiness if all follow-ups are now answered
-        if (!parsed.fields.follow_up_questions?.trim() && !parsed.ready) {
-          parsed.ready = true;
-          parsed.readiness_reason = 'Key open questions have been answered via iteration inputs. Scope is sufficiently clear to prepare a proposal.';
-        }
+    const requiredFacts = [...CORE_REQUIRED];
+    for (const { key, condition } of CONDITIONAL_REQUIRED) {
+      if (condition.test(allText) && !requiredFacts.includes(key)) {
+        requiredFacts.push(key);
+      }
+    }
+    console.log('[autofill] REQUIRED_FACTS:', JSON.stringify(requiredFacts));
 
-        // v1.95.4: Leak detection guard
-        const LEAK_RULES = [
-          { keyword: 'pos', triggers: ['square', 'clover', 'toast', 'pos confirmed', 'till system'] },
-          { keyword: 'brs', triggers: ['brs', 'rest api', 'api confirmed'] },
-          { keyword: 'golf ireland', triggers: ['golf ireland', 'handicap'] },
-          { keyword: 'migration', triggers: ['migration', 'clubnet', 'csv export'] },
-          { keyword: 'transaction', triggers: ['transactions/week', 'per week', 'volume'] },
-        ];
-        for (const rule of LEAK_RULES) {
-          const matched = rule.triggers.some(t => answeredText.includes(t));
-          if (!matched) continue;
-          const hasLeak =
-            parsed.fields.follow_up_questions?.toLowerCase().includes(rule.keyword) ||
-            parsed.fields.risks_and_unknowns?.toLowerCase().includes(rule.keyword);
-          if (hasLeak) {
-            console.warn(`[autofill] LEAK DETECTED for topic "${rule.keyword}" — stripping from output`);
-            // Force-strip any remaining leaks
-            if (parsed.fields.follow_up_questions) {
-              parsed.fields.follow_up_questions = parsed.fields.follow_up_questions
-                .split(/[;?\n]/).filter(q => !q.toLowerCase().includes(rule.keyword)).join('; ').trim();
-            }
-            if (parsed.fields.risks_and_unknowns) {
-              parsed.fields.risks_and_unknowns = parsed.fields.risks_and_unknowns
-                .split(/[;\n]/).filter(q => !q.toLowerCase().includes(rule.keyword)).join('; ').trim();
-            }
-          }
-        }
+    // STAGE 3: Derive unknowns = required - confirmed
+    const derivedUnknowns = requiredFacts.filter(k => !confirmedFacts[k]);
+    console.log('[autofill] DERIVED_UNKNOWNS:', JSON.stringify(derivedUnknowns));
+
+    // STAGE 4: Generate follow-up questions from unknowns only
+    const QUESTION_MAP: Record<string, string> = {
+      pos_system: 'Which POS system is currently in use (or planned)?',
+      booking_api: 'What booking system/API will be integrated, and how does it expose data?',
+      migration_strategy: 'What is the data migration plan from the existing system?',
+      handicap_data: 'How will handicap data be sourced (Golf Ireland API or manual)?',
+      transaction_volume: 'What are the expected transaction volumes (weekly/monthly)?',
+      rollout_strategy: 'What is the preferred rollout approach (phased, big-bang, pilot)?',
+      platform_scope: 'What platforms are required (web only, web + mobile, native apps)?',
+      support_model: 'What ongoing support model is needed post-launch?',
+      budget: 'Has a budget range been confirmed for this project?',
+      timeline: 'Is there a target launch date or delivery timeline?',
+      authentication: 'What user roles and login requirements are needed?',
+      payment_provider: 'Which payment provider will be used for transactions?',
+    };
+
+    const followUpQuestions = derivedUnknowns
+      .map(k => QUESTION_MAP[k])
+      .filter(Boolean);
+    parsed.fields.follow_up_questions = followUpQuestions.join('; ');
+    console.log('[autofill] FINAL FOLLOWUPS:', JSON.stringify(followUpQuestions));
+
+    // STAGE 5: Clean risks — keep AI-generated delivery risks, remove unknowns
+    // that are now confirmed (the AI may have generated risk items about topics
+    // that are actually confirmed in evidence)
+    if (parsed.fields.risks_and_unknowns) {
+      const confirmedLabels = FACT_DETECTORS
+        .filter(f => confirmedFacts[f.key])
+        .flatMap(f => [f.key.replace(/_/g, ' '), f.label.toLowerCase()]);
+
+      const riskItems = parsed.fields.risks_and_unknowns
+        .split(/[;\n]/)
+        .map(item => item.trim())
+        .filter(item => item.length > 5);
+
+      const cleanedRisks = riskItems.filter(item => {
+        const itemLower = item.toLowerCase();
+        const isUnknownClaim = /unknown|unconfirmed|not.*specified|not.*confirmed|unclear|tbd|needs?\s+(?:clarification|confirmation)/i.test(item);
+        if (!isUnknownClaim) return true; // genuine risk — keep
+        // If it claims something is unknown but we have confirmed evidence → remove
+        return !confirmedLabels.some(label => itemLower.includes(label));
+      });
+      parsed.fields.risks_and_unknowns = cleanedRisks.join('; ');
+    }
+
+    // STAGE 6: Deterministic readiness
+    const unknownCount = derivedUnknowns.length;
+    if (unknownCount === 0) {
+      parsed.ready = true;
+      parsed.readiness_reason = 'All required facts confirmed. Ready for proposal.';
+    } else if (unknownCount <= 2) {
+      parsed.ready = true;
+      parsed.readiness_reason = `${unknownCount} minor gap${unknownCount > 1 ? 's' : ''} remaining (${derivedUnknowns.join(', ').replace(/_/g, ' ')}), but sufficient for proposal.`;
+    } else {
+      parsed.ready = false;
+      parsed.readiness_reason = `${unknownCount} required facts still missing: ${derivedUnknowns.join(', ').replace(/_/g, ' ')}.`;
+    }
+
+    // STAGE 7: Hard validation guard
+    for (const key of confirmedKeys) {
+      const label = key.replace(/_/g, ' ');
+      if (parsed.fields.follow_up_questions?.toLowerCase().includes(label)) {
+        console.error(`[autofill] INVALID UNKNOWN GENERATED — BLOCKED: "${key}" is confirmed but appears in follow_up_questions`);
+        parsed.fields.follow_up_questions = parsed.fields.follow_up_questions
+          .split(/[;]/).filter(q => !q.toLowerCase().includes(label)).join('; ').trim();
       }
     }
 
-    // v1.95.4: Debug logging
-    console.log('[autofill] FINAL follow_up_questions:', parsed.fields.follow_up_questions?.substring(0, 200) || '(empty)');
-    console.log('[autofill] FINAL risks_and_unknowns:', parsed.fields.risks_and_unknowns?.substring(0, 200) || '(empty)');
-    console.log('[autofill] FINAL readiness:', parsed.ready, '—', parsed.readiness_reason?.substring(0, 100));
+    console.log('[autofill] FINAL readiness:', parsed.ready, '—', parsed.readiness_reason);
 
     return NextResponse.json(parsed);
   } catch (err) {
