@@ -523,7 +523,44 @@ export async function POST(req: NextRequest, { params }: Params) {
     .maybeSingle();
 
   if (briefRow?.technical_research && isUsableResearch(briefRow.technical_research)) {
-    researchContext = synthesiseResearch(briefRow.technical_research as TechnicalResearch);
+    const research = briefRow.technical_research as TechnicalResearch;
+
+    // ── v1.95.4: Strip answered unknowns BEFORE injecting into prompt ────
+    // The AI sees "Open questions from research" and regenerates them as
+    // follow_up_questions/risks, defeating post-processing cleanup.
+    // Fix: remove unknowns that iteration content has already answered.
+    if (research.unknowns && research.unknowns.length > 0 && mergedContext) {
+      const iterMatch = mergedContext.match(/## Iteration log[\s\S]*?(?=\n##|$)/i)?.[0] ?? '';
+      const newInfoMatch = mergedContext.match(/## New information[\s\S]*?(?=\n##|$)/i)?.[0] ?? '';
+      const answeredText = (iterMatch + ' ' + newInfoMatch).toLowerCase();
+
+      if (answeredText.length > 20) {
+        const ANSWER_SIGNALS: Array<{ topic: RegExp; keywords: string[] }> = [
+          { topic: /pos|point.of.sale|till|square|clover|toast/i, keywords: ['square', 'clover', 'toast', 'pos', 'till', 'epos'] },
+          { topic: /brs|tee.?sheet|booking.*api/i, keywords: ['brs', 'rest api', 'nightly batch', 'api confirmed', 'api available'] },
+          { topic: /migrat|clubnet|legacy|existing.*system|data.*(?:transfer|export)/i, keywords: ['migration', 'csv export', 'csv import', 'clubnet', 'member data', 'data transfer'] },
+          { topic: /golf.?ireland|handicap/i, keywords: ['golf ireland', 'handicap api', 'handicap data'] },
+          { topic: /rollout|phased|deployment.*(?:plan|approach)/i, keywords: ['phased', 'phase 1', 'rollout', 'phased approach'] },
+          { topic: /transaction.*volume|throughput/i, keywords: ['transactions/week', 'tx/week', 'per week', 'volume'] },
+          { topic: /support.*model|ongoing.*support|maintenance/i, keywords: ['support', 'maintenance', 'sla', 'support model'] },
+        ];
+        const beforeCount = research.unknowns.length;
+        research.unknowns = research.unknowns.filter(unknown => {
+          const uLower = unknown.toLowerCase();
+          for (const { topic, keywords } of ANSWER_SIGNALS) {
+            if (topic.test(uLower) && keywords.some(kw => answeredText.includes(kw))) {
+              return false;
+            }
+          }
+          return true;
+        });
+        if (research.unknowns.length < beforeCount) {
+          console.log(`[autofill] Stripped ${beforeCount - research.unknowns.length} answered unknowns from research prompt context`);
+        }
+      }
+    }
+
+    researchContext = synthesiseResearch(research);
     console.log('[autofill] Injecting prior technical research into prompt.');
   }
 
@@ -692,8 +729,41 @@ export async function POST(req: NextRequest, { params }: Params) {
           parsed.ready = true;
           parsed.readiness_reason = 'Key open questions have been answered via iteration inputs. Scope is sufficiently clear to prepare a proposal.';
         }
+
+        // v1.95.4: Leak detection guard
+        const LEAK_RULES = [
+          { keyword: 'pos', triggers: ['square', 'clover', 'toast', 'pos confirmed', 'till system'] },
+          { keyword: 'brs', triggers: ['brs', 'rest api', 'api confirmed'] },
+          { keyword: 'golf ireland', triggers: ['golf ireland', 'handicap'] },
+          { keyword: 'migration', triggers: ['migration', 'clubnet', 'csv export'] },
+          { keyword: 'transaction', triggers: ['transactions/week', 'per week', 'volume'] },
+        ];
+        for (const rule of LEAK_RULES) {
+          const matched = rule.triggers.some(t => answeredText.includes(t));
+          if (!matched) continue;
+          const hasLeak =
+            parsed.fields.follow_up_questions?.toLowerCase().includes(rule.keyword) ||
+            parsed.fields.risks_and_unknowns?.toLowerCase().includes(rule.keyword);
+          if (hasLeak) {
+            console.warn(`[autofill] LEAK DETECTED for topic "${rule.keyword}" — stripping from output`);
+            // Force-strip any remaining leaks
+            if (parsed.fields.follow_up_questions) {
+              parsed.fields.follow_up_questions = parsed.fields.follow_up_questions
+                .split(/[;?\n]/).filter(q => !q.toLowerCase().includes(rule.keyword)).join('; ').trim();
+            }
+            if (parsed.fields.risks_and_unknowns) {
+              parsed.fields.risks_and_unknowns = parsed.fields.risks_and_unknowns
+                .split(/[;\n]/).filter(q => !q.toLowerCase().includes(rule.keyword)).join('; ').trim();
+            }
+          }
+        }
       }
     }
+
+    // v1.95.4: Debug logging
+    console.log('[autofill] FINAL follow_up_questions:', parsed.fields.follow_up_questions?.substring(0, 200) || '(empty)');
+    console.log('[autofill] FINAL risks_and_unknowns:', parsed.fields.risks_and_unknowns?.substring(0, 200) || '(empty)');
+    console.log('[autofill] FINAL readiness:', parsed.ready, '—', parsed.readiness_reason?.substring(0, 100));
 
     return NextResponse.json(parsed);
   } catch (err) {
