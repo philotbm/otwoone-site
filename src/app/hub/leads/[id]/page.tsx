@@ -4021,10 +4021,15 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {/* Lifecycle stepper */}
+      {/* Lifecycle stepper — v1.100.9: use derived status for pre-conversion leads */}
       <div className="px-6 pt-5 pb-2 max-w-4xl mx-auto">
         <LifecycleStepper
-          currentStep={project ? (STATUS_STEP[project.project_status ?? ''] ?? 1) : 1}
+          currentStep={project
+            ? (STATUS_STEP[project.project_status ?? ''] ?? 1)
+            : displayStatus === 'ready_for_proposal' ? 3
+            : displayStatus === 'scope_analysis' ? 2
+            : 1
+          }
           onStepClick={(step) => {
             if (!project) return;
             const currentStep = STATUS_STEP[project.project_status ?? ''] ?? 1;
