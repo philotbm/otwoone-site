@@ -4316,16 +4316,19 @@ export default function LeadDetailPage() {
             <div className="px-5 py-3 rounded-xl border border-white/[0.06] bg-[#12131a]">
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mr-2">Workflow</span>
-                {/* v1.101.2: 3-state workflow pills: inactive / active / complete */}
+                {/* v1.101.3: Workflow pills use briefEligible as proposal-stage truth —
+                    the SAME gate controlling proposal workspace + "Go to Proposal" button */}
                 {(() => {
-                  const proposalExists = !!proposal || briefProposal.trim().length > 0;
-
-                  // Determine current workflow stage from real progression truth
+                  // briefEligible = status is ready_for_proposal or later (DB status)
+                  // This is the exact same condition that gates:
+                  //   - proposal workspace rendering (line ~5895)
+                  //   - "Go to Proposal" button (line ~4011)
+                  //   - proposal fetching (line ~1334)
                   type PillStage = "gather_info" | "ready" | "proposal";
                   let stage: PillStage = "gather_info";
-                  if (proposalExists) {
+                  if (briefEligible) {
                     stage = "proposal";
-                  } else if (displayStatus === "ready_for_proposal") {
+                  } else if (displayStatus === "ready_for_proposal" || isReadyForDerived) {
                     stage = "ready";
                   }
 
