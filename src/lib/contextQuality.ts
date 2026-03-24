@@ -119,6 +119,13 @@ type EvidenceDepthInput = {
   hasBuildPricing: boolean;
   /** Number of detected complexity signals */
   complexitySignalCount: number;
+  /**
+   * v1.100.5: Additional analysed context for blocker resolution.
+   * Includes research summary, complexity signal keys, assumption text, etc.
+   * Blockers matched against this text are considered resolved even if not
+   * present in the original merged intake context.
+   */
+  analysedContext?: string;
 };
 
 // ── Banding thresholds ──────────────────────────────────────────────────────
@@ -155,10 +162,22 @@ export function evaluateContextQuality(
   const assumptions: string[] = [];
   let blockersMissing = 0;
 
+  // v1.100.5: Analysed context can resolve blockers that aren't in raw intake.
+  // E.g. research mentions Clerk/auth, Supabase/database, or complexity signals
+  // include authentication_roles — these resolve blocker signals.
+  const resolvedByAnalysis = new Set<string>();
+  const analysedText = depth?.analysedContext ?? "";
+
   for (const area of SIGNAL_AREAS) {
-    if (area.patterns.test(mergedContext)) {
+    const matchedInContext = area.patterns.test(mergedContext);
+    const matchedInAnalysis = analysedText.length > 0 && area.patterns.test(analysedText);
+
+    if (matchedInContext || matchedInAnalysis) {
       coverageScore += area.weight;
       confirmedSignals.push(area.label);
+      if (matchedInAnalysis && !matchedInContext) {
+        resolvedByAnalysis.add(area.key);
+      }
     } else {
       missingSignals.push({
         key: area.key,
