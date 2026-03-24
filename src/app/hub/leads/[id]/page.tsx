@@ -19,7 +19,7 @@ import {
   type MeetingStage,
   type MeetingOutcome,
 } from "@/lib/leadStatus";
-import { evaluateContextQuality, buildAssumptionsBlock, type ContextQualityResult } from "@/lib/contextQuality";
+import { evaluateContextQuality, buildAssumptionsBlock, computeResolvedSignals, type ContextQualityResult } from "@/lib/contextQuality";
 
 // ─── Safe JSON fetch ─────────────────────────────────────────────────────────
 // Defensively fetches JSON from an API route. Checks res.ok and content-type
@@ -1719,20 +1719,16 @@ export default function LeadDetailPage() {
   // ── v1.100.0: Context Quality Gate ──────────────────────────────────────────
   const contextQuality = useMemo((): ContextQualityResult | null => {
     if (!mergedClientContext || mergedClientContext.length < 20) return null;
-    // v1.100.5: Build analysed context string for blocker resolution.
-    // Includes research summary/recommendations, complexity signal keys,
-    // and assumption text so blockers are resolved by analysis evidence.
-    const analysedParts: string[] = [];
-    if (technicalResearch) {
-      if (technicalResearch.summary) analysedParts.push(technicalResearch.summary);
-      if (technicalResearch.recommendations?.length) analysedParts.push(technicalResearch.recommendations.join(" "));
-      if (technicalResearch.assumptions?.length) analysedParts.push(technicalResearch.assumptions.join(" "));
-    }
-    if (complexityResult?.detected_signals?.length) {
-      analysedParts.push(complexityResult.detected_signals.map(s => s.key.replace(/_/g, " ") + " " + (s.evidence ?? "")).join(" "));
-    }
-    if (briefSummary.trim()) analysedParts.push(briefSummary);
-    if (briefSolution.trim()) analysedParts.push(briefSolution);
+    // v1.100.6: Compute resolved signals from structured analysis outputs.
+    // No text blob scanning — uses typed fields from research, complexity, and brief.
+    const resolved = computeResolvedSignals({
+      complexitySignalKeys: complexityResult?.detected_signals?.map(s => s.key) ?? [],
+      hasTechnicalResearch: technicalResearch !== null,
+      researchRecommendations: technicalResearch?.recommendations ?? [],
+      researchAssumptions: technicalResearch?.assumptions ?? [],
+      briefSummary: briefSummary,
+      briefSolution: briefSolution,
+    });
 
     return evaluateContextQuality(mergedClientContext, {
       iterationCount: iterations.length,
@@ -1740,7 +1736,7 @@ export default function LeadDetailPage() {
       hasComplexityResult: complexityResult !== null && complexityResult.complexity_score > 0,
       hasBuildPricing: false,
       complexitySignalCount: complexityResult?.detected_signals?.length ?? 0,
-      analysedContext: analysedParts.join(" "),
+      resolvedSignals: resolved,
     });
   }, [mergedClientContext, iterations.length, technicalResearch, complexityResult, briefSummary, briefSolution]);
 

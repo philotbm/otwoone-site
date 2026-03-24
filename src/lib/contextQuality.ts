@@ -108,6 +108,20 @@ const SIGNAL_AREAS: SignalArea[] = [
 
 // ── Evidence depth signals (decision-readiness boosters) ────────────────────
 
+/**
+ * v1.100.6: Explicit resolved signals from structured analysis outputs.
+ * Each maps to a blocker signal key. When true, that blocker is considered
+ * resolved regardless of whether the pattern matches in raw intake text.
+ */
+export type ResolvedSignals = {
+  /** Auth resolved: research mentions auth provider, complexity has authentication_roles, or assumptions include auth */
+  user_accounts: boolean;
+  /** Data resolved: research mentions database/storage, complexity has data signals, or assumptions include database */
+  data_storage: boolean;
+  /** Scope resolved: brief summary is substantial, or sufficient complexity signals exist */
+  scope_definition: boolean;
+};
+
 type EvidenceDepthInput = {
   /** Number of iteration entries (calls, meetings, emails) */
   iterationCount: number;
@@ -119,13 +133,8 @@ type EvidenceDepthInput = {
   hasBuildPricing: boolean;
   /** Number of detected complexity signals */
   complexitySignalCount: number;
-  /**
-   * v1.100.5: Additional analysed context for blocker resolution.
-   * Includes research summary, complexity signal keys, assumption text, etc.
-   * Blockers matched against this text are considered resolved even if not
-   * present in the original merged intake context.
-   */
-  analysedContext?: string;
+  /** v1.100.6: Explicit signal resolution from structured analysis outputs */
+  resolvedSignals?: ResolvedSignals;
 };
 
 // ── Banding thresholds ──────────────────────────────────────────────────────
@@ -162,22 +171,17 @@ export function evaluateContextQuality(
   const assumptions: string[] = [];
   let blockersMissing = 0;
 
-  // v1.100.5: Analysed context can resolve blockers that aren't in raw intake.
-  // E.g. research mentions Clerk/auth, Supabase/database, or complexity signals
-  // include authentication_roles — these resolve blocker signals.
-  const resolvedByAnalysis = new Set<string>();
-  const analysedText = depth?.analysedContext ?? "";
+  // v1.100.6: Explicit signal resolution from structured analysis outputs.
+  // Blockers are resolved via typed flags, not text scanning.
+  const resolved = depth?.resolvedSignals;
 
   for (const area of SIGNAL_AREAS) {
     const matchedInContext = area.patterns.test(mergedContext);
-    const matchedInAnalysis = analysedText.length > 0 && area.patterns.test(analysedText);
+    const resolvedByAnalysis = resolved?.[area.key as keyof ResolvedSignals] === true;
 
-    if (matchedInContext || matchedInAnalysis) {
+    if (matchedInContext || resolvedByAnalysis) {
       coverageScore += area.weight;
       confirmedSignals.push(area.label);
-      if (matchedInAnalysis && !matchedInContext) {
-        resolvedByAnalysis.add(area.key);
-      }
     } else {
       missingSignals.push({
         key: area.key,
@@ -255,6 +259,59 @@ export function evaluateContextQuality(
     missingSignals,
     assumptions,
     rationale,
+  };
+}
+
+/**
+ * v1.100.6: Compute resolved signals from structured analysis outputs.
+ * Each signal is resolved by checking specific typed fields — no text blob scanning.
+ */
+export function computeResolvedSignals(inputs: {
+  /** Complexity signal keys (e.g. ["authentication_roles", "booking_system"]) */
+  complexitySignalKeys: string[];
+  /** Whether technical research exists and is populated */
+  hasTechnicalResearch: boolean;
+  /** Research recommendation strings (e.g. ["Clerk for authentication", "Supabase for database"]) */
+  researchRecommendations: string[];
+  /** Research assumption strings */
+  researchAssumptions: string[];
+  /** Brief project summary text */
+  briefSummary: string;
+  /** Brief recommended solution text */
+  briefSolution: string;
+}): ResolvedSignals {
+  const cxKeys = new Set(inputs.complexitySignalKeys);
+  const recsLower = inputs.researchRecommendations.map(r => r.toLowerCase()).join(" ");
+  const assumeLower = inputs.researchAssumptions.map(a => a.toLowerCase()).join(" ");
+  const briefLower = (inputs.briefSummary + " " + inputs.briefSolution).toLowerCase();
+
+  // AUTH: resolved if complexity has auth signal, or research recommends auth provider
+  const authProviders = ["clerk", "auth0", "supabase auth", "firebase auth", "nextauth", "lucia"];
+  const authResolved =
+    cxKeys.has("authentication_roles") ||
+    authProviders.some(p => recsLower.includes(p)) ||
+    /\b(authentication|rbac|role.based|login\s+system)\b/i.test(recsLower) ||
+    /\bassume.*auth/i.test(assumeLower);
+
+  // DATA: resolved if complexity has data signals, or research recommends database
+  const dataProviders = ["supabase", "postgresql", "postgres", "neon", "planetscale", "firebase", "mongodb", "dynamodb"];
+  const dataResolved =
+    cxKeys.has("document_upload") ||
+    cxKeys.has("workflow_states") ||
+    dataProviders.some(p => recsLower.includes(p)) ||
+    /\b(database|data\s*store|persist|migration|records)\b/i.test(recsLower) ||
+    /\bassume.*database/i.test(assumeLower);
+
+  // SCOPE: resolved if brief has substantial content, or enough complexity signals exist
+  const scopeResolved =
+    inputs.briefSummary.trim().length > 50 ||
+    inputs.complexitySignalKeys.length >= 3 ||
+    /\b(platform|system|portal|web\s*app|application)\b/i.test(briefLower);
+
+  return {
+    user_accounts: authResolved,
+    data_storage: dataResolved,
+    scope_definition: scopeResolved,
   };
 }
 
