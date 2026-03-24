@@ -4316,18 +4316,24 @@ export default function LeadDetailPage() {
             <div className="px-5 py-3 rounded-xl border border-white/[0.06] bg-[#12131a]">
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mr-2">Workflow</span>
+                {/* v1.101.2: 3-state workflow pills: inactive / active / complete */}
                 {(() => {
-                  // Atomic analysis gate: show "Full Analysis" as a single step
-                  // rather than individual fragments. Only show sub-steps once
-                  // analysis has been explicitly run.
-                  const scopeReadyDone = scopeReady !== null;
-                  const proposalDone = briefProposal.trim().length > 0;
+                  const proposalExists = !!proposal || briefProposal.trim().length > 0;
 
-                  const isEvidenceReady = hasAnyAnalysis || (scopeReadyDone && scopeReady === true);
-                  const steps = [
-                    { label: "Gather info", done: hasAnyAnalysis || iterations.length > 0 },
-                    { label: "Ready", done: isEvidenceReady },
-                    { label: "Proposal", done: proposalDone },
+                  // Determine current workflow stage from real progression truth
+                  type PillStage = "gather_info" | "ready" | "proposal";
+                  let stage: PillStage = "gather_info";
+                  if (proposalExists) {
+                    stage = "proposal";
+                  } else if (displayStatus === "ready_for_proposal") {
+                    stage = "ready";
+                  }
+
+                  type PillState = "inactive" | "active" | "complete";
+                  const steps: Array<{ label: string; state: PillState }> = [
+                    { label: "Gather info", state: stage === "gather_info" ? "active" : "complete" },
+                    { label: "Ready", state: stage === "ready" ? "active" : stage === "proposal" ? "complete" : "inactive" },
+                    { label: "Proposal", state: stage === "proposal" ? "active" : "inactive" },
                   ];
 
                   return steps.map((s, i) => (
@@ -4335,11 +4341,11 @@ export default function LeadDetailPage() {
                       {i > 0 && <span className="text-gray-700 text-[10px]">→</span>}
                       <span className={cx(
                         "text-[10px] font-medium px-2 py-0.5 rounded",
-                        s.done
-                          ? "bg-green-500/15 text-green-400"
-                          : "bg-white/5 text-gray-600",
+                        s.state === "complete" ? "bg-green-500/15 text-green-400" :
+                        s.state === "active" ? "bg-indigo-500/15 text-indigo-400" :
+                        "bg-white/5 text-gray-600",
                       )}>
-                        {s.done ? "✓" : "•"} {s.label}
+                        {s.state === "complete" ? "✓" : s.state === "active" ? "●" : "•"} {s.label}
                       </span>
                     </div>
                   ));
