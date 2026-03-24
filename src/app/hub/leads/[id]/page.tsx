@@ -1066,6 +1066,7 @@ export default function LeadDetailPage() {
   const [iterNotes,           setIterNotes]           = useState("");
   const [iterSaving,          setIterSaving]          = useState(false);
   const [unifiedRunning,      setUnifiedRunning]      = useState(false);
+  const [recomputeStep,       setRecomputeStep]       = useState<string>("");
   const [expandedIteration,   setExpandedIteration]   = useState<string | null>(null);
 
   // Lead Revision Execution state
@@ -2861,6 +2862,7 @@ export default function LeadDetailPage() {
 
   async function runUnifiedAnalysis(extraContext?: string, freshIterations?: LeadIteration[]) {
     setUnifiedRunning(true);
+    setRecomputeStep("Saving new evidence…");
     setAnalysisEverRun(true);
 
     // Build full context including iterations.
@@ -2875,6 +2877,7 @@ export default function LeadDetailPage() {
     const contextWithIterations = mergedClientContext + iterationText + (extraContext ? `\n\n## New information (just added)\nIMPORTANT: This was just confirmed by the operator. Update analysis to reflect this.\n${extraContext}` : "");
 
     // 1. Run technical research
+    setRecomputeStep("Recomputing research…");
     setResearchLoading(true);
     setResearchError("");
     const researchResult = await safeFetch<{ research: TechnicalResearch; updated_at: string }>(
@@ -2893,6 +2896,7 @@ export default function LeadDetailPage() {
 
     // 2. Run complexity (reads research from DB — must run before autofill so
     //    the consultant brief has complexity signals on the very first run)
+    setRecomputeStep("Recomputing complexity…");
     setComplexityLoading(true);
     setComplexityError("");
     const complexityFetchResult = await safeFetch<ComplexityResult>(
@@ -2920,6 +2924,7 @@ export default function LeadDetailPage() {
 
     // 3. Run consultant brief analysis (autofill) — now has complexity signals
     // v1.96.0: Pass fresh research directly so autofill never reads stale DB
+    setRecomputeStep("Recomputing brief & readiness…");
     setAutofillLoading(true);
     setAutofillError("");
     const autofillBody: Record<string, unknown> = {
@@ -2990,6 +2995,7 @@ export default function LeadDetailPage() {
       setReadinessReason(readiness_reason);
 
       // Persist brief to DB
+      setRecomputeStep("Saving analysis…");
       await safeFetch(`/api/hub/leads/${id}/brief`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -3010,6 +3016,7 @@ export default function LeadDetailPage() {
       });
 
       // v1.96.0: Refetch canonical brief from DB to guarantee UI matches persisted truth
+      setRecomputeStep("Reloading analysis…");
       const briefRefresh = await safeFetch<{ brief: Record<string, unknown> }>(`/api/hub/leads/${id}/brief`);
       if (briefRefresh.ok && briefRefresh.data.brief) {
         const b = briefRefresh.data.brief;
@@ -3029,6 +3036,7 @@ export default function LeadDetailPage() {
       }
     }
 
+    setRecomputeStep("");
     setUnifiedRunning(false);
   }
 
@@ -4253,24 +4261,25 @@ export default function LeadDetailPage() {
                     {analysisPassComplete ? "Analysis complete" : unifiedRunning ? "Analysis running…" : "Ready to analyse"}
                   </p>
                   <p className="text-[10px] text-gray-500">
-                    Runs system analysis, technical research, complexity, pricing, and monthly costs in one pass.
+                    {analysisPassComplete
+                      ? "Use Add Information below to add new context and refresh analysis."
+                      : "Runs system analysis, technical research, complexity, pricing, and monthly costs in one pass."}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={(!mergedClientContext.trim()) || unifiedRunning || autofillLoading || researchLoading}
-                  onClick={() => runUnifiedAnalysis()}
-                  className={cx(
-                    "rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
-                    analysisPassComplete
-                      ? "px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500"
-                      : "px-7 py-3 bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-500/20",
-                  )}
-                >
-                  {unifiedRunning ? "Running full pipeline…" : analysisPassComplete ? "Refresh analysis" : "Run Full Analysis"}
-                </button>
+                {/* v1.99.0: Only show Run button BEFORE initial analysis.
+                    After analysis, the only recompute path is Add Information → "Add and refresh analysis". */}
+                {!analysisPassComplete && (
+                  <button
+                    type="button"
+                    disabled={(!mergedClientContext.trim()) || unifiedRunning || autofillLoading || researchLoading}
+                    onClick={() => runUnifiedAnalysis()}
+                    className="px-7 py-3 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {unifiedRunning ? "Running full pipeline…" : "Run Full Analysis"}
+                  </button>
+                )}
               </div>
-              {unifiedRunning && (
+              {unifiedRunning && !analysisPassComplete && (
                 <div className="mt-3 flex items-center gap-2">
                   <div className="h-1 flex-1 bg-white/5 rounded-full overflow-hidden">
                     <div className="h-full bg-emerald-500/60 rounded-full animate-pulse" style={{ width: researchLoading ? "25%" : complexityLoading ? "50%" : autofillLoading ? "75%" : "100%" }} />
@@ -5024,6 +5033,21 @@ export default function LeadDetailPage() {
                     ? (analysisPassComplete ? "Saving & recomputing…" : "Saving…")
                     : (analysisPassComplete ? "Add and refresh analysis" : "Add context")}
                 </button>
+                {/* v1.99.0: Inline recompute progress — operator stays in Add Information */}
+                {unifiedRunning && recomputeStep && (
+                  <div className="mt-3 px-3 py-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/15">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                      <span className="text-xs text-emerald-400 font-medium">{recomputeStep}</span>
+                    </div>
+                    <div className="mt-2 h-1 bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500/60 rounded-full transition-all duration-500"
+                        style={{ width: researchLoading ? "20%" : complexityLoading ? "40%" : autofillLoading ? "65%" : recomputeStep.includes("Saving") ? "85%" : recomputeStep.includes("Reloading") ? "95%" : "100%" }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </Section>
           </div>
