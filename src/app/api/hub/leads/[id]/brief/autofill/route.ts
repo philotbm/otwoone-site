@@ -483,6 +483,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     clarification_rounds?: ClarificationRoundInput[];
     pricing_signals?: PricingSignals;
     complexity_signals?: ComplexitySignals;
+    fresh_research?: unknown; // v1.96.0: fresh research from pipeline
   };
   try {
     body = await req.json();
@@ -514,54 +515,29 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('lead_id', id)
     .maybeSingle();
 
-  // ── Retrieve prior technical research if available ──────────────────────────
+  // ── v1.96.0: Use fresh research passed from frontend (single source of truth)
+  // Previously we read research from DB, which could be stale. Now the frontend
+  // passes the fresh research result directly after running the research step.
+  // Fallback: read from DB only if not provided (backward compatibility).
   let researchContext = '';
-  const { data: briefRow } = await supabaseServer
-    .from('lead_briefs')
-    .select('technical_research')
-    .eq('lead_id', id)
-    .maybeSingle();
+  let researchSource = 'none';
 
-  if (briefRow?.technical_research && isUsableResearch(briefRow.technical_research)) {
-    const research = briefRow.technical_research as TechnicalResearch;
+  if (body.fresh_research && isUsableResearch(body.fresh_research)) {
+    researchContext = synthesiseResearch(body.fresh_research as TechnicalResearch);
+    researchSource = 'fresh_from_pipeline';
+    console.log('[autofill] Using fresh research passed from pipeline (no DB read).');
+  } else {
+    const { data: briefRow } = await supabaseServer
+      .from('lead_briefs')
+      .select('technical_research')
+      .eq('lead_id', id)
+      .maybeSingle();
 
-    // ── v1.95.4: Strip answered unknowns BEFORE injecting into prompt ────
-    // The AI sees "Open questions from research" and regenerates them as
-    // follow_up_questions/risks, defeating post-processing cleanup.
-    // Fix: remove unknowns that iteration content has already answered.
-    if (research.unknowns && research.unknowns.length > 0 && mergedContext) {
-      const iterMatch = mergedContext.match(/## Iteration log[\s\S]*?(?=\n##|$)/i)?.[0] ?? '';
-      const newInfoMatch = mergedContext.match(/## New information[\s\S]*?(?=\n##|$)/i)?.[0] ?? '';
-      const answeredText = (iterMatch + ' ' + newInfoMatch).toLowerCase();
-
-      if (answeredText.length > 20) {
-        const ANSWER_SIGNALS: Array<{ topic: RegExp; keywords: string[] }> = [
-          { topic: /pos|point.of.sale|till|square|clover|toast/i, keywords: ['square', 'clover', 'toast', 'pos', 'till', 'epos'] },
-          { topic: /brs|tee.?sheet|booking.*api/i, keywords: ['brs', 'rest api', 'nightly batch', 'api confirmed', 'api available'] },
-          { topic: /migrat|clubnet|legacy|existing.*system|data.*(?:transfer|export)/i, keywords: ['migration', 'csv export', 'csv import', 'clubnet', 'member data', 'data transfer'] },
-          { topic: /golf.?ireland|handicap/i, keywords: ['golf ireland', 'handicap api', 'handicap data'] },
-          { topic: /rollout|phased|deployment.*(?:plan|approach)/i, keywords: ['phased', 'phase 1', 'rollout', 'phased approach'] },
-          { topic: /transaction.*volume|throughput/i, keywords: ['transactions/week', 'tx/week', 'per week', 'volume'] },
-          { topic: /support.*model|ongoing.*support|maintenance/i, keywords: ['support', 'maintenance', 'sla', 'support model'] },
-        ];
-        const beforeCount = research.unknowns.length;
-        research.unknowns = research.unknowns.filter(unknown => {
-          const uLower = unknown.toLowerCase();
-          for (const { topic, keywords } of ANSWER_SIGNALS) {
-            if (topic.test(uLower) && keywords.some(kw => answeredText.includes(kw))) {
-              return false;
-            }
-          }
-          return true;
-        });
-        if (research.unknowns.length < beforeCount) {
-          console.log(`[autofill] Stripped ${beforeCount - research.unknowns.length} answered unknowns from research prompt context`);
-        }
-      }
+    if (briefRow?.technical_research && isUsableResearch(briefRow.technical_research)) {
+      researchContext = synthesiseResearch(briefRow.technical_research as TechnicalResearch);
+      researchSource = 'db_fallback';
+      console.log('[autofill] Using research from DB (fallback — no fresh research provided).');
     }
-
-    researchContext = synthesiseResearch(research);
-    console.log('[autofill] Injecting prior technical research into prompt.');
   }
 
   // ── Synthesise pricing signals if provided ─────────────────────────────────
