@@ -3971,10 +3971,10 @@ export default function LeadDetailPage() {
         )}
       </header>
 
-      {/* Next Action panel */}
+      {/* Next Action panel — v1.101.0: uses derived next action, not DB status */}
       <div className="border-b border-white/5 px-6 py-3 flex items-center gap-3">
         <span className="text-[10px] text-gray-600 uppercase tracking-wide shrink-0">Next action</span>
-        <span className="text-xs text-gray-300">{NEXT_ACTION[status]}</span>
+        <span className="text-xs text-gray-300">{['enquiry_received', 'scope_analysis', 'ready_for_proposal'].includes(status) ? nextAction : NEXT_ACTION[status]}</span>
         {meetingHint && (
           <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-400 font-medium">{meetingHint}</span>
         )}
