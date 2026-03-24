@@ -4362,10 +4362,11 @@ export default function LeadDetailPage() {
                   </div>
                 )}
 
-                {contextQuality.band !== "strong" && contextQuality.assumptions.length > 0 && (
+                {/* v1.100.4: Only show assumptions AFTER analysis has run */}
+                {hasAnyAnalysis && contextQuality.band !== "strong" && contextQuality.assumptions.length > 0 && (
                   <div className="space-y-1.5">
                     <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">
-                      Assumptions used if analysis proceeds
+                      Assumptions used in analysis
                     </p>
                     <ul className="space-y-1">
                       {contextQuality.assumptions.map((a, i) => (
