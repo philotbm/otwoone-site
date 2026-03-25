@@ -630,8 +630,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       /\b(approximately|about|roughly|~)\s*\d+\b.*\b(per\s+)?(week|month)\b/i,
     ]},
     { key: 'rollout_strategy', label: 'Rollout plan', patterns: [/\bphased\b/i, /\brollout\b/i, /\bphase\s*[12]\b/i, /\b(launch|deliver|implement)\s*(in\s+)?(stages?|phases?)\b/i, /\bcore\s+features?\s+first\b/i, /\bmvp\b/i] },
-    { key: 'platform_scope', label: 'Platform scope', patterns: [/\b(web\s+only|web\s+app|web\s+product|web\s+platform)\b/i, /\b(native\s+app|ios\s+app|android\s+app|mobile\s+app)\b/i, /\b(do\s+not|don'?t)\s+want\s+native\b/i, /\bpwa\b/i, /\bmobile[- ]?optimis/i, /\bresponsive\b/i] },
-    { key: 'support_model', label: 'Support model', patterns: [/\bmanaged\s*(post[- ]?launch)?\s*support\b/i, /\bsupport\s+model\b/i, /\b(sla|ongoing\s+support|maintenance\s+plan)\b/i, /\bprovide\s+.*\bsupport\b/i, /\bpost[- ]?launch\s+(support|maintenance)\b/i, /\bmanaged\s+(support|service|maintenance)\b/i] },
+    { key: 'platform_scope', label: 'Platform scope', patterns: [/\b(web\s+only|web\s+app|web\s+product|web\s+platform)\b/i, /\b(native\s+app|ios\s+app|android\s+app|mobile\s+app)\b/i, /\b(do\s+not|don'?t)\s+want\s+native\b/i, /\bpwa\b/i, /\bmobile[- ]?optimis/i, /\bresponsive\b/i, /\bmobile[- ]?first\b/i, /\b(modern|new)\s+website\b/i] },
+    { key: 'support_model', label: 'Support model', patterns: [/\bmanaged\s*(post[- ]?launch)?\s*support\b/i, /\bsupport\s+model\b/i, /\b(sla|ongoing\s+support|maintenance\s+plan)\b/i, /\bprovide\s+.*\bsupport\b/i, /\bpost[- ]?launch\s+(support|maintenance)\b/i, /\bmanaged\s+(support|service|maintenance)\b/i, /\bongoing\b.*\b(support|maintenance)\b/i, /\b(hosting|maintenance)\s+support\b/i] },
     { key: 'budget', label: 'Budget', patterns: [/\bbudget\b.*€/i, /€\s*\d{2,}k?/i, /\b\d{2,}k?\s*[–-]\s*€?\d/i, /\bbudget\b.*\b(confirmed|agreed|approved|is|range)\b/i, /\btarget\s+budget\b/i, /\bproject\s+budget\b/i] },
     { key: 'timeline', label: 'Timeline', patterns: [/\b\d+[–-]\d+\s+weeks?\b/i, /\b\d+\s+weeks?\b/i, /\b\d+\s+months?\b/i, /\bdelivery\s+target\b/i, /\btarget\s+.*\b(launch|delivery|go[- ]?live)\b/i, /\b(launch|deliver|go[- ]?live)\b.*\b(by|before|within|in)\b/i, /\bQ[1-4]\s+\d{4}\b/i] },
     { key: 'authentication', label: 'Auth approach', patterns: [/\b(member|staff|admin|user)\s+(login|portal|dashboard|account|access)\b/i, /\brole[- ]?based\s+(permissions?|access)\b/i, /\bstaff\s+roles?\b/i, /\bself[- ]?registration\b/i, /\bbulk\s+(email\s+)?invite\b/i, /\bonboarding\b/i] },
@@ -710,6 +710,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   // If AI fails, we still return deterministic fields with fallback synthesis.
 
   let aiFields: AutofillFields | null = null;
+  let aiFailed = false;
+  let aiFailReason = '';
   try {
     const anthropic = new Anthropic({ apiKey });
     const message = await anthropic.messages.create({
@@ -731,17 +733,22 @@ export async function POST(req: NextRequest, { params }: Params) {
         console.log('[autofill] AI synthesis succeeded.');
       }
     } catch (parseErr) {
-      console.error('[autofill] AI parse failed — using deterministic fallback for all fields.', parseErr instanceof Error ? parseErr.message : parseErr);
+      aiFailed = true;
+      aiFailReason = `AI response could not be parsed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`;
+      console.error('[autofill] AI parse failed — using deterministic fallback for all fields.', aiFailReason);
     }
   } catch (err) {
-    console.error('[autofill] AI call failed — using deterministic fallback for all fields.', err instanceof Error ? err.message : err);
+    aiFailed = true;
+    aiFailReason = `AI call failed: ${err instanceof Error ? err.message : String(err)}`;
+    console.error('[autofill] AI call failed — using deterministic fallback for all fields.', aiFailReason);
   }
 
   // ── Build final response: AI synthesis + deterministic overrides ──
   // AI provides summary, solution, features, etc.
   // Deterministic engine ALWAYS provides follow_ups, readiness, risks.
+  // v1.101.8: When AI fails, mark it explicitly so operators see the gap.
   const finalFields: AutofillFields = aiFields ?? {
-    project_summary: '(Analysis pending — rerun to generate full brief)',
+    project_summary: '',
     project_type: '',
     recommended_solution: '',
     suggested_pages: '',
@@ -769,12 +776,22 @@ export async function POST(req: NextRequest, { params }: Params) {
     }).join('; ');
   }
 
-  const result: AutofillResponse = {
+  const result: AutofillResponse & { ai_failed?: boolean; ai_fail_reason?: string } = {
     fields: finalFields,
     ready: deterministicReady,
     readiness_reason: deterministicReason,
   };
 
-  console.log('[autofill] FINAL:', result.ready, '—', result.readiness_reason, '— follow_ups:', (result.fields.follow_up_questions || '(none)').substring(0, 100));
+  // v1.101.8: Surface AI failure so the operator knows synthesis is incomplete
+  if (aiFailed) {
+    result.ai_failed = true;
+    result.ai_fail_reason = aiFailReason;
+    // When AI fails, readiness should reflect that the brief is incomplete
+    if (deterministicReady) {
+      result.readiness_reason = `Evidence is sufficient but AI synthesis failed — brief fields are empty. ${aiFailReason}`;
+    }
+  }
+
+  console.log('[autofill] FINAL:', result.ready, '—', result.readiness_reason, '— ai_failed:', aiFailed, '— follow_ups:', (result.fields.follow_up_questions || '(none)').substring(0, 100));
   return NextResponse.json(result);
 }

@@ -2580,6 +2580,19 @@ export default function LeadDetailPage() {
     const { fields, ready, readiness_reason } = result.data;
     // Coerce to string — Claude may return arrays/objects for some fields
     const str = (v: unknown) => (v == null ? "" : typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : String(v));
+
+    // v1.101.8: If AI synthesis failed, don't overwrite existing brief with empty fields
+    const aiFailed = (result.data as Record<string, unknown>).ai_failed === true;
+    if (aiFailed) {
+      const reason = String((result.data as Record<string, unknown>).ai_fail_reason ?? "Unknown error");
+      setAutofillError(`AI synthesis failed — brief fields not updated. ${reason}. Try again.`);
+      setScopeReady(ready);
+      setReadinessReason(readiness_reason);
+      setBriefFollowUp(str(fields.follow_up_questions));
+      setBriefRisks(str(fields.risks_and_unknowns));
+      return;
+    }
+
     setBriefSummary(str(fields.project_summary));
     setBriefType(str(fields.project_type));
     setBriefSolution(str(fields.recommended_solution));
@@ -3111,6 +3124,22 @@ export default function LeadDetailPage() {
       console.log("[recompute] AUTOFILL RESULT — ready:", ready, "reason:", readiness_reason);
       console.log("[recompute] AUTOFILL follow_up:", newFollowUp?.substring(0, 200));
       console.log("[recompute] AUTOFILL risks:", newRisks?.substring(0, 200));
+
+      // v1.101.8: If AI synthesis failed, don't overwrite existing brief with empty fields
+      const aiFailed = (autofillResult.data as Record<string, unknown>).ai_failed === true;
+      if (aiFailed) {
+        const reason = String((autofillResult.data as Record<string, unknown>).ai_fail_reason ?? "Unknown error");
+        console.warn("[recompute] AI synthesis failed:", reason);
+        setAutofillError(`AI synthesis failed — brief fields not updated. ${reason}. Try running analysis again.`);
+        // Still update deterministic fields (readiness, follow-ups) but skip AI synthesis fields
+        setScopeReady(ready);
+        setReadinessReason(readiness_reason);
+        setBriefFollowUp(newFollowUp);
+        setBriefRisks(newRisks);
+        setRecomputeStep("");
+        setUnifiedRunning(false);
+        return;
+      }
 
       setBriefSummary(newSummary);
       setBriefType(newType);
