@@ -1311,12 +1311,14 @@ export default function LeadDetailPage() {
     }
   }, []);
 
-  // ── Proposal truth-source booleans (v1.101.5) ──────────────────────────────
+  // ── Proposal truth-source booleans (v1.101.5, hardened v1.101.6) ────────────
   // All proposal-related visibility/gating derives from these.
-  //   briefAccessible  — can view brief (enquiry_received onward)
-  //   briefEligible    — can edit brief + see proposal workspace (ready_for_proposal onward)
-  //   isProposalStage  — actively working on proposal (ready_for_proposal or proposal_sent)
-  //   proposalAdvanced — proposal has been sent and workflow moved past proposal creation
+  //   briefAccessible   — can view brief (enquiry_received onward)
+  //   briefEligible     — can edit brief + see proposal workspace (ready_for_proposal onward)
+  //   isProposalStage   — actively working on proposal (ready_for_proposal or proposal_sent)
+  //   proposalAdvanced  — proposal has been sent and workflow moved past creation
+  //   proposalExpected  — at a stage where a proposal record should already exist
+  //   proposalMissing   — proposal record expected but not present (continuity gap)
   const briefAccessible = ['enquiry_received', 'scope_analysis', 'ready_for_proposal', 'proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
   const briefEligible = ['ready_for_proposal', 'proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
   const isProposalStage = ["ready_for_proposal", "proposal_sent"].includes(status);
@@ -1339,6 +1341,10 @@ export default function LeadDetailPage() {
   }, []);
 
   useEffect(() => { if (briefEligible && id) fetchProposal(id); }, [briefEligible, id, fetchProposal]);
+
+  // v1.101.6: proposal continuity — detect when an advanced stage has no proposal record
+  const proposalExpected = proposalAdvanced;       // proposal_sent+ should always have a record
+  const proposalMissing  = proposalExpected && !proposalLoading && !proposal;
 
   async function createProposal() {
     if (!id) return;
@@ -5919,10 +5925,32 @@ export default function LeadDetailPage() {
           <div id="proposal-engine">
             <Section title="Proposal Workspace">
 
-              {/* ── Create entry point (shown only when no proposal exists) ── */}
+              {/* ── Create / recovery entry point ── */}
               {proposalLoading ? (
                 <p className="text-xs text-gray-500">Loading proposal…</p>
+              ) : !proposalExists && proposalMissing ? (
+                /* v1.101.6: Advanced stage but no proposal record — show recovery state */
+                <div className="space-y-3 px-4 py-4 rounded-lg bg-amber-500/5 border border-amber-500/15">
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-400 text-sm">⚠</span>
+                    <p className="text-xs font-medium text-amber-400">Proposal record missing</p>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    This lead is at {STATUS_LABELS[status] || status} but has no proposal on file.
+                    You can create one now to restore continuity.
+                  </p>
+                  {proposalError && <p className="text-xs text-red-400">{proposalError}</p>}
+                  <button
+                    type="button"
+                    onClick={createProposal}
+                    disabled={proposalSaving}
+                    className="px-5 py-3 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-50"
+                  >
+                    {proposalSaving ? "Creating…" : "Create Proposal to Restore"}
+                  </button>
+                </div>
               ) : !proposalExists ? (
+                /* Normal creation state — ready_for_proposal, no proposal yet */
                 <div className="space-y-3">
                   <p className="text-xs text-gray-400">
                     Start building the proposal. This creates a structured proposal record you can edit, generate a prompt from, and export as PDF.
