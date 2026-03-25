@@ -460,6 +460,22 @@ const STATUS_TO_MEETING_STAGE: Partial<Record<LeadStatus, MeetingStage>> = {
   complete:               "final_approval",
 };
 
+// v1.101.9: Stage-aware meeting type defaults
+const STATUS_TO_MEETING_TYPE: Partial<Record<LeadStatus, MeetingType>> = {
+  enquiry_received:       "discovery_call",
+  scope_analysis:         "discovery_call",
+  ready_for_proposal:     "proposal_walkthrough",
+  proposal_sent:          "proposal_walkthrough",
+  client_approved:        "proposal_walkthrough",
+  deposit_requested:      "build_review",
+  in_build:               "build_review",
+  client_review:          "client_review_session",
+  revisions:              "client_review_session",
+  final_approval:         "handover_call",
+  full_payment_requested: "handover_call",
+  complete:               "handover_call",
+};
+
 /** Next best action logic — meeting-aware hints */
 function meetingNextAction(status: LeadStatus, meetings: Meeting[]): string | null {
   const hasMeetings = meetings.length > 0;
@@ -1323,6 +1339,25 @@ export default function LeadDetailPage() {
   const briefEligible = ['ready_for_proposal', 'proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
   const isProposalStage = ["ready_for_proposal", "proposal_sent"].includes(status);
   const proposalAdvanced = ['proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
+
+  // ── Stage discipline booleans (v1.101.9) ──────────────────────────────────
+  // Controls what tools/actions are visible at each lifecycle phase.
+  //   isAnalysisStage   — pre-proposal: analysis tools active
+  //   isBuildStage      — in_build+: delivery phase, analysis tools locked
+  //   isPostBuild       — client_review+: review/handover phase
+  const isAnalysisStage = ['enquiry_received', 'scope_analysis', 'ready_for_proposal'].includes(status);
+  const isBuildStage = ['in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
+  const isPostBuild = ['client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
+  const analysisToolsLocked = isBuildStage;  // analysis tools hidden from build onward
+
+  // v1.101.9: Stage-aware meeting type defaults — update when status changes
+  useEffect(() => {
+    const defaultType = STATUS_TO_MEETING_TYPE[status] ?? "discovery_call";
+    const defaultStage = STATUS_TO_MEETING_STAGE[status] ?? "scope_analysis";
+    setMtgType(defaultType);
+    setMtgStage(defaultStage);
+  }, [status]);
+
   useEffect(() => { if (briefAccessible && id) fetchBrief(id); }, [briefAccessible, id, fetchBrief]);
 
   // ── Fetch proposal (scope_received+) ────────────────────────────────────────
@@ -4513,7 +4548,7 @@ export default function LeadDetailPage() {
                   </p>
                   <p className="text-[10px] text-gray-500">
                     {hasAnyAnalysis
-                      ? "Use Add Information below to add new context and refresh analysis."
+                      ? (analysisToolsLocked ? "Analysis locked — project is in delivery." : "Use Add Information below to add new context and refresh analysis.")
                       : "Runs system analysis, technical research, complexity, pricing, and monthly costs in one pass."}
                   </p>
                 </div>
@@ -5118,8 +5153,9 @@ export default function LeadDetailPage() {
 
         {/* ════════════════════════════════════════════════════════════════
             ADD INFORMATION — add iteration entry and recompute pipeline
+            v1.101.9: Hidden from build stage onward (analysis tools locked)
             ════════════════════════════════════════════════════════════════ */}
-        {briefAccessible && (
+        {briefAccessible && !analysisToolsLocked && (
           <div>
             <Section title="Add Information" collapsed={isProposalStage} summary={iterations.length > 0 ? `${iterations.length} input${iterations.length !== 1 ? "s" : ""} captured` : "Gather additional context"}>
               <div className="space-y-3">

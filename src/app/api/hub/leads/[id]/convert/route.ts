@@ -149,7 +149,73 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  // 3. SharePoint folder creation (non-blocking — best effort)
+  // 3. v1.101.9: Seed project context from brief + proposal (only if empty)
+  void (async () => {
+    try {
+      // Check if context already exists
+      const { data: existingCtx } = await supabaseServer
+        .from('project_context')
+        .select('id')
+        .eq('project_id', project.id)
+        .maybeSingle();
+      if (existingCtx) return; // already seeded
+
+      // Fetch brief and proposal for seeding material
+      const { data: brief } = await supabaseServer
+        .from('lead_briefs')
+        .select('project_summary, recommended_solution, timeline_estimate, budget_positioning, risks_and_unknowns, technical_research')
+        .eq('lead_id', id)
+        .maybeSingle();
+
+      const { data: prop } = await supabaseServer
+        .from('proposals')
+        .select('executive_summary, recommended_solution, assumptions')
+        .eq('lead_id', id)
+        .eq('is_current', true)
+        .maybeSingle();
+
+      const businessSummary = brief?.project_summary || null;
+      const projectSummary = prop?.executive_summary || prop?.recommended_solution || brief?.recommended_solution || null;
+
+      // Extract core stack from technical research
+      let currentStack: string | null = null;
+      if (brief?.technical_research && typeof brief.technical_research === 'object') {
+        const research = brief.technical_research as { recommendations?: string[]; summary?: string };
+        if (research.recommendations?.length) {
+          currentStack = research.recommendations.slice(0, 5).join('; ');
+        } else if (research.summary) {
+          currentStack = research.summary;
+        }
+      }
+
+      // Build constraints from budget, timeline, risks
+      const constraintParts: string[] = [];
+      if (brief?.budget_positioning) constraintParts.push(`Budget: ${String(brief.budget_positioning).substring(0, 200)}`);
+      if (brief?.timeline_estimate) constraintParts.push(`Timeline: ${String(brief.timeline_estimate).substring(0, 200)}`);
+      if (brief?.risks_and_unknowns) constraintParts.push(`Risks: ${String(brief.risks_and_unknowns).substring(0, 300)}`);
+      const constraints = constraintParts.length > 0 ? constraintParts.join('\n') : null;
+
+      // AI notes from proposal assumptions
+      let aiNotes: string | null = null;
+      if (prop?.assumptions && Array.isArray(prop.assumptions) && prop.assumptions.length > 0) {
+        aiNotes = `Key assumptions: ${(prop.assumptions as string[]).join('; ')}`;
+      }
+
+      await supabaseServer.from('project_context').insert({
+        project_id: project.id,
+        business_summary: businessSummary,
+        project_summary: projectSummary,
+        current_stack: currentStack,
+        constraints,
+        ai_notes: aiNotes,
+      });
+      console.log('[convert] Project context seeded from brief/proposal.');
+    } catch (err) {
+      console.error('[convert] Project context seeding failed (non-blocking):', err);
+    }
+  })();
+
+  // 4. SharePoint folder creation (non-blocking — best effort)
   const clientLabel =
     lead.company_name?.trim() ||
     lead.contact_name?.trim() ||
