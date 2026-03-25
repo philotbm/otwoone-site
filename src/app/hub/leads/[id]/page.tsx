@@ -4012,7 +4012,14 @@ export default function LeadDetailPage() {
           <button
             type="button"
             onClick={() => {
-              document.getElementById("proposal-engine")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              const el = document.getElementById("proposal-engine");
+              if (!el) return;
+              const top = el.getBoundingClientRect().top + window.scrollY - 24;
+              window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+              el.style.transition = "box-shadow 0.3s ease";
+              el.style.boxShadow = "0 0 0 2px rgba(99,102,241,0.5)";
+              el.style.borderRadius = "12px";
+              setTimeout(() => { el.style.boxShadow = ""; }, 1800);
             }}
             className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
           >
