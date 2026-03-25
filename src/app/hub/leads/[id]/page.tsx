@@ -1311,10 +1311,16 @@ export default function LeadDetailPage() {
     }
   }, []);
 
-  // Brief accessible from enquiry_received onward; full brief editing only at ready_for_proposal+
+  // ── Proposal truth-source booleans (v1.101.5) ──────────────────────────────
+  // All proposal-related visibility/gating derives from these.
+  //   briefAccessible  — can view brief (enquiry_received onward)
+  //   briefEligible    — can edit brief + see proposal workspace (ready_for_proposal onward)
+  //   isProposalStage  — actively working on proposal (ready_for_proposal or proposal_sent)
+  //   proposalAdvanced — proposal has been sent and workflow moved past proposal creation
   const briefAccessible = ['enquiry_received', 'scope_analysis', 'ready_for_proposal', 'proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
   const briefEligible = ['ready_for_proposal', 'proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
   const isProposalStage = ["ready_for_proposal", "proposal_sent"].includes(status);
+  const proposalAdvanced = ['proposal_sent', 'client_approved', 'deposit_requested', 'in_build', 'client_review', 'revisions', 'final_approval', 'full_payment_requested', 'complete'].includes(status);
   useEffect(() => { if (briefAccessible && id) fetchBrief(id); }, [briefAccessible, id, fetchBrief]);
 
   // ── Fetch proposal (scope_received+) ────────────────────────────────────────
@@ -4008,7 +4014,7 @@ export default function LeadDetailPage() {
             Activate Deposit
           </button>
         )}
-        {status === "ready_for_proposal" && (
+        {briefEligible && (
           <button
             type="button"
             onClick={() => {
@@ -4021,9 +4027,15 @@ export default function LeadDetailPage() {
               el.style.borderRadius = "12px";
               setTimeout(() => { el.style.boxShadow = ""; }, 1800);
             }}
-            className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+            className={cx(
+              "px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+              proposalAdvanced
+                ? "bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/25 border border-indigo-500/20"
+                : "bg-indigo-600 hover:bg-indigo-500 text-white",
+              !proposalAdvanced && "ml-auto",
+            )}
           >
-            Go to Proposal
+            {proposalAdvanced ? "View Proposal" : "Go to Proposal"}
           </button>
         )}
       </div>
@@ -4323,14 +4335,12 @@ export default function LeadDetailPage() {
             <div className="px-5 py-3 rounded-xl border border-white/[0.06] bg-[#12131a]">
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mr-2">Workflow</span>
-                {/* v1.101.3: Workflow pills use briefEligible as proposal-stage truth —
-                    the SAME gate controlling proposal workspace + "Go to Proposal" button */}
+                {/* v1.101.5: Workflow pills use shared truth-source booleans —
+                    briefEligible / proposalAdvanced gate all proposal visibility */}
                 {(() => {
-                  // briefEligible = status is ready_for_proposal or later (DB status)
-                  // This is the exact same condition that gates:
-                  //   - proposal workspace rendering (line ~5895)
-                  //   - "Go to Proposal" button (line ~4011)
-                  //   - proposal fetching (line ~1334)
+                  // Uses shared truth-source booleans defined at ~line 1316:
+                  //   briefEligible     → workspace + CTA + brief editing + proposal fetch
+                  //   proposalAdvanced  → post-sent status display + proposalComplete
                   type PillStage = "gather_info" | "ready" | "proposal";
                   let stage: PillStage = "gather_info";
                   if (briefEligible) {
@@ -5447,7 +5457,7 @@ export default function LeadDetailPage() {
               )}
 
               {/* ── Post-proposal status — show status + link back ── */}
-              {["proposal_sent", "client_approved", "deposit_requested", "in_build", "client_review", "revisions", "final_approval", "full_payment_requested", "complete"].includes(status) && (
+              {proposalAdvanced && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={cx(
                     "px-3 py-1.5 rounded-lg text-xs font-medium border",
@@ -5903,7 +5913,7 @@ export default function LeadDetailPage() {
             A. Commercial inputs → B. Prompt pack → C. Draft → D. Actions
             ════════════════════════════════════════════════════════════════ */}
         {briefEligible && (() => {
-          const proposalComplete = ["proposal_sent", "client_approved", "deposit_requested", "in_build", "client_review", "revisions", "final_approval", "full_payment_requested", "complete"].includes(status);
+          const proposalComplete = proposalAdvanced; // shared truth source (v1.101.5)
           const proposalExists = !!proposal;
           return (
           <div id="proposal-engine">
