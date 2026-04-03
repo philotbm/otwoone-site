@@ -18,25 +18,25 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "OTwoOne — Studio · Consultancy · Branding",
+  title: "StudioFlow — Studio · Consultancy · Branding",
   description:
     "Cork-based coding studio, consultancy, and branding practice. Outcome-led delivery for growing companies across Ireland and the UK.",
   openGraph: {
-    title: "OTwoOne — Studio · Consultancy · Branding",
+    title: "StudioFlow — Studio · Consultancy · Branding",
     description:
       "Cork-based coding studio, consultancy, and branding practice. Outcome-led delivery for growing companies across Ireland and the UK.",
-    url: "https://otwoone.ie",
-    siteName: "OTwoOne",
+    url: "https://studioflow.ie",
+    siteName: "StudioFlow",
     locale: "en_IE",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "OTwoOne — Studio · Consultancy · Branding",
+    title: "StudioFlow — Studio · Consultancy · Branding",
     description:
       "Cork-based coding studio, consultancy, and branding practice. Outcome-led delivery for growing companies across Ireland and the UK.",
   },
-  metadataBase: new URL("https://otwoone.ie"),
+  metadataBase: new URL("https://studioflow.ie"),
 };
 
 export default function RootLayout({

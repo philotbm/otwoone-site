@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * OTwoOne — Deployment Verification
+ * StudioFlow — Deployment Verification
  *
  * Usage:
  *   node scripts/deploy-check.mjs
@@ -8,7 +8,7 @@
  *
  * Checks:
  *   1. Latest Vercel production deployment status
- *   2. Live domain reachability (https://www.otwoone.ie)
+ *   2. Live domain reachability (https://studioflow.ie)
  *   3. Autofill API route compilation (expects 401 from auth middleware)
  *   4. AI parsing path — sends realistic payload, validates response fields if 200
  *
@@ -22,7 +22,7 @@ import { readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { resolve, join } from 'path';
 import { tmpdir } from 'os';
 
-const DOMAIN = 'https://www.otwoone.ie';
+const DOMAIN = 'https://studioflow.ie';
 const TEST_ENDPOINT = `${DOMAIN}/api/hub/leads/test/brief/autofill`;
 
 let passed = 0;

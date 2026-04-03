@@ -91,7 +91,7 @@ function buildInternalEmail(params: {
     return `<span style="font-family:monospace;letter-spacing:2px;color:#6366f1;">${filled}</span><span style="font-family:monospace;letter-spacing:2px;color:#374151;">${empty}</span> <span style="color:#9ca3af;">${score}/5</span>`;
   };
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://otwoone.ie';
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://studioflow.ie';
   const hubUrl = `${baseUrl}/hub/leads/${lead_id}`;
 
   return `<!DOCTYPE html>
@@ -101,7 +101,7 @@ function buildInternalEmail(params: {
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;margin:0 auto;">
     <tr>
       <td style="padding:32px 24px 16px;">
-        <p style="margin:0;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#6366f1;">OTwoOne · Internal</p>
+        <p style="margin:0;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#6366f1;">StudioFlow · Internal</p>
         <h1 style="margin:8px 0 0;font-size:22px;font-weight:600;color:#f9fafb;">New Elevate Submission</h1>
       </td>
     </tr>
@@ -180,7 +180,7 @@ function buildClientEmail(name: string): string {
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;">
     <tr>
       <td style="padding:40px 24px 28px;">
-        <img src="https://www.otwoone.ie/branding/otwoone-logo-wordmark-white.png" alt="OTwoOne" width="140" style="display:block;border:0;height:auto;" />
+        <img src="https://studioflow.ie/branding/otwoone-logo-wordmark-white.png" alt="StudioFlow" width="140" style="display:block;border:0;height:auto;" />
       </td>
     </tr>
     <tr>
@@ -193,7 +193,7 @@ function buildClientEmail(name: string): string {
         <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#9ca3af;">Hi ${escapeHtml(firstName)},</p>
         <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#9ca3af;">Thanks for reaching out. We've received your submission and will be in touch within 1–2 business days.</p>
         <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#9ca3af;">If you have anything to add in the meantime, just reply to this email.</p>
-        <p style="margin:32px 0 0;font-size:13px;line-height:1.6;color:#6b7280;">— The OTwoOne team<br><a href="https://otwoone.ie" style="color:#6366f1;text-decoration:none;">otwoone.ie</a></p>
+        <p style="margin:32px 0 0;font-size:13px;line-height:1.6;color:#6b7280;">— The StudioFlow team<br><a href="https://studioflow.ie" style="color:#6366f1;text-decoration:none;">studioflow.ie</a></p>
       </td>
     </tr>
   </table>
@@ -302,7 +302,7 @@ export async function POST(req: NextRequest) {
 
         await Promise.all([
           resend.emails.send({
-            from:    'OTwoOne <noreply@otwoone.ie>',
+            from:    'StudioFlow <noreply@studioflow.ie>',
             to:      [notifyEmail],
             subject: `Elevate · ${contact_name || contact_email} · ${ENGAGEMENT_LABELS[engagement_type ?? ''] ?? engagement_type}`,
             html:    buildInternalEmail({
@@ -323,7 +323,7 @@ export async function POST(req: NextRequest) {
             }),
           }),
           resend.emails.send({
-            from:    'OTwoOne <noreply@otwoone.ie>',
+            from:    'StudioFlow <noreply@studioflow.ie>',
             to:      [contact_email],
             replyTo: notifyEmail,
             subject: "We've received your details",

@@ -5,7 +5,7 @@ import { logProjectEvent } from '@/lib/projectEvents';
 
 type Params = { params: Promise<{ id: string }> };
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.otwoone.ie';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://studioflow.ie';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ function buildPortalEmail(name: string, portalUrl: string, bookingsUrl: string):
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;">
     <tr>
       <td style="padding:40px 24px 28px;">
-        <img src="https://www.otwoone.ie/branding/otwoone-logo-wordmark-white.png" alt="OTwoOne" width="140" style="display:block;border:0;height:auto;" />
+        <img src="https://studioflow.ie/branding/otwoone-logo-wordmark-white.png" alt="StudioFlow" width="140" style="display:block;border:0;height:auto;" />
       </td>
     </tr>
     <tr>
@@ -67,8 +67,8 @@ function buildPortalEmail(name: string, portalUrl: string, bookingsUrl: string):
     <tr>
       <td style="padding:0 24px 40px;border-top:1px solid #1f2937;">
         <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#6b7280;">
-          — The OTwoOne team<br>
-          <a href="https://otwoone.ie" style="color:#6366f1;text-decoration:none;">otwoone.ie</a>
+          — The StudioFlow team<br>
+          <a href="https://studioflow.ie" style="color:#6366f1;text-decoration:none;">studioflow.ie</a>
         </p>
       </td>
     </tr>
@@ -162,9 +162,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
     try {
       const resend = new Resend(resendKey);
       await resend.emails.send({
-        from:    'OTwoOne <noreply@otwoone.ie>',
+        from:    'StudioFlow <noreply@studioflow.ie>',
         to:      [contactEmail],
-        subject: 'Complete your OTwoOne project intake',
+        subject: 'Complete your StudioFlow project intake',
         html:    buildPortalEmail(contactName ?? '', intake_url, bookingsUrl),
       });
     } catch (err) {

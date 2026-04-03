@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * OTwoOne OS v1 — Preflight Env Check
+ * StudioFlow v1 — Preflight Env Check
  *
  * Usage:
  *   node scripts/preflight.mjs
@@ -78,7 +78,7 @@ const OPTIONAL = [
 // ─── Check ────────────────────────────────────────────────────────────────────
 
 console.log('');
-console.log(bold('OTwoOne OS v1 — Preflight Check'));
+console.log(bold('StudioFlow v1 — Preflight Check'));
 console.log('');
 
 const missing  = REQUIRED.filter((k) => !process.env[k]);
