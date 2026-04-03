@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * StudioFlow v1 — Smoke Test CLI
+ * OTwoOne OS v1 — Smoke Test CLI
  *
  * Usage:
  *   node scripts/smoke.mjs
@@ -73,7 +73,7 @@ function yellow(str){ return `\x1b[33m${str}\x1b[0m`; }
 // ─── Run ───────────────────────────────────────────────────────────────────────
 
 console.log('');
-console.log(bold('StudioFlow v1 — Smoke Test'));
+console.log(bold('OTwoOne OS v1 — Smoke Test'));
 console.log(dim(`Target: ${BASE_URL}`));
 console.log('');
 

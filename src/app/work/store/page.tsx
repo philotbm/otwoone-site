@@ -243,8 +243,8 @@ export default function StoreDemo() {
         </div>
         <div className="mx-auto max-w-6xl mt-8 pt-6 border-t border-stone-800 text-center text-xs text-stone-600">
           © 2025 Harbour Street Home · Demo site · Built by{" "}
-          <a href="https://studioflow.ie" className="text-stone-500 hover:text-stone-300 transition">StudioFlow</a>
-          {" "}· studioflow.ie
+          <a href="https://otwoone.ie" className="text-stone-500 hover:text-stone-300 transition">OTwoOne</a>
+          {" "}· otwoone.ie
         </div>
       </footer>
     </div>

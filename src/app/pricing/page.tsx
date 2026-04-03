@@ -223,7 +223,7 @@ export default function PricingPage() {
           <a href="/" className="flex items-center gap-3 transition-opacity duration-200 hover:opacity-80">
             <Image
               src="/branding/otwoone-logo.png"
-              alt="StudioFlow"
+              alt="OTwoOne"
               width={220}
               height={60}
               priority
@@ -414,7 +414,7 @@ export default function PricingPage() {
         </div>
 
         <p className="mt-5 text-xs text-white/35">
-          Support plans are available to all StudioFlow build clients. Pricing is
+          Support plans are available to all OTwoOne build clients. Pricing is
           confirmed based on the complexity of your site and your specific needs.
           Mention your preferred plan when submitting your brief.
         </p>
@@ -464,7 +464,7 @@ export default function PricingPage() {
               Submit a brief
             </a>
             <a
-              href="mailto:info@studioflow.ie"
+              href="mailto:info@otwoone.ie"
               className="inline-flex items-center justify-center rounded-full border
                          border-white/15 px-6 py-3 text-sm font-semibold text-white/90
                          hover:border-white/25 hover:text-white"
@@ -482,7 +482,7 @@ export default function PricingPage() {
       {/* ── Footer ── */}
       <footer className="border-t border-white/10 py-10">
         <div className="mx-auto max-w-6xl px-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between text-sm text-white/40">
-          <div>StudioFlow · Studio · Consultancy · Branding · Cork, Ireland</div>
+          <div>OTwoOne · Studio · Consultancy · Branding · Cork, Ireland</div>
           <div className="flex gap-6">
             <a href="/" className="hover:text-white transition-colors">Home</a>
             <a href="/pricing" className="hover:text-white transition-colors">Pricing</a>

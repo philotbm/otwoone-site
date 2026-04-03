@@ -298,8 +298,8 @@ export default function LegalDemo() {
         </div>
         <div className="mx-auto max-w-6xl mt-8 pt-6 border-t border-slate-800 text-center text-xs text-slate-600">
           © 2025 Lynch & Partners Solicitors · Demo site · Built by{" "}
-          <a href="https://studioflow.ie" className="text-slate-500 hover:text-slate-300 transition">StudioFlow</a>
-          {" "}· studioflow.ie
+          <a href="https://otwoone.ie" className="text-slate-500 hover:text-slate-300 transition">OTwoOne</a>
+          {" "}· otwoone.ie
         </div>
       </footer>
     </div>

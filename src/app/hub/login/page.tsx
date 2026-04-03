@@ -46,7 +46,7 @@ function LoginForm() {
         <div className="mb-8 text-center">
           <img
             src="/branding/otwoone-logo.png"
-            alt="StudioFlow"
+            alt="OTwoOne"
             className="h-10 w-auto mx-auto opacity-90"
           />
           <p className="mt-4 text-sm text-white/50">Internal Hub</p>

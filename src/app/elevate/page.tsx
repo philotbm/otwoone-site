@@ -170,7 +170,7 @@ const CLARIFIERS: Record<EngagementType, ClarifierQuestion[]> = {
     },
     {
       key: "existing_client",
-      question: "Have you worked with StudioFlow before?",
+      question: "Have you worked with OTwoOne before?",
       options: [
         { value: "new",       label: "New client" },
         { value: "returning", label: "Yes - returning client" },
@@ -415,7 +415,7 @@ export default function ElevatePage() {
         {/* Header */}
         <div className="mb-10">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/branding/otwoone-logo-wordmark-white.png" alt="StudioFlow" width={120} className="mb-5 h-auto" />
+          <img src="/branding/otwoone-logo-wordmark-white.png" alt="OTwoOne" width={120} className="mb-5 h-auto" />
           <h1 className="text-3xl font-semibold text-white mb-3">Tell us what you need</h1>
           <p className="text-gray-400 text-sm leading-relaxed">
             We'll use this to understand your requirements and come back with a clear next step.

@@ -1,4 +1,4 @@
-# StudioFlow Changelog
+# OTwoOne OS Changelog
 
 ## v1.7.8 — 2026-03-04
 

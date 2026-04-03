@@ -1,5 +1,5 @@
 /**
- * StudioFlow — Context Quality Engine (v1.100.2)
+ * OTwoOne OS — Context Quality Engine (v1.100.2)
  *
  * Decision-readiness evaluation: does this lead have enough confirmed
  * evidence to confidently scope, price, and propose?

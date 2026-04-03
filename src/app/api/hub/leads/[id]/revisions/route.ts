@@ -30,7 +30,7 @@ type StructuredOutput = {
 
 // ── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a senior project manager at StudioFlow, a web consultancy. Your role is to convert raw client feedback into structured, execution-ready revision batches.
+const SYSTEM_PROMPT = `You are a senior project manager at OTwoOne, a web consultancy. Your role is to convert raw client feedback into structured, execution-ready revision batches.
 
 You will receive client feedback text — this may be from an email, a call summary, meeting notes, or a pasted message. Your job is to:
 

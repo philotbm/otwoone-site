@@ -370,7 +370,7 @@ export default function ClientPortalPage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/branding/otwoone-logo-wordmark-white.png"
-          alt="StudioFlow"
+          alt="OTwoOne"
           width={110}
           className="mb-8 h-auto"
         />

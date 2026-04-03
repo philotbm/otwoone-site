@@ -431,8 +431,8 @@ function SectionBlockWrap({
 function PageFooter() {
   return (
     <View style={s.footer} fixed>
-      <Text style={s.footerBrand}>StudioFlow</Text>
-      <Text style={s.footerRight}>hello@studioflow.ie · Cork, Ireland</Text>
+      <Text style={s.footerBrand}>OTwoOne</Text>
+      <Text style={s.footerRight}>hello@otwoone.ie · Cork, Ireland</Text>
     </View>
   );
 }
@@ -446,12 +446,12 @@ function ProposalDocument({ proposal: p, termsBody }: { proposal: Proposal; term
   return (
     <Document
       title={p.title || 'Proposal'}
-      author="StudioFlow"
+      author="OTwoOne"
       subject={`Proposal for ${p.client_company || p.client_name || 'Client'}`}
     >
       {/* ── Cover Page ──────────────────────────────────────────────────── */}
       <Page size="A4" style={s.coverPage}>
-        <Text style={s.brand}>StudioFlow</Text>
+        <Text style={s.brand}>OTwoOne</Text>
         <Text style={s.coverTitle}>{p.title || 'Project Proposal'}</Text>
 
         <View style={s.metaGrid}>
@@ -462,7 +462,7 @@ function ProposalDocument({ proposal: p, termsBody }: { proposal: Proposal; term
           </View>
           <View style={s.metaItem}>
             <Text style={s.metaLabel}>Prepared by</Text>
-            <Text style={s.metaValue}>{p.prepared_by || 'StudioFlow'}</Text>
+            <Text style={s.metaValue}>{p.prepared_by || 'OTwoOne'}</Text>
           </View>
           <View style={s.metaItem}>
             <Text style={s.metaLabel}>Date</Text>
@@ -692,7 +692,7 @@ function ProposalDocument({ proposal: p, termsBody }: { proposal: Proposal; term
           <View style={s.acceptanceBox}>
             <Text style={s.acceptanceText}>
               To accept this proposal, please sign below and return this document
-              to StudioFlow. Upon acceptance, we will issue a deposit invoice and
+              to OTwoOne. Upon acceptance, we will issue a deposit invoice and
               schedule your project kickoff.
             </Text>
 

@@ -33,7 +33,7 @@ function Step({ n, children }: { n: number; children: React.ReactNode }) {
 // ─── Table of contents ──────────────────────────────────────────────────────
 
 const TOC = [
-  { id: "what-is-otwoone",   label: "What is StudioFlow" },
+  { id: "what-is-otwoone",   label: "What is OTwoOne OS" },
   { id: "lead-to-project",   label: "Lead \u2192 Project flow" },
   { id: "intake",            label: "Intake workflow" },
   { id: "project-context",   label: "Project context" },
@@ -58,11 +58,11 @@ export default function SOPPage() {
             ← Hub
           </Link>
           <div>
-            <p className="text-xs font-medium tracking-widest uppercase text-indigo-400">StudioFlow</p>
+            <p className="text-xs font-medium tracking-widest uppercase text-indigo-400">OTwoOne</p>
             <h1 className="text-lg font-semibold text-white">SOP Center</h1>
           </div>
         </div>
-        <span className="text-[11px] text-gray-600">StudioFlow {OTWOONE_OS_VERSION}</span>
+        <span className="text-[11px] text-gray-600">OTwoOne OS {OTWOONE_OS_VERSION}</span>
       </header>
 
       <div className="px-6 py-8 max-w-3xl mx-auto">
@@ -70,7 +70,7 @@ export default function SOPPage() {
         {/* Intro */}
         <div className="mb-10">
           <p className="text-sm text-gray-400 leading-relaxed">
-            This page is the standard operating procedure guide for StudioFlow.
+            This page is the standard operating procedure guide for OTwoOne OS.
             If you are new to the team, read through each section to understand how the system works end to end.
             The goal is to remove tribal knowledge and make the workflow understandable by anyone.
           </p>
@@ -97,9 +97,9 @@ export default function SOPPage() {
         {/* Sections */}
         <div className="space-y-10">
 
-          <SOPSection id="what-is-otwoone" title="What is StudioFlow">
+          <SOPSection id="what-is-otwoone" title="What is OTwoOne OS">
             <p>
-              StudioFlow is the internal operating system for managing client projects from first enquiry through to delivery and ongoing maintenance.
+              OTwoOne OS is the internal operating system for managing client projects from first enquiry through to delivery and ongoing maintenance.
               It handles lead management, project conversion, client intake, review cycles, revision tracking, and AI-assisted implementation.
             </p>
             <p>
@@ -293,7 +293,7 @@ export default function SOPPage() {
 
         {/* Footer */}
         <div className="mt-12 pt-6 border-t border-white/5 text-center">
-          <p className="text-[11px] text-gray-600">StudioFlow {OTWOONE_OS_VERSION} — SOP Center</p>
+          <p className="text-[11px] text-gray-600">OTwoOne OS {OTWOONE_OS_VERSION} — SOP Center</p>
           <p className="text-[10px] text-gray-700 mt-1">
             Last updated with v1.58.0. This page is maintained in code — no CMS required.
           </p>

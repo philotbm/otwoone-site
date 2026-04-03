@@ -52,7 +52,7 @@ export function computeScores(input: ScoreInput): ScoreResult {
   if (budget && budget !== 'not_sure') clarity++;
 
   // ─── alignment_score (1–5) ────────────────────────────────────────────────
-  // Does this look like a good-fit engagement for StudioFlow?
+  // Does this look like a good-fit engagement for OTwoOne?
   let alignment = 2;
   if (HIGH_BUDGET_BANDS.includes(budget)) alignment += 2;
   else if (budget === 'not_sure') alignment += 0;

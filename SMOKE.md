@@ -1,4 +1,4 @@
-# StudioFlow v1 — Smoke Test
+# OTwoOne OS v1 — Smoke Test
 
 Lightweight end-to-end check covering the full lifecycle:
 **Elevate → Lead → Hub → Convert → Project → Delivered → Maintenance activation**
@@ -56,7 +56,7 @@ pnpm smoke
 
 Expected output (all passing):
 ```
-StudioFlow v1 — Smoke Test
+OTwoOne OS v1 — Smoke Test
 Target: http://localhost:3000
 
    1  ✓  Create Scenario A: Build new — high budget, clear

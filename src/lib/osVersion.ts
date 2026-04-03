@@ -1,6 +1,6 @@
 /**
- * Single source of truth for the running StudioFlow version.
+ * Single source of truth for the running OTwoOne OS version.
  * Bump this on every release.
  */
 
-export const OTWOONE_OS_VERSION = "v0.1.4";
+export const OTWOONE_OS_VERSION = "v1.101.3";

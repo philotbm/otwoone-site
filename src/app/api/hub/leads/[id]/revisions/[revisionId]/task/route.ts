@@ -73,7 +73,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const lines: string[] = [];
 
   // Title
-  lines.push(`# StudioFlow Execution Task — ${batch.title}`);
+  lines.push(`# OTwoOne Execution Task — ${batch.title}`);
   lines.push('');
 
   // Context
@@ -158,7 +158,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Constraints
   lines.push('## Constraints');
   lines.push('- Do not break existing system functionality');
-  lines.push('- Follow existing StudioFlow codebase patterns and conventions');
+  lines.push('- Follow existing OTwoOne codebase patterns and conventions');
   lines.push('- Maintain end-to-end continuity with the existing analysis and pricing pipeline');
   lines.push('- No unrelated cleanup or refactoring');
   lines.push('- Keep changes tightly scoped to this batch');

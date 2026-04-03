@@ -9,7 +9,7 @@ type Params = { params: Promise<{ token: string }> };
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://studioflow.ie';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.otwoone.ie';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ function buildNotifyEmail(opts: {
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;">
     <tr>
       <td style="padding:32px 24px 20px;">
-        <img src="https://studioflow.ie/branding/otwoone-logo-wordmark-white.png" alt="StudioFlow" width="120" style="display:block;border:0;height:auto;" />
+        <img src="https://www.otwoone.ie/branding/otwoone-logo-wordmark-white.png" alt="OTwoOne" width="120" style="display:block;border:0;height:auto;" />
       </td>
     </tr>
     <tr>
@@ -235,7 +235,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
         try {
           const resend = new Resend(resendKey);
           await resend.emails.send({
-            from:    'StudioFlow <noreply@studioflow.ie>',
+            from:    'OTwoOne <noreply@otwoone.ie>',
             to:      [notifyEmail],
             subject: `Project intake submitted — ${String(s1.project_name ?? '').trim()}`,
             html:    buildNotifyEmail({

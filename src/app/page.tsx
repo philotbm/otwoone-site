@@ -148,7 +148,7 @@ export default function Home() {
           <a href="#" className="flex items-center gap-3 transition-opacity duration-200 hover:opacity-80">
             <Image
               src="/branding/otwoone-logo.png"
-              alt="StudioFlow"
+              alt="OTwoOne"
               width={220}
               height={60}
               priority
@@ -301,7 +301,7 @@ export default function Home() {
       {/* ── Differentiators ── */}
       <section className="mx-auto max-w-6xl px-8 py-12 md:py-16">
         <p className="text-xs font-semibold tracking-widest text-white/40 uppercase">
-          Why StudioFlow
+          Why OTwoOne
         </p>
         <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
           Built for outcomes, not activity.
@@ -414,7 +414,7 @@ export default function Home() {
           What we build
         </h2>
         <p className="mt-4 max-w-2xl text-white/55 leading-relaxed">
-          A snapshot of what StudioFlow delivers. Across sectors, for businesses of
+          A snapshot of what OTwoOne delivers. Across sectors, for businesses of
           all sizes.
         </p>
 
@@ -480,12 +480,12 @@ export default function Home() {
               Submit a brief
             </a>
             <a
-              href="mailto:info@studioflow.ie"
+              href="mailto:info@otwoone.ie"
               className="inline-flex items-center justify-center rounded-full border
                          border-white/15 px-6 py-3 text-sm font-semibold text-white/90
                          hover:border-white/25 hover:text-white"
             >
-              info@studioflow.ie
+              info@otwoone.ie
             </a>
           </div>
 
@@ -501,7 +501,7 @@ export default function Home() {
           <div className="flex flex-col gap-2">
             <Image
               src="/branding/otwoone-logo-wordmark-white.png"
-              alt="StudioFlow"
+              alt="OTwoOne"
               width={601}
               height={201}
               className="h-[28px] w-auto opacity-60"
@@ -528,7 +528,7 @@ export default function Home() {
               {[
                 ["/services",             "Our services"],
                 ["/elevate",              "Get started"],
-                ["mailto:info@studioflow.ie", "Contact"],
+                ["mailto:info@otwoone.ie", "Contact"],
               ].map(([href, label]) => (
                 <a key={href} href={href} className="hover:text-white transition-colors">{label}</a>
               ))}
@@ -537,7 +537,7 @@ export default function Home() {
         </div>
 
         <div className="mx-auto max-w-6xl px-8 mt-8 border-t border-white/5 pt-6 text-xs text-white/30">
-          © {new Date().getFullYear()} StudioFlow Ltd. All rights reserved. · Cork, Ireland
+          © {new Date().getFullYear()} OTwoOne Ltd. All rights reserved. · Cork, Ireland
         </div>
       </footer>
     </div>

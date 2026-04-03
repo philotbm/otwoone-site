@@ -1,7 +1,7 @@
 /**
  * POST /api/hub/smoke/run
  *
- * End-to-end smoke test for StudioFlow v1.
+ * End-to-end smoke test for OTwoOne OS v1.
  * Protected by middleware (x-hub-secret header or hub_session cookie).
  *
  * Does NOT call Resend — DB and scoring are exercised directly.

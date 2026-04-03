@@ -193,7 +193,7 @@ export default function ProposalPage() {
           <h1 className="text-xl font-semibold text-gray-200 mb-2">Proposal not found</h1>
           <p className="text-sm text-gray-500 leading-relaxed">
             This proposal link is invalid or has expired.
-            If you believe this is an error, please contact StudioFlow.
+            If you believe this is an error, please contact OTwoOne.
           </p>
         </div>
       </div>
@@ -206,7 +206,7 @@ export default function ProposalPage() {
       <div className="min-h-screen bg-[#0a0b0f] flex items-center justify-center px-6">
         <div className="text-center max-w-md">
           <h1 className="text-xl font-semibold text-gray-200 mb-2">Something went wrong</h1>
-          <p className="text-sm text-gray-500">Please try again later or contact StudioFlow.</p>
+          <p className="text-sm text-gray-500">Please try again later or contact OTwoOne.</p>
         </div>
       </div>
     );
@@ -221,10 +221,10 @@ export default function ProposalPage() {
       {/* ── Cover / Header ──────────────────────────────────────────────────── */}
       <header className="pt-12 sm:pt-20 pb-12 sm:pb-16 px-6">
         <div className="max-w-3xl mx-auto">
-          {/* StudioFlow wordmark */}
+          {/* OTwoOne wordmark */}
           <div className="mb-10 sm:mb-14">
             <span className="text-xs font-semibold tracking-[0.3em] uppercase text-indigo-400">
-              StudioFlow
+              OTwoOne
             </span>
           </div>
 
@@ -250,7 +250,7 @@ export default function ProposalPage() {
               <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-0.5 font-medium">
                 Prepared by
               </p>
-              <p className="text-gray-200 font-medium">{p.prepared_by || "StudioFlow"}</p>
+              <p className="text-gray-200 font-medium">{p.prepared_by || "OTwoOne"}</p>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-0.5 font-medium">
@@ -533,7 +533,7 @@ export default function ProposalPage() {
                   Acceptance of this proposal constitutes agreement to the terms outlined herein.
                 </p>
                 <p>
-                  Full terms and conditions are available on request from StudioFlow.
+                  Full terms and conditions are available on request from OTwoOne.
                 </p>
               </div>
             )}
@@ -603,7 +603,7 @@ export default function ProposalPage() {
               <div className="rounded-lg bg-white/[0.03] border border-white/10 px-6 py-8">
                 <p className="text-sm text-gray-400 mb-6 leading-relaxed max-w-lg mx-auto text-center">
                   By approving this proposal, you confirm acceptance of the scope, pricing,
-                  and the StudioFlow Terms &amp; Conditions attached to this proposal.
+                  and the OTwoOne Terms &amp; Conditions attached to this proposal.
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md mx-auto mb-6">
@@ -647,7 +647,7 @@ export default function ProposalPage() {
                     {approving ? "Processing…" : "Approve Proposal"}
                   </button>
                   <p className="text-[10px] text-gray-600 mt-3 max-w-sm mx-auto">
-                    Upon approval, StudioFlow will issue a deposit invoice and schedule your project kickoff.
+                    Upon approval, OTwoOne will issue a deposit invoice and schedule your project kickoff.
                   </p>
                 </div>
               </div>
@@ -661,7 +661,7 @@ export default function ProposalPage() {
         <div className="max-w-3xl mx-auto flex items-center justify-between flex-wrap gap-4">
           <div>
             <span className="text-xs font-semibold tracking-[0.3em] uppercase text-indigo-400">
-              StudioFlow
+              OTwoOne
             </span>
             <p className="text-[10px] text-gray-600 mt-1">
               Studio · Consultancy · Branding
@@ -669,7 +669,7 @@ export default function ProposalPage() {
           </div>
           <div className="text-right text-[10px] text-gray-600">
             <p>Cork, Ireland</p>
-            <p>hello@studioflow.ie</p>
+            <p>hello@otwoone.ie</p>
           </div>
         </div>
       </footer>

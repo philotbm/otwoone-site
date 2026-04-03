@@ -510,7 +510,7 @@ export default function FitnessAppDemo() {
       {/* CTA */}
       <section className="py-20 px-6 border-t border-zinc-800">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-xs font-semibold tracking-widest text-orange-400 uppercase mb-3">Built by StudioFlow</p>
+          <p className="text-xs font-semibold tracking-widest text-orange-400 uppercase mb-3">Built by OTwoOne</p>
           <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Want an app like this?</h2>
           <p className="text-zinc-400 text-base leading-relaxed mb-8">
             We design and build mobile apps for Irish businesses. Class booking, e-commerce, internal tools — if your business needs an app, we&apos;ll plan it, price it, and build it properly.
@@ -536,8 +536,8 @@ export default function FitnessAppDemo() {
       <footer className="border-t border-zinc-800 py-8 px-6">
         <div className="mx-auto max-w-6xl text-center text-xs text-zinc-700">
           Demo app design · Built by{" "}
-          <a href="https://studioflow.ie" className="text-zinc-600 hover:text-zinc-400 transition">StudioFlow</a>
-          {" "}· studioflow.ie
+          <a href="https://otwoone.ie" className="text-zinc-600 hover:text-zinc-400 transition">OTwoOne</a>
+          {" "}· otwoone.ie
         </div>
       </footer>
     </div>

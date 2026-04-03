@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * StudioFlow v1 — Smoke Test Cleanup
+ * OTwoOne OS v1 — Smoke Test Cleanup
  *
  * Deletes all rows with company_name LIKE 'SMOKE-%'.
  *
@@ -47,7 +47,7 @@ function green(s) { return `\x1b[32m${s}\x1b[0m`; }
 function red(s)   { return `\x1b[31m${s}\x1b[0m`; }
 function dim(s)   { return `\x1b[2m${s}\x1b[0m`; }
 
-console.log('\nStudioFlow v1 — Smoke Cleanup');
+console.log('\nOTwoOne OS v1 — Smoke Cleanup');
 console.log(dim(`Target: ${BASE_URL}\n`));
 
 let res;

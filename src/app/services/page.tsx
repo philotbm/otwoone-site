@@ -131,7 +131,7 @@ export default function ServicesPage() {
           <a href="/" className="flex items-center gap-3 transition-opacity duration-200 hover:opacity-80">
             <Image
               src="/branding/otwoone-logo.png"
-              alt="StudioFlow"
+              alt="OTwoOne"
               width={220}
               height={60}
               priority
@@ -314,7 +314,7 @@ export default function ServicesPage() {
         </div>
 
         <p className="mt-5 text-xs text-white/35">
-          Plans are available to StudioFlow clients. Scope is confirmed at the start.
+          Plans are available to OTwoOne clients. Scope is confirmed at the start.
         </p>
       </section>
 
@@ -338,12 +338,12 @@ export default function ServicesPage() {
               Get started
             </a>
             <a
-              href="mailto:info@studioflow.ie"
+              href="mailto:info@otwoone.ie"
               className="inline-flex items-center justify-center rounded-full border
                          border-white/15 px-6 py-3 text-sm font-semibold text-white/90
                          hover:border-white/25 hover:text-white"
             >
-              info@studioflow.ie
+              info@otwoone.ie
             </a>
           </div>
 
@@ -356,7 +356,7 @@ export default function ServicesPage() {
       {/* ── Footer ── */}
       <footer className="border-t border-white/10 py-10">
         <div className="mx-auto max-w-6xl px-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between text-sm text-white/40">
-          <div>StudioFlow · Websites · Systems · Advisory · Cork, Ireland</div>
+          <div>OTwoOne · Websites · Systems · Advisory · Cork, Ireland</div>
           <div className="flex gap-6">
             <a href="/" className="hover:text-white transition-colors">Home</a>
             <a href="/services" className="hover:text-white transition-colors">Services</a>

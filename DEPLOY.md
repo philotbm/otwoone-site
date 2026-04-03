@@ -1,4 +1,4 @@
-# StudioFlow v1 — Deployment Runbook
+# OTwoOne OS v1 — Deployment Runbook
 
 > **Scope:** Initial production deploy of OS v1 (Elevate form, Hub, scoring engine,
 > smoke tests, updated_at activity tracking).
@@ -39,7 +39,7 @@ before the first deploy.
 | `RESEND_API_KEY` | ✅ | Resend email API key |
 | `ELEVATE_NOTIFY_EMAIL` | ✅ | Internal address that receives new lead notifications |
 | `HUB_SECRET` | ✅ | Password for Hub access (cookie + header auth) |
-| `NEXT_PUBLIC_SITE_URL` | ⚠️ optional | Full site URL used in hub email links (e.g. `https://studioflow.ie`) |
+| `NEXT_PUBLIC_SITE_URL` | ⚠️ optional | Full site URL used in hub email links (e.g. `https://www.otwoone.ie`) |
 | `SHAREPOINT_TENANT_ID` | ⚠️ optional | SharePoint OAuth tenant |
 | `SHAREPOINT_CLIENT_ID` | ⚠️ optional | SharePoint app registration client ID |
 | `SHAREPOINT_CLIENT_SECRET` | ⚠️ optional | SharePoint app secret |
@@ -179,7 +179,7 @@ required vars are set for the **Production** environment.
 ### E3. Run production smoke
 
 ```bash
-SMOKE_BASE_URL=https://studioflow.ie HUB_SECRET=<your_hub_secret> pnpm smoke
+SMOKE_BASE_URL=https://www.otwoone.ie HUB_SECRET=<your_hub_secret> pnpm smoke
 ```
 
 Expected: all steps pass.
@@ -187,7 +187,7 @@ Expected: all steps pass.
 ### E4. Cleanup production smoke data
 
 ```bash
-SMOKE_BASE_URL=https://studioflow.ie HUB_SECRET=<your_hub_secret> pnpm smoke:cleanup
+SMOKE_BASE_URL=https://www.otwoone.ie HUB_SECRET=<your_hub_secret> pnpm smoke:cleanup
 ```
 
 > Always run cleanup after a production smoke. Smoke leads are prefixed `SMOKE-` and
@@ -243,7 +243,7 @@ SMOKE_BASE_URL=https://studioflow.ie HUB_SECRET=<your_hub_secret> pnpm smoke:cle
 5. Run cleanup after any failed smoke attempt:
 
    ```bash
-   SMOKE_BASE_URL=https://studioflow.ie HUB_SECRET=<your_hub_secret> pnpm smoke:cleanup
+   SMOKE_BASE_URL=https://www.otwoone.ie HUB_SECRET=<your_hub_secret> pnpm smoke:cleanup
    ```
 
 ---
@@ -259,5 +259,5 @@ pnpm build                                              # production build check
 # Smoke — replace URL and secret as appropriate
 SMOKE_BASE_URL=http://localhost:3000        HUB_SECRET=xxx pnpm smoke
 SMOKE_BASE_URL=https://<preview>.vercel.app HUB_SECRET=xxx pnpm smoke
-SMOKE_BASE_URL=https://studioflow.ie       HUB_SECRET=xxx pnpm smoke
+SMOKE_BASE_URL=https://www.otwoone.ie       HUB_SECRET=xxx pnpm smoke
 ```

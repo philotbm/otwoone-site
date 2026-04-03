@@ -246,8 +246,8 @@ export default function RestaurantDemo() {
         </div>
         <div className="mx-auto max-w-6xl mt-8 pt-6 border-t border-stone-800 text-center text-xs text-stone-700">
           © 2025 The Copper Yard · Demo site · Built by{" "}
-          <a href="https://studioflow.ie" className="text-stone-600 hover:text-stone-400 transition">StudioFlow</a>
-          {" "}· studioflow.ie
+          <a href="https://otwoone.ie" className="text-stone-600 hover:text-stone-400 transition">OTwoOne</a>
+          {" "}· otwoone.ie
         </div>
       </footer>
     </div>
