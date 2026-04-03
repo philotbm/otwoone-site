@@ -580,7 +580,7 @@ function buildRationale(
 /**
  * POST /api/hub/leads/[id]/brief/complexity
  *
- * OTwoOne Complexity Engine (v1.77.0).
+ * StudioFlow Complexity Engine (v1.77.0).
  * Deterministic 0–100 complexity scoring that consumes structured upstream
  * workflow outputs (brief, research, clarifiers, scoring) in priority order.
  * Falls back to raw context only when structured outputs are insufficient.

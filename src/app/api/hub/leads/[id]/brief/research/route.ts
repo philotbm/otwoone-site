@@ -326,7 +326,7 @@ function validateResearch(data: unknown): { valid: true; research: TechnicalRese
 
 // ── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a senior technical consultant at OTwoOne, a web consultancy in Ireland. You perform technical due-diligence research on project scopes to help operators understand the stack, services, compliance considerations, and operating costs.
+const SYSTEM_PROMPT = `You are a senior technical consultant at StudioFlow, a web consultancy in Ireland. You perform technical due-diligence research on project scopes to help operators understand the stack, services, compliance considerations, and operating costs.
 
 You will receive a merged client context containing all available information about a project.
 

@@ -272,7 +272,7 @@ export default function HubPage() {
       {/* Top bar */}
       <header className="border-b border-white/5 px-6 py-4 flex items-center justify-between">
         <div>
-          <p className="text-xs font-medium tracking-widest uppercase text-indigo-400">OTwoOne</p>
+          <p className="text-xs font-medium tracking-widest uppercase text-indigo-400">StudioFlow</p>
           <h1 className="text-lg font-semibold text-white">Hub</h1>
         </div>
         <div className="flex items-center gap-4">
@@ -447,7 +447,7 @@ export default function HubPage() {
         </div>
       </div>
       <footer className="px-6 py-4 text-center">
-        <p className="text-[11px] text-gray-600">OTwoOne OS {OTWOONE_OS_VERSION}</p>
+        <p className="text-[11px] text-gray-600">StudioFlow {OTWOONE_OS_VERSION}</p>
       </footer>
     </div>
   );

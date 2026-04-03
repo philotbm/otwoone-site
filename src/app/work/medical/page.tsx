@@ -259,8 +259,8 @@ export default function MedicalDemo() {
         </div>
         <div className="mx-auto max-w-6xl mt-8 pt-6 border-t border-slate-800 text-center text-xs text-slate-600">
           © 2025 Millfield Medical Centre · Demo site · Built by{" "}
-          <a href="https://otwoone.ie" className="text-slate-500 hover:text-slate-300 transition">OTwoOne</a>
-          {" "}· otwoone.ie
+          <a href="https://studioflow.ie" className="text-slate-500 hover:text-slate-300 transition">StudioFlow</a>
+          {" "}· studioflow.ie
         </div>
       </footer>
     </div>

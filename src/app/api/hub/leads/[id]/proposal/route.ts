@@ -156,7 +156,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     client_name: body.client_name ?? sources.contact_name,
     client_company: body.client_company ?? sources.company_name,
     prepared_for: body.prepared_for ?? sources.contact_name,
-    prepared_by: body.prepared_by ?? 'OTwoOne',
+    prepared_by: body.prepared_by ?? 'StudioFlow',
     proposal_date: body.proposal_date ?? now.toISOString().split('T')[0],
     valid_until: body.valid_until ?? validUntil.toISOString().split('T')[0],
 

@@ -326,8 +326,8 @@ export default function FitnessDemo() {
         </div>
         <div className="mx-auto max-w-6xl mt-8 pt-6 border-t border-zinc-900 text-center text-xs text-zinc-700">
           © 2025 Peak Fitness Studio · Demo site · Built by{" "}
-          <a href="https://otwoone.ie" className="text-zinc-600 hover:text-zinc-400 transition">OTwoOne</a>
-          {" "}· otwoone.ie
+          <a href="https://studioflow.ie" className="text-zinc-600 hover:text-zinc-400 transition">StudioFlow</a>
+          {" "}· studioflow.ie
         </div>
       </footer>
     </div>

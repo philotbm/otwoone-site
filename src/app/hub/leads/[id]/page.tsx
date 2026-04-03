@@ -2260,7 +2260,7 @@ export default function LeadDetailPage() {
 
   // ── Monthly Operating Cost Engine (deterministic, consumes research output) ───────────
   // Extracts infrastructure / tool costs from technical research and adds
-  // OTwoOne support retainer to produce a total monthly operating cost.
+  // StudioFlow support retainer to produce a total monthly operating cost.
 
   const OTWOONE_SUPPORT_RETAINER = 295; // €/month
 
@@ -2436,10 +2436,10 @@ export default function LeadDetailPage() {
     const rationale = deduped.length > 0
       ? `${deduped.length} recurring cost${deduped.length !== 1 ? "s" : ""} extracted from technical research. ` +
         `Infrastructure/tool costs: €${totalLow.toLocaleString()}–€${totalHigh.toLocaleString()}/month. ` +
-        `OTwoOne support retainer: €${OTWOONE_SUPPORT_RETAINER}/month. ` +
+        `StudioFlow support retainer: €${OTWOONE_SUPPORT_RETAINER}/month. ` +
         `Total: €${(totalLow + OTWOONE_SUPPORT_RETAINER).toLocaleString()}–€${(totalHigh + OTWOONE_SUPPORT_RETAINER).toLocaleString()}/month.`
       : `No recurring infrastructure or third-party costs identified in technical research. ` +
-        `OTwoOne support retainer: €${OTWOONE_SUPPORT_RETAINER}/month.`;
+        `StudioFlow support retainer: €${OTWOONE_SUPPORT_RETAINER}/month.`;
 
     return {
       items: deduped,
@@ -3447,7 +3447,7 @@ export default function LeadDetailPage() {
     // LAYER 1 — CLIENT-FACING NARRATIVE (clean, commercial, no tech)
     // ════════════════════════════════════════════════════════════════════
 
-    lines.push("Write a professional proposal email from OTwoOne (a web consultancy in Ireland) to the client.");
+    lines.push("Write a professional proposal email from StudioFlow (a web consultancy in Ireland) to the client.");
     lines.push("");
 
     lines.push("## Client");
@@ -3489,7 +3489,7 @@ export default function LeadDetailPage() {
     lines.push("- Focus on outcomes and deliverables, not technical implementation");
     lines.push("- End with a clear next step: deposit to secure the build slot");
     lines.push("- Do not include technical stack, tool names, or internal analysis in the proposal");
-    lines.push("- Sign off as Phil from OTwoOne");
+    lines.push("- Sign off as Phil from StudioFlow");
 
     // ════════════════════════════════════════════════════════════════════
     // LAYER 2 — INTERNAL CONTEXT (hidden from output)
@@ -4664,7 +4664,7 @@ export default function LeadDetailPage() {
                         <textarea
                           value={briefSolution}
                           onChange={(e) => setBriefSolution(e.target.value)}
-                          placeholder="What OTwoOne should build and how…"
+                          placeholder="What StudioFlow should build and how…"
                           rows={3}
                           className="w-full bg-[#0e0f14] border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/60 resize-none"
                         />
@@ -5099,7 +5099,7 @@ export default function LeadDetailPage() {
                     <p className="text-[10px] text-gray-500 mt-0.5">/month</p>
                   </div>
                   <div className="px-3 py-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">OTwoOne support</p>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">StudioFlow support</p>
                     <p className="text-sm font-semibold text-gray-100">€{runningCosts.support_retainer}</p>
                     <p className="text-[10px] text-gray-500 mt-0.5">/month retainer</p>
                   </div>
@@ -5132,7 +5132,7 @@ export default function LeadDetailPage() {
                     <div className="flex items-center justify-between text-xs pt-1.5 border-t border-white/5">
                       <div className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0" />
-                        <span className="text-violet-300 font-medium">OTwoOne support retainer</span>
+                        <span className="text-violet-300 font-medium">StudioFlow support retainer</span>
                       </div>
                       <span className="text-violet-300 font-medium ml-2 flex-shrink-0">€{runningCosts.support_retainer}/mo</span>
                     </div>
