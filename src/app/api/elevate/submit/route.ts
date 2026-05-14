@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
-import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { computeScores } from '@/lib/scoring';
-
-// ─── Supabase (service role) ───────────────────────────────────────────────────
-
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createClient(url, key);
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,9 +46,14 @@ const AUTHORITY_LABELS: Record<string, string> = {
   no:     "No — I'm gathering info",
 };
 
-// ─── Internal email ────────────────────────────────────────────────────────────
+// ─── Internal notification email ──────────────────────────────────────────────
+//
+// This email is the source of truth for new leads. Cowork picks it up from the
+// info@otwoone.ie inbox and handles classification, drafting, and follow-up.
+// Keep the structure stable: section headings act as parseable anchors.
 
 function buildInternalEmail(params: {
+  ref: string;
   name: string;
   email: string;
   company: string;
@@ -70,12 +67,11 @@ function buildInternalEmail(params: {
   current_tools: string;
   clarifier_answers: Record<string, string>;
   scores: ReturnType<typeof computeScores>;
-  lead_id: string;
 }): string {
   const {
-    name, email, company, website, role, authority,
+    ref, name, email, company, website, role, authority,
     engagement_type, budget, timeline, success_definition, current_tools,
-    clarifier_answers, scores, lead_id,
+    clarifier_answers, scores,
   } = params;
 
   const clarifierRows = Object.entries(clarifier_answers)
@@ -91,9 +87,6 @@ function buildInternalEmail(params: {
     return `<span style="font-family:monospace;letter-spacing:2px;color:#6366f1;">${filled}</span><span style="font-family:monospace;letter-spacing:2px;color:#374151;">${empty}</span> <span style="color:#9ca3af;">${score}/5</span>`;
   };
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://otwoone.ie';
-  const hubUrl = `${baseUrl}/hub/leads/${lead_id}`;
-
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -103,6 +96,7 @@ function buildInternalEmail(params: {
       <td style="padding:32px 24px 16px;">
         <p style="margin:0;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#6366f1;">OTwoOne · Internal</p>
         <h1 style="margin:8px 0 0;font-size:22px;font-weight:600;color:#f9fafb;">New Elevate Submission</h1>
+        <p style="margin:8px 0 0;font-size:11px;color:#6b7280;">Ref: ${escapeHtml(ref)}</p>
       </td>
     </tr>
 
@@ -149,7 +143,7 @@ function buildInternalEmail(params: {
       </table>
     </td></tr>` : ''}
 
-    <tr><td style="padding:0 24px 20px;">
+    <tr><td style="padding:0 24px 32px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#13141a;border-radius:8px;overflow:hidden;">
         <tr><td colspan="2" style="padding:10px 16px;background:#1c1d26;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6b7280;">Internal Scoring</td></tr>
         <tr><td style="padding:8px 16px;color:#9ca3af;font-size:13px;width:160px;">Clarity</td><td style="padding:8px 16px;font-size:13px;">${scoreBar(scores.clarity_score)}</td></tr>
@@ -159,10 +153,6 @@ function buildInternalEmail(params: {
         <tr><td style="padding:10px 16px;color:#9ca3af;font-size:13px;border-top:1px solid #1f2028;">Total</td><td style="padding:10px 16px;font-size:16px;font-weight:600;color:#f9fafb;border-top:1px solid #1f2028;">${scores.total_score}/5</td></tr>
         <tr><td style="padding:4px 16px 14px;color:#9ca3af;font-size:13px;">Discovery rec.</td><td style="padding:4px 16px 14px;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6366f1;">${scores.discovery_depth_suggested}</td></tr>
       </table>
-    </td></tr>
-
-    <tr><td style="padding:0 24px 40px;text-align:center;">
-      <a href="${escapeHtml(hubUrl)}" style="display:inline-block;padding:12px 32px;background:#6366f1;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">View in Hub →</a>
     </td></tr>
   </table>
 </body>
@@ -202,6 +192,10 @@ function buildClientEmail(name: string): string {
 }
 
 // ─── POST handler ─────────────────────────────────────────────────────────────
+//
+// Email-only architecture: no database write. The structured notification email
+// sent to ELEVATE_NOTIFY_EMAIL is the system of record. Cowork reads it from
+// the inbox and handles the rest (summarise, score, draft, file).
 
 export async function POST(req: NextRequest) {
   try {
@@ -228,117 +222,74 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Description must be at least 25 characters' }, { status: 400 });
     }
 
-    // ── Score ────────────────────────────────────────────────────────────────
+    // Short reference id for the email — used by Cowork for filing/dedupe.
+    const ref = randomUUID().slice(0, 8);
+
+    // Scoring still useful for the email body (helps triage in the inbox).
     const scores = computeScores({
-      engagement_type: engagement_type ?? '',
-      budget:          budget ?? '',
-      timeline:        timeline ?? '',
+      engagement_type:    engagement_type ?? '',
+      budget:             budget ?? '',
+      timeline:           timeline ?? '',
       decision_authority: decision_authority ?? '',
       clarifier_answers,
       success_definition: success_definition ?? '',
     });
 
-    const supabase = getSupabase();
-
-    // ── Insert lead ──────────────────────────────────────────────────────────
-    const { data: lead, error: leadErr } = await supabase
-      .from('leads')
-      .insert({
-        source:            'elevate',
-        status:            'enquiry_received',
-        contact_name,
-        contact_email,
-        company_name,
-        company_website,
-        role,
-        decision_authority,
-        engagement_type,
-        budget,
-        timeline,
-        clarity_score:              scores.clarity_score,
-        alignment_score:            scores.alignment_score,
-        complexity_score:           scores.complexity_score,
-        authority_score:            scores.authority_score,
-        total_score:                scores.total_score,
-        discovery_depth_suggested:  scores.discovery_depth_suggested,
-      })
-      .select('id')
-      .single();
-
-    if (leadErr || !lead) {
-      console.error('Lead insert error:', leadErr);
-      return NextResponse.json({ error: 'Failed to save submission' }, { status: 500 });
-    }
-
-    // ── Insert lead_details ──────────────────────────────────────────────────
-    const rawSubmission = {
-      contact_name, contact_email, company_name, company_website,
-      role, decision_authority, engagement_type, budget, timeline,
-      success_definition, current_tools, clarifier_answers,
-    };
-
-    await supabase.from('lead_details').insert({
-      lead_id:            lead.id,
-      raw_submission:     rawSubmission,
-      clarifier_answers,
-      success_definition,
-      current_tools,
-      internal_notes:     null,
-    });
-
-    // ── Emails (non-blocking) ────────────────────────────────────────────────
-    const emailResult: { attempted: boolean; sent: boolean; error?: string } = {
-      attempted: false,
-      sent: false,
-    };
-
+    // ── Send emails ──────────────────────────────────────────────────────────
     const resendKey   = process.env.RESEND_API_KEY;
     const notifyEmail = process.env.ELEVATE_NOTIFY_EMAIL;
 
-    if (resendKey && notifyEmail) {
-      emailResult.attempted = true;
-      try {
-        const resend = new Resend(resendKey);
-
-        await Promise.all([
-          resend.emails.send({
-            from:    'OTwoOne <noreply@otwoone.ie>',
-            to:      [notifyEmail],
-            subject: `Elevate · ${contact_name || contact_email} · ${ENGAGEMENT_LABELS[engagement_type ?? ''] ?? engagement_type}`,
-            html:    buildInternalEmail({
-              name:               contact_name ?? '',
-              email:              contact_email,
-              company:            company_name ?? '',
-              website:            company_website ?? '',
-              role:               role ?? '',
-              authority:          decision_authority ?? '',
-              engagement_type:    engagement_type ?? '',
-              budget:             budget ?? '',
-              timeline:           timeline ?? '',
-              success_definition: success_definition ?? '',
-              current_tools:      current_tools ?? '',
-              clarifier_answers,
-              scores,
-              lead_id:            lead.id,
-            }),
-          }),
-          resend.emails.send({
-            from:    'OTwoOne <noreply@otwoone.ie>',
-            to:      [contact_email],
-            replyTo: notifyEmail,
-            subject: "We've received your details",
-            html:    buildClientEmail(contact_name ?? ''),
-          }),
-        ]);
-
-        emailResult.sent = true;
-      } catch (err) {
-        emailResult.error = err instanceof Error ? err.message : String(err);
-        console.error('Email error:', emailResult.error);
-      }
+    if (!resendKey || !notifyEmail) {
+      console.error('Missing RESEND_API_KEY or ELEVATE_NOTIFY_EMAIL');
+      return NextResponse.json(
+        { error: 'Email service not configured' },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ success: true, id: lead.id, email: emailResult });
+    const resend = new Resend(resendKey);
+
+    try {
+      await Promise.all([
+        resend.emails.send({
+          from:    'OTwoOne <noreply@otwoone.ie>',
+          to:      [notifyEmail],
+          replyTo: contact_email,
+          subject: `Elevate · ${contact_name || contact_email} · ${ENGAGEMENT_LABELS[engagement_type ?? ''] ?? engagement_type ?? 'enquiry'}`,
+          html:    buildInternalEmail({
+            ref,
+            name:               contact_name ?? '',
+            email:              contact_email,
+            company:            company_name ?? '',
+            website:            company_website ?? '',
+            role:               role ?? '',
+            authority:          decision_authority ?? '',
+            engagement_type:    engagement_type ?? '',
+            budget:             budget ?? '',
+            timeline:           timeline ?? '',
+            success_definition: success_definition ?? '',
+            current_tools:      current_tools ?? '',
+            clarifier_answers,
+            scores,
+          }),
+        }),
+        resend.emails.send({
+          from:    'OTwoOne <noreply@otwoone.ie>',
+          to:      [contact_email],
+          replyTo: notifyEmail,
+          subject: "We've received your details",
+          html:    buildClientEmail(contact_name ?? ''),
+        }),
+      ]);
+    } catch (err) {
+      console.error('Email send error:', err);
+      return NextResponse.json(
+        { error: 'Could not send notification. Please try again or email us directly.' },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json({ success: true, ref });
   } catch (err) {
     console.error('Submit error:', err);
     return NextResponse.json(

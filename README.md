@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OTwoOne
 
-## Getting Started
+Marketing site for [otwoone.ie](https://www.otwoone.ie) — a Cork-based digital consultancy.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 (App Router)
+- React 19
+- Tailwind 4
+- Resend (transactional email)
+- Hosted on Vercel
+
+## Pages
+
+| Path | What it is |
+|------|------------|
+| `/` | Home — pillars, process, differentiators, case study grid, contact |
+| `/services` | Service categories and support plans |
+| `/pricing` | Engagement types, "how every engagement starts", support plans |
+| `/elevate` | 4-step intake wizard (engagement → clarifiers → context → contact) |
+| `/work/<slug>` | Seven case study demos (medical, legal, store, restaurant, accountancy, fitness, fitness-app) |
+
+## Backend
+
+Single API route: `POST /api/elevate/submit`. Validates the submission, computes triage scores, sends a structured notification email to `ELEVATE_NOTIFY_EMAIL` (info@otwoone.ie) and an autoresponder to the enquirer. No database.
+
+Lead follow-up is handled by Cowork off the `info@` inbox — see `DEPLOY.md` and the morning-sweep task in `outputs/otwoone-morning-leads-task.md`.
+
+## Run locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # set RESEND_API_KEY, ELEVATE_NOTIFY_EMAIL, NEXT_PUBLIC_SITE_URL
+npm run dev                  # http://localhost:3000
+npm run check                # typecheck + production build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See `DEPLOY.md` for deploy notes.
