@@ -482,7 +482,7 @@ export default function PricingPage() {
       {/* ── Footer ── */}
       <footer className="border-t border-white/10 py-10">
         <div className="mx-auto max-w-6xl px-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between text-sm text-white/40">
-          <div>OTwoOne · Studio · Consultancy · Branding · Cork, Ireland</div>
+          <div>OTwoOne · Digital Solutions · Cork, Ireland</div>
           <div className="flex gap-6">
             <a href="/" className="hover:text-white transition-colors">Home</a>
             <a href="/pricing" className="hover:text-white transition-colors">Pricing</a>

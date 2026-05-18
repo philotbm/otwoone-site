@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -41,3 +42,13 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# Cowork-managed personal files (not part of the codebase)
+/TASKS.md
+/_leads/
+
+# Claude Code worktrees / launch config (local only)
+.claude/
+
+# Cursor IDE local config
+.cursor/

@@ -18,13 +18,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "OTwoOne — Studio · Consultancy · Branding",
+  title: "OTwoOne — Digital Solutions",
   description:
-    "Cork-based coding studio, consultancy, and branding practice. Outcome-led delivery for growing companies across Ireland and the UK.",
+    "OTwoOne builds and manages digital solutions for growing companies. Websites, automation, and hosting. Cork-based, working across Ireland and the UK.",
   openGraph: {
-    title: "OTwoOne — Studio · Consultancy · Branding",
+    title: "OTwoOne — Digital Solutions",
     description:
-      "Cork-based coding studio, consultancy, and branding practice. Outcome-led delivery for growing companies across Ireland and the UK.",
+      "OTwoOne builds and manages digital solutions for growing companies. Websites, automation, and hosting. Cork-based, working across Ireland and the UK.",
     url: "https://otwoone.ie",
     siteName: "OTwoOne",
     locale: "en_IE",
@@ -32,9 +32,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "OTwoOne — Studio · Consultancy · Branding",
+    title: "OTwoOne — Digital Solutions",
     description:
-      "Cork-based coding studio, consultancy, and branding practice. Outcome-led delivery for growing companies across Ireland and the UK.",
+      "OTwoOne builds and manages digital solutions for growing companies. Websites, automation, and hosting. Cork-based, working across Ireland and the UK.",
   },
   metadataBase: new URL("https://otwoone.ie"),
 };

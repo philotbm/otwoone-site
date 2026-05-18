@@ -1,4 +1,56 @@
-# OTwoOne OS Changelog
+# OTwoOne Site Changelog
+
+## v0.2.0 — 2026-05-14 — CRM strip-out, email-only backend
+
+Major simplification ahead of launch. The bespoke "OS" / Hub / proposals / portal
+subsystems were removed. Lead handling moves to Cowork off the `info@otwoone.ie`
+inbox; the only backend on the site is now `POST /api/elevate/submit` (sends
+two emails via Resend — internal notification + autoresponder).
+
+**Removed**
+- Entire `/hub` admin UI (login, dashboard, lead detail, smoke, SOP)
+- All `/api/hub/*` routes (31 endpoints covering briefs, proposals, revisions,
+  clarifications, iterations, execution runs, meetings, project context)
+- Client-facing `/projects/[token]` portal + `/proposal/[token]` viewer and
+  their API routes
+- All Supabase migrations and the `supabase/` directory — no database
+- Lib modules: `proposalPdf`, `proposalAutofill`, `proposalSourceAssembly`,
+  `proposalTypes`, `proposalEvents`, `projectEvents`, `projectStatus`,
+  `leadStatus`, `contextQuality`, `sharepoint`, `osVersion`,
+  `supabaseClient`, `supabaseServer`
+- Smoke / preflight / deploy-check / SharePoint scripts
+- Middleware (no `/hub` routes left to gate)
+- npm deps: `@anthropic-ai/sdk`, `@react-pdf/renderer`, `@supabase/supabase-js`,
+  `supabase` CLI
+
+**Changed**
+- `/api/elevate/submit` rewritten to email-only — no Supabase writes; computes
+  triage scores in-memory for the email body; returns a short ref id
+- `DEPLOY.md` rewritten as a minimal Vercel-deploy doc (was 263 lines of
+  hub/smoke/Supabase setup)
+- `README.md` replaced create-next-app boilerplate with a real overview
+- `.env.example` added — only three required vars now: `RESEND_API_KEY`,
+  `ELEVATE_NOTIFY_EMAIL`, `NEXT_PUBLIC_SITE_URL`
+- Brand framing aligned on "Digital Solutions" across metadata, home, services,
+  pricing, and proposal pages
+- Canonical contact email is `info@otwoone.ie` everywhere (was inconsistent)
+
+**Net effect**
+- ~24,300 LOC → ~5,000 LOC
+- 31 hub API routes → 2 (`/api/elevate/submit`, `/api/health`)
+- 30+ Supabase migrations → 0
+- Required env vars: 11 → 3
+- No more Supabase, SharePoint, Anthropic SDK, or react-pdf dependencies
+
+**Migration**
+1. Run `scripts\cleanup-old-crm.ps1 -Apply` locally to delete the files this
+   commit no longer references.
+2. In Vercel, remove env vars: `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `HUB_SECRET`,
+   all `SHAREPOINT_*`.
+3. Optionally: delete the Supabase project — no longer used.
+
+---
 
 ## v1.7.8 — 2026-03-04
 

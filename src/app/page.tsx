@@ -507,7 +507,7 @@ export default function Home() {
               className="h-[28px] w-auto opacity-60"
             />
             <p className="max-w-xs leading-relaxed text-white/40">
-              Websites · Systems · Advisory<br />
+              Digital Solutions<br />
               Cork, Ireland
             </p>
           </div>
