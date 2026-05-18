@@ -1,5 +1,31 @@
 # OTwoOne Site Changelog
 
+## v0.3.0 - 2026-05-14 - Lead engagement webhook
+
+Resend Pro webhook integration. When a lead opens or clicks the autoresponder
+(or it bounces / is marked as spam), a small "Engagement" notification email is
+forwarded to info@otwoone.ie so Cowork's morning sweep picks up the signal in
+the daily digest.
+
+**Added**
+- `POST /api/resend/webhook` - Svix-signed Resend webhook handler. Verifies
+  signatures, filters to triage-relevant events (opened, clicked, bounced,
+  complained), forwards a structured "Engagement" email to ELEVATE_NOTIFY_EMAIL.
+- `RESEND_WEBHOOK_SECRET` env var (set in Resend dashboard, paste into Vercel).
+- `svix` npm dependency for HMAC signature verification.
+
+**Changed**
+- `.env.example` rewritten ASCII-only and adds the new env var.
+- `DEPLOY.md` adds the env var row and a webhook setup section.
+
+**Notes**
+- No new database or storage. Engagement events flow through the same
+  inbox-as-system-of-record pattern as the rest of the site.
+- Events received from emails sent *to* info@otwoone.ie (the internal lead
+  notifications) are ignored -- we only track engagement with replies sent
+  *to leads*.
+
+---
 ## v0.2.0 — 2026-05-14 — CRM strip-out, email-only backend
 
 Major simplification ahead of launch. The bespoke "OS" / Hub / proposals / portal
@@ -80,3 +106,4 @@ two emails via Resend — internal notification + autoresponder).
 - Root cause: production DB constraint was updated to a 10-value lifecycle but code still inserted `'project_setup_complete'`
 - Convert route now inserts `project_status: 'deposit_paid'` to match DB constraint
 - Audited all `project_status` references across repo and flagged stale values
+
