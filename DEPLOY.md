@@ -11,6 +11,7 @@ Required in **both** Vercel Preview and Production:
 | `RESEND_API_KEY` | Resend API key for sending the notification + autoresponder emails |
 | `ELEVATE_NOTIFY_EMAIL` | Internal address that receives new lead notifications (`info@otwoone.ie`) |
 | `NEXT_PUBLIC_SITE_URL` | Full site URL used in absolute links and metadata (e.g. `https://www.otwoone.ie`) |
+| `RESEND_WEBHOOK_SECRET` | Signing secret for the Resend webhook (Pro plan). Set in Resend dashboard. |
 
 Both Resend and the verified sending domain (`otwoone.ie` / `noreply@otwoone.ie`) need to be configured in the Resend dashboard before the form can send.
 
@@ -49,3 +50,12 @@ Or in the Vercel dashboard: Deployments → previous deployment → Promote to P
 ## Lead handling
 
 Lead notifications land in `info@otwoone.ie` and are processed by Cowork on a daily 7am sweep (see `outputs/otwoone-morning-leads-task.md` for the task spec). Drafts land in `_leads/` in this repo (gitignored). The day rate is anchored internally; no rates are published on the site.
+
+## Webhook setup (one-off, after first deploy)
+
+1. In the Resend dashboard, go to Webhooks -> Add Endpoint.
+2. Endpoint URL: `https://www.otwoone.ie/api/resend/webhook` (use the preview URL when testing).
+3. Subscribe to events: `email.opened`, `email.clicked`, `email.bounced`, `email.complained`. Leave the others off -- they are noise at our volume.
+4. Copy the signing secret (`whsec_...`) into Vercel as `RESEND_WEBHOOK_SECRET` (both Preview and Production envs) and into local `.env.local`.
+5. From the Resend webhook detail page, send a test event. Confirm it returns `200` and an `Engagement | ...` email lands at `info@otwoone.ie`.
+
